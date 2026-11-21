@@ -30,9 +30,10 @@ const files = [
   "test/native-tunnel-client-observer-linux.test.mjs"
 ];
 
-// Keep every file once. Windows hosted CI runs native process/SQLite fixtures
-// under shared runner load; retain a finite 90-second budget only for its
-// WorkflowStore batch. Local/Commander batch replay stays bounded to 30 seconds.
+// Keep each test executable once. Two slow native process fixtures in the
+// WorkflowStore file run in distinct name-filtered processes, while its other
+// tests run in a complementary skip-filtered process. Every process retains
+// the original 30-second deadline on both Windows and Linux.
 const batches = [
   files.slice(0, 2),
   files.slice(2, 4),
@@ -65,28 +66,41 @@ function selectedRange(argv){
   return {first,last};
 }
 const range=selectedRange(process.argv.slice(2));
+const slowWorkflowTests = [
+  'WorkflowStore accepts only the contained runner proof bound to its acquired root lease',
+  'trusted process-cessation receipt reconciles and releases only the expired matching root lease'
+];
 for (let index = range.first-1; index < range.last; index++) {
   const batch = batches[index];
   if (!batch.length) continue;
-  const timeoutMs = process.platform === 'win32' && process.env.GITHUB_ACTIONS === 'true' && index === 5
-    ? 90000 : 30000;
-  process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length + ' files=' + batch.length + ' timeoutMs=' + timeoutMs + '\n');
-  const result = spawnSync(process.execPath, [
-    '--test', '--test-concurrency=1', ...batch
-  ], {
-    stdio: 'inherit',
-    windowsHide: true,
-    timeout: timeoutMs
-  });
-
-  if (result.error) {
-    process.stderr.write('V012_SOURCE_REGRESSION_RUNNER_FAILED batch=' + (index + 1) + ': ' + result.error.message + '\n');
-    process.exitCode = 1;
-    break;
+  // The two disjoint name filters and their complement execute every test
+  // exactly once; no tool behavior, assertions, or deadlines are skipped.
+  const slowPattern = '^(?:' + slowWorkflowTests.join('|') + ')$';
+  const partitions = index === 5 ? [
+    ...slowWorkflowTests.map(name => ['--test-name-pattern=^' + name + '$']),
+    ['--test-skip-pattern=' + slowPattern]
+  ] : [[]];
+  for (let part = 0; part < partitions.length; part++) {
+    process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length +
+      ' files=' + batch.length + ' partition=' + (part + 1) + '/' + partitions.length + '\n');
+    const result = spawnSync(process.execPath, [
+      '--test', '--test-concurrency=1', ...partitions[part], ...batch
+    ], {
+      stdio: 'inherit',
+      windowsHide: true,
+      timeout: 30000
+    });
+    if (result.error) {
+      process.stderr.write('V012_SOURCE_REGRESSION_RUNNER_FAILED batch=' + (index + 1) +
+        ' partition=' + (part + 1) + ': ' + result.error.message + '\n');
+      process.exitCode = 1;
+      break;
+    }
+    if (result.signal || result.status !== 0) {
+      process.exitCode = result.status ?? 1;
+      break;
+    }
   }
-  if (result.signal || result.status !== 0) {
-    process.exitCode = result.status ?? 1;
-    break;
-  }
+  if (process.exitCode) break;
   process.stdout.write('V012_SOURCE_REGRESSION_BATCH_PASS_' + (index + 1) + '/' + batches.length + '\n');
 }
