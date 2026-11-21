@@ -81,3 +81,19 @@ installed Core is replaced by this diagnostic.
 
 This proves only the native owner-pair binding seam, not a signed Worker,
 live privileged tool effect, full Core restoration, or production cutover.
+
+
+## Native owner-first Signed Worker binding contract
+
+The source-pinned protected Core now supports the existing explicit
+Worker callbacks OR exactly one synchronous
+security.bindWorkerToNativeOwner({ownerStack, identity}) callback.
+The factory is called after Native J01 creates its live owner-session bindings
+and durable V2GrantRegistry, allowing the SAME owner and epoch to be
+referenced during full Worker enrollment. Supplying both factory and direct
+worker/lease callbacks, or an incomplete result, fails closed. Existing
+owner-enrolled NO_GRANT canaries retain their denial behavior. This is only
+an integration dependency repair: it does not itself create an Ed25519
+credential, enroll a Worker, approve access, grant a tool, or prove live
+cutover. A real owner-controlled key provider, exact action policy, signed
+Worker registry and machine-global lease remain mandatory to activate it. This exact protected Core source path is included in the Unified Installer Pilot PR filters; every subsequent change requires fresh source-pinned Windows/Linux builds.

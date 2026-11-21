@@ -657,6 +657,33 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
   }
 });
 
+test('v0.12 private native Worker bootstrap rejects missing or competing authorities before any listener',()=>{
+  const security={
+    directory:path.join(os.tmpdir(),'unused-v012-owner-native-worker'),
+    issuer:'commander.local',audience:'remote-commander',
+    resolveOwnerRoute:async()=>null,
+    bindWorkerToNativeOwner:()=>({})
+  };
+  const setup={
+    port:0,
+    identity:{hostId:'host-1',profileId:'emad',principalId:'account-1',
+      expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
+      resolveTransportIdentity:async()=>null},
+    tls:{},security,
+    core:{catalog:[{name:'read_text',inputSchema:{type:'object'}}],
+      dispatch:async()=>null}
+  };
+  for(const patch of [
+    {bindWorkerToNativeOwner:null},
+    {bindWorkerToNativeOwner:undefined},
+    {resolveCurrentWorkerId:async()=>null},
+    {workerRegistry:{get:async()=>null}},
+    {withLease:async()=>null}
+  ])assert.throws(()=>createV012PrivateCoreRuntime({
+    ...setup,security:{...security,...patch}
+  }),{code:'V012_PRIVATE_CORE_WORKER_BOOTSTRAP_AMBIGUOUS_OR_MISSING'});
+});
+
 test('v0.12 protected Core composition uses J01 and signed worker before real readText',{
   skip:process.platform!=='win32'
 },async t=>{
@@ -723,43 +750,59 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
         directory:path.join(root,'owner-grants'),
         issuer:'commander.local',audience:'remote-commander',
         resolveOwnerRoute:async handle=>route(handle),
-        resolveTrustedToolRoute:async({nativeRoute})=>({
-          ...nativeRoute,operationId:'read-1'
-        }),
-        resolveCurrentOwnerRoute:async owner=>liveRoute(owner.conversationId),
-        resolveCurrentWorkerId:async owner=>{
-          if(state.worker?.claims?.bindingId!==owner.bindingId){
-            const claims={
-              issuer:'commander.local',audience:'remote-commander',
-              hostId:'host-1',profileId:'emad',principalId:'account-1',
-              conversationId:owner.conversationId,bindingId:owner.bindingId,
-              workerId,ownerSidHash:ownerHash,deviceProvider:'native-key-store',
-              deviceIdHash:'d'.repeat(64),
-              tunnelProvider:'openai-secure-mcp-tunnel',tunnelIdHash:tunnelHash,
-              capabilityPolicyDigest:policy,grantRevision:1,
-              issuedAtMs:now-1000,expiresAtMs:now+60000,
-              nonce:'f'.repeat(32)
-            };
-            const bytes=Buffer.from(JSON.stringify([
-              'commander.worker.identity.v1',keyId,
-              ...fields.map(field=>claims[field])
-            ]));
-            state.worker={schema:1,keyId,publicKey:der.toString('base64url'),
-              claims,signature:sign(null,bytes,privateKey).toString('base64url')};
-          }
-          return workerId;
+        bindWorkerToNativeOwner:({ownerStack,identity})=>{
+          assert.equal(ownerStack.nativeSessionBindings.size,0);
+          assert.equal(typeof ownerStack.grantRegistry.readWorkerGrant,'function');
+          assert.equal(identity.hostId,'host-1');
+          assert.equal(identity.profileId,'emad');
+          assert.equal(identity.expectedTunnelIdHash,tunnelHash);
+          // Trust only the same native owner and bootstrap-provided grants.
+          return {
+            resolveTrustedToolRoute:async({nativeRoute})=>({
+              ...nativeRoute,operationId:'read-1'
+            }),
+            resolveCurrentOwnerRoute:async owner=>{
+              // The same native J01 state established by HTTPS owner binding.
+              const current=await ownerStack.nativeSessionBindings
+                .resolveNativeRoute(owner.conversationId);
+              assert.equal(current.conversationId,owner.conversationId);
+              return liveRoute(current.conversationId);
+            },
+            resolveCurrentWorkerId:async owner=>{
+              if(state.worker?.claims?.bindingId!==owner.bindingId){
+                const claims={
+                  issuer:'commander.local',audience:'remote-commander',
+                  hostId:'host-1',profileId:'emad',principalId:'account-1',
+                  conversationId:owner.conversationId,bindingId:owner.bindingId,
+                  workerId,ownerSidHash:ownerHash,deviceProvider:'native-key-store',
+                  deviceIdHash:'d'.repeat(64),
+                  tunnelProvider:'openai-secure-mcp-tunnel',tunnelIdHash:tunnelHash,
+                  capabilityPolicyDigest:policy,grantRevision:1,
+                  issuedAtMs:now-1000,expiresAtMs:now+60000,
+                  nonce:'f'.repeat(32)
+                };
+                const bytes=Buffer.from(JSON.stringify([
+                  'commander.worker.identity.v1',keyId,
+                  ...fields.map(field=>claims[field])
+                ]));
+                state.worker={schema:1,keyId,publicKey:der.toString('base64url'),
+                  claims,signature:sign(null,bytes,privateKey).toString('base64url')};
+              }
+              return workerId;
+            },
+            workerRegistry:{get:async()=>state.worker},
+            workerAuthority:{authorizeWorker:async({workerId:id,invocation})=>{
+              if(!state.allow||id!==workerId||invocation.tool!=='read_text'
+                ||invocation.arguments.path!==approved)return null;
+              const claims=state.worker.claims;
+              return {authorized:true,workerId,keyId,bindingId:claims.bindingId,
+                capabilityPolicyDigest:policy,grantRevision:1,
+                expiresAtMs:claims.expiresAtMs};
+            }},
+            // Disposable one-file QA only; production supplies a machine-global lease.
+            withLease:async(_resource,work)=>work(),receiptStore,
+          };
         },
-        workerRegistry:{get:async()=>state.worker},
-        workerAuthority:{authorizeWorker:async({workerId:id,invocation})=>{
-          if(!state.allow||id!==workerId||invocation.tool!=='read_text'
-            ||invocation.arguments.path!==approved)return null;
-          const claims=state.worker.claims;
-          return {authorized:true,workerId,keyId,bindingId:claims.bindingId,
-            capabilityPolicyDigest:policy,grantRevision:1,
-            expiresAtMs:claims.expiresAtMs};
-        }},
-        // Disposable one-file QA only; production supplies a machine-global lease.
-        withLease:async(_resource,work)=>work(),receiptStore,
         ownerSessionOptions:{
           platform:'win32',
           powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',

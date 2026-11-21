@@ -1428,3 +1428,28 @@ then independently witnessed single native installer migration, full Core
 restoration, boot/login and fleet cutover. Transient owner-binding expires
 at Core teardown. No v0.12 Stable tag/release, service restart, active Tunnel
 remap, credential change or deployment is authorized by these QA receipts.
+
+
+**RC012 source-level native-owner → Signed Worker integration seam (2026-11-21):** The canonical protected Core
+src/v012-private-core-runtime.mjs now accepts two mutually exclusive trusted
+bootstrap modes: the existing explicitly supplied Worker/grant/lease callbacks,
+or a synchronous owner-local bindWorkerToNativeOwner({ownerStack,identity})
+factory invoked AFTER the real Native J01 stack and its V2GrantRegistry exist.
+The factory is forbidden alongside any direct Worker callbacks and must return
+the full independently authorized callbacks; missing/ambiguous returns fail
+closed and close the owner stack. It does not create Worker keys, identity,
+consent, grants or OS rights. The Windows protected HTTPS mTLS real Core
+read_text integration now exercises this post-J01 owner-stack factory and
+resolves its exact current native route; pre-binding request DENY, owner-bound
+signed envelope path, reuse and revocation tests remain mandatory.
+Linux focused source tests for private TLS + durable Worker authority:
+38 PASS, 2 Windows-only SKIP, zero FAIL; real installed Linux source canary
+on exact existing owner Tunnel default-v012: pinned TLSv1.3 discovery 200,
+anonymous denied, unsigned tool 503, original service PID 1566984 unchanged.
+Native Windows test and exact-head hosted CI remain separately required.
+The protected src/v012-private-core-runtime.mjs is now explicitly in the
+native Windows/Linux installer pilot trigger list, with the existing source
+qualification assertion extended to prevent untested changes to this Core.
+The production Signed Worker provider and its encrypted owner-controlled key,
+durable registration/administration, machine-global lease and actual Plugin
+operation route are STILL NOT INSTALLED or PROMOTED by this factory.

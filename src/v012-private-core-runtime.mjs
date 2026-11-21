@@ -18,6 +18,22 @@ const fail=code=>{throw Object.assign(new Error(code),{code});};
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH=/^[a-f0-9]{64}$/;
 
+function validWorkerSecurity(s){
+  return !!s&&typeof s==='object'&&!Array.isArray(s)
+    &&typeof s.resolveTrustedToolRoute==='function'
+    &&typeof s.resolveCurrentOwnerRoute==='function'
+    &&typeof s.resolveCurrentWorkerId==='function'
+    &&typeof s.withLease==='function'
+    &&typeof s.workerAuthority?.authorizeWorker==='function'
+    &&typeof s.workerRegistry?.get==='function'
+    &&typeof s.receiptStore?.execute==='function';
+}
+const WORKER_CALLBACK_FIELDS=Object.freeze([
+  'resolveTrustedToolRoute','resolveCurrentOwnerRoute',
+  'resolveCurrentWorkerId','withLease','workerAuthority',
+  'workerRegistry','receiptStore'
+]);
+
 /**
  * Attach the real Core catalog and dispatch function to the existing
  * owner-pinned HTTPS/mTLS -> native J01 -> signed exact-action grant pipeline.
@@ -26,6 +42,14 @@ const HASH=/^[a-f0-9]{64}$/;
  * bootstrap, not an MCP call, config.json or client-controlled _meta.
  * security.withLease MUST be machine-global (no in-process mock lock);
  * its implementation and worker/grant provisioning belong to the owner.
+ *
+ * Two exclusive owner-local bootstrap modes:
+ * - already-bound, trusted security callbacks (existing integration);
+ * - a SYNCHRONOUS security.bindWorkerToNativeOwner({ownerStack,identity})
+ *   which can reuse the exact fresh native J01 session/registry. This is
+ *   called only after the native owner stack is constructed and cannot
+ *   create an HTTP/MCP enrollment or bypass OS approval. Bootstrap owns
+ *   lifecycle and durable worker store; no automatic grants are issued.
  */
 export function createV012PrivateCoreRuntime({
   port,identity,tls,security,core,now=Date.now
@@ -40,18 +64,17 @@ export function createV012PrivateCoreRuntime({
       .every(v=>typeof v==='string'&&HASH.test(v))
     ||typeof identity.resolveTransportIdentity!=='function'
     ||typeof security.resolveOwnerRoute!=='function'
-    ||typeof security.resolveTrustedToolRoute!=='function'
-    ||typeof security.resolveCurrentOwnerRoute!=='function'
-    ||typeof security.resolveCurrentWorkerId!=='function'
-    ||typeof security.withLease!=='function'
-    ||typeof security.workerAuthority?.authorizeWorker!=='function'
-    ||typeof security.workerRegistry?.get!=='function'
-    ||typeof security.receiptStore?.execute!=='function'
     ||typeof core.dispatch!=='function'
     ||!Array.isArray(core.catalog)||core.catalog.length===0
     ||typeof security.directory!=='string'
     ||!path.isAbsolute(security.directory))
     fail('V012_PRIVATE_CORE_BOOTSTRAP_REQUIRED');
+  const factory=security.bindWorkerToNativeOwner;
+  if(factory!==undefined
+    ? typeof factory!=='function'
+      ||WORKER_CALLBACK_FIELDS.some(key=>Object.hasOwn(security,key))
+    : !validWorkerSecurity(security))
+    fail('V012_PRIVATE_CORE_WORKER_BOOTSTRAP_AMBIGUOUS_OR_MISSING');
 
   // No function/body injected by a caller may become an executable Core tool.
   // The installed Core is authoritative for both names and schemas.
@@ -85,16 +108,30 @@ export function createV012PrivateCoreRuntime({
       attestTransport,resolveOwnerRoute:security.resolveOwnerRoute,
       ownerSessionOptions:security.ownerSessionOptions??{},now
     });
+    // The factory may bind to the already verified native J01 state and
+    // durable grant registry, avoiding a circular owner/worker dependency.
+    // It is NOT an authorization grant: the exact signed Worker authority,
+    // current caller and global lease are still checked per tool invocation.
+    const worker=factory
+      ?factory(Object.freeze({ownerStack,identity:Object.freeze({
+        hostId:identity.hostId,profileId:identity.profileId,
+        principalId:identity.principalId,
+        expectedTunnelIdHash:identity.expectedTunnelIdHash,
+        expectedOwnerSidHash:identity.expectedOwnerSidHash
+      })}))
+      :security;
+    if(!validWorkerSecurity(worker))
+      fail('V012_PRIVATE_CORE_WORKER_BOOTSTRAP_REQUIRED');
     const verifyExactNativeGrant=createV2PrivateSignedWorkerGrantAdapter({
       hostId:identity.hostId,profileId:identity.profileId,
       principalId:identity.principalId,
       expectedTunnelIdHash:identity.expectedTunnelIdHash,
       expectedOwnerSidHash:identity.expectedOwnerSidHash,
       issuer:security.issuer,audience:security.audience,
-      workerAuthority:security.workerAuthority,
-      workerRegistry:security.workerRegistry,
-      resolveCurrentWorkerId:security.resolveCurrentWorkerId,
-      resolveCurrentOwnerRoute:security.resolveCurrentOwnerRoute,now
+      workerAuthority:worker.workerAuthority,
+      workerRegistry:worker.workerRegistry,
+      resolveCurrentWorkerId:worker.resolveCurrentWorkerId,
+      resolveCurrentOwnerRoute:worker.resolveCurrentOwnerRoute,now
     });
     const gate=createV2PrivatePairOperationGate({
       hostId:identity.hostId,profileId:identity.profileId,
@@ -105,7 +142,7 @@ export function createV012PrivateCoreRuntime({
       resolveOwnerContext:route=>
         ownerStack.resolveOwnerContext(route.conversationId),
       readCurrentOwnerSidHash:readOwner,verifyExactNativeGrant,
-      withLease:security.withLease,receiptStore:security.receiptStore,now,
+      withLease:worker.withLease,receiptStore:worker.receiptStore,now,
       execute:async(route,args,tool)=>{
         if(!names.has(tool)
           ||validateJsonSchema(args,names.get(tool).inputSchema).length!==0)
@@ -133,7 +170,7 @@ export function createV012PrivateCoreRuntime({
           validateToolInput:async(tool,args)=>
             names.has(tool)
             &&validateJsonSchema(args,names.get(tool).inputSchema).length===0,
-          resolveTrustedToolRoute:security.resolveTrustedToolRoute
+          resolveTrustedToolRoute:worker.resolveTrustedToolRoute
         }
       }
     });
