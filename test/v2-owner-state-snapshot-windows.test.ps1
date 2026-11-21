@@ -85,7 +85,11 @@ try{
   if($LASTEXITCODE -ne 2 -or -not (($roamingOverride | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
     throw 'V012_WINDOWS_QA_OWNER_OVERRIDE_NOT_REJECTED'
   }
-  'V012_WINDOWS_ACL_SNAPSHOT_NATIVE_QA_PASS files=2 restore=PASS privateDacl=PASS overlap=DENIED override=DENIED'
+  $localOverride=@(& pwsh -NoProfile -File $script -Mode OwnerLocalRuntime -FixtureRoot $src 2>&1)
+  if($LASTEXITCODE -ne 2 -or -not (($localOverride | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
+    throw 'V012_WINDOWS_QA_LOCAL_OVERRIDE_NOT_REJECTED'
+  }
+  'V012_WINDOWS_ACL_SNAPSHOT_NATIVE_QA_PASS files=2 restore=PASS privateDacl=PASS overlap=DENIED override=DENIED localOverride=DENIED'
 }finally{
   if(Test-Path -LiteralPath $root){
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop

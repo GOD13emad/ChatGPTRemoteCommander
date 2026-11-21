@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('Fixture','OwnerRoaming')]
+  [ValidateSet('Fixture','OwnerRoaming','OwnerLocalRuntime')]
   [string]$Mode,
   [string]$FixtureRoot,
   [string]$OutputParent,
@@ -126,16 +126,17 @@ try {
   $script:AdminGroupSourcesAllowed=$false
   $script:AdminGroupSourceEntries=0
   if($PermitAdministratorsGroupSource){
-    if($Mode -ne 'OwnerRoaming'){Stop-WithCode 'GROUP_SOURCE_MODE_RESTRICTED'}
+    if($Mode -notin @('OwnerRoaming','OwnerLocalRuntime')){Stop-WithCode 'GROUP_SOURCE_MODE_RESTRICTED'}
     $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
       Stop-WithCode 'ADMIN_GROUP_SOURCE_NEEDS_NATIVE_ELEVATION'
     }
     $script:AdminGroupSourcesAllowed=$true
   }
-  if($Mode -eq 'OwnerRoaming'){
+  if($Mode -in @('OwnerRoaming','OwnerLocalRuntime')){
     if($FixtureRoot -or $OutputParent) { Stop-WithCode 'OWNER_PATH_OVERRIDE_DENIED' }
-    $source=Join-Path $env:APPDATA 'ChatGPTRemoteCommander'
+    $base=if($Mode -eq 'OwnerRoaming'){$env:APPDATA}else{$env:LOCALAPPDATA}
+    $source=Join-Path $base 'ChatGPTRemoteCommander'
     $output=Join-Path $env:LOCALAPPDATA 'CommanderV2\migration-private'
   }else{
     if(-not $FixtureRoot -or -not $OutputParent) { Stop-WithCode 'FIXTURE_PATHS_REQUIRED' }
@@ -168,7 +169,28 @@ try {
   Private-Acl $data $true $sid
   $entries=[System.Collections.Generic.List[object]]::new()
   $counter=@{Bytes=[long]0}
-  Copy-Tree $source $data '' $sid $entries $counter
+  if($Mode -eq 'OwnerLocalRuntime'){
+    # Fixed owner-local runtime subset; do not sweep multi-GiB QA, caches,
+    # browser profiles or other-user workspace state.
+    Confirm-Owner $source $sid
+    foreach($component in @('routing','instances','credentials')){
+      $from=Join-Path $source $component
+      if(-not (Test-Path -LiteralPath $from -PathType Container)){
+        Stop-WithCode 'REQUIRED_LOCAL_COMPONENT_ABSENT'
+      }
+      $componentRoot=Get-Item -LiteralPath $from -Force -ErrorAction Stop
+      if(($componentRoot.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){
+        Stop-WithCode 'SOURCE_REPARSE_POINT'
+      }
+      Confirm-Owner $from $sid
+      $componentDest=Join-Path $data $component
+      [void](New-Item -ItemType Directory -Path $componentDest -ErrorAction Stop)
+      Private-Acl $componentDest $true $sid
+      Copy-Tree $from $componentDest $component $sid $entries $counter
+    }
+  }else{
+    Copy-Tree $source $data '' $sid $entries $counter
+  }
   $manifestData=[ordered]@{schema=1;mode=$Mode;entries=@($entries.ToArray());files=$entries.Count;bytes=$counter.Bytes}
   $manifestJson=ConvertTo-Json -InputObject $manifestData -Depth 8 -Compress
   $manifestFile=Join-Path $created 'manifest.json'
@@ -202,6 +224,7 @@ try {
     ownerOnlyDaclVerified=$true;
     adminGroupOwnedSourceEntries=$script:AdminGroupSourceEntries;
     privilegedSourceReadAttested=$script:AdminGroupSourcesAllowed;
+    localRuntimeComponents=if($Mode -eq 'OwnerLocalRuntime'){@('routing','instances','credentials')}else{@()};
     offlineCopyAndRestore='PASS';
     liveConsistencyVerified=$false;
     fullFleetMigrationAccepted=$false;
@@ -222,6 +245,11 @@ try {
     try {Remove-Item -LiteralPath $created -Force -Recurse -ErrorAction Stop} catch {}
   }
   if($msg -like 'V012_WIN_SNAPSHOT_*') { [Console]::Error.WriteLine($msg) }
-  else{ [Console]::Error.WriteLine('V012_WIN_SNAPSHOT_FAILED') }
+  else{
+    # No private paths, filenames, or exception messages in diagnostics.
+    $type=$_.Exception.GetType().Name
+    if(-not $type.EndsWith('Exception')){$type='UNKNOWN'}
+    [Console]::Error.WriteLine('V012_WIN_SNAPSHOT_FAILED_'+$type)
+  }
   exit 2
 }
