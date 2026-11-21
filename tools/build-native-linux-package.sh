@@ -136,7 +136,7 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Remote Commander maintainers
-Depends: libc6 (>= 2.31), ca-certificates
+Depends: libc6 (>= 2.31), ca-certificates, curl (>= 7.68)
 Description: Single native Remote Commander application core (V0.12 QA)
  One dpkg-owned immutable code and Node runtime for all local profiles.
  Native owner admission, authenticated G1/J01 and fleet approval are
@@ -204,14 +204,15 @@ credential="${CREDENTIALS_DIRECTORY:-}/api-key"
 [ -n "${CREDENTIALS_DIRECTORY:-}" ] && [ -r "$credential" ] || {
   echo 'NATIVE_TUNNEL_CREDENTIAL_MISSING' >&2; exit 2;
 }
-CONTROL_PLANE_API_KEY="$(cat -- "$credential")"
-[ -n "$CONTROL_PLANE_API_KEY" ] || { echo 'NATIVE_TUNNEL_CREDENTIAL_EMPTY' >&2; exit 2; }
-export CONTROL_PLANE_API_KEY
-unset OPENAI_API_KEY || true
-exec /usr/lib/chatgpt-remote-commander/tunnel/tunnel-client run \
-  --profile "$profile" --profile-dir "$config_dir" --log.file stdout
+# Keep the key in systemd LoadCredential. The supervised child alone reads
+# the credential; the parent does not export it into a shell environment.
+exec /usr/lib/chatgpt-remote-commander/runtime/node \
+  /usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-supervisor-linux.mjs \
+  "$profile" "$config_dir"
 TUNNELLAUNCH
 chmod 755 "$DEB$PACKAGE_DIR/tunnel/native-tunnel-launch.sh"
+install -m 0644 "$APP/src/native-tunnel-supervisor-linux.mjs" \
+  "$DEB$PACKAGE_DIR/tunnel/native-tunnel-supervisor-linux.mjs"
 cat > "$DEB$PACKAGE_DIR/native-config-preflight.mjs" <<'PREFLIGHT'
 import fs from 'node:fs';
 import os from 'node:os';

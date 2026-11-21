@@ -172,8 +172,9 @@ test('native per-owner tunnel unit loads existing credentials and never autostar
   const launcher=source.match(/cat > "\$DEB\$PACKAGE_DIR\/tunnel\/native-tunnel-launch\.sh" <<'TUNNELLAUNCH'\n([\s\S]*?)\nTUNNELLAUNCH/)?.[1];
   assert.ok(launcher,'standalone tunnel launcher must be packaged');
   assert.match(launcher,/CREDENTIALS_DIRECTORY/);
-  assert.match(launcher,/export CONTROL_PLANE_API_KEY/);
-  assert.match(launcher,/unset OPENAI_API_KEY/);
+  assert.doesNotMatch(launcher,/export CONTROL_PLANE_API_KEY/);
+  assert.match(launcher,/native-tunnel-supervisor-linux\.mjs/);
+  assert.match(source,/install -m 0644 "\$APP\/src\/native-tunnel-supervisor-linux\.mjs"/);
   assert.doesNotMatch(launcher,/echo "\$CONTROL_PLANE_API_KEY"|printf.*CONTROL_PLANE_API_KEY/);
   if(process.platform==='linux'){
     for(const profile of ['../escape','', 'profile with spaces']){
