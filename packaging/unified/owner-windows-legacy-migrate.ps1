@@ -59,6 +59,24 @@ function Read-OldRegistration {
  }
  return [pscustomobject]@{version=$r.DisplayVersion;properties=$props}
 }
+function Assert-Previous-Rollback($prior,$old){
+ if($prior.phase -ne 'ROLLED_BACK'){Fail 'RC012_PREVIOUS_TRANSACTION_NOT_ROLLED_BACK'}
+ if(Test-Path -LiteralPath $backup){Fail 'RC012_PRIOR_BACKUP_PATH_NOT_RELEASED'}
+ if(Test-Path -LiteralPath $failed){Fail 'RC012_PRIOR_FAILED_INSTALL_QUARANTINE_PRESENT'}
+ if(Test-Path -LiteralPath (Join-Path $local 'Programs\remote-commander-unified')){
+  Fail 'RC012_PREVIOUS_NSIS_DIRECTORY_STILL_PRESENT'
+ }
+ if([string]$prior.old.version -ne [string]$old.version){
+  Fail 'RC012_ROLLBACK_OWNER_BASELINE_CHANGED'
+ }
+ foreach($key in @('DisplayName','DisplayVersion','InstallLocation','UninstallString')){
+  $v=$prior.old.properties.PSObject.Properties[$key]
+  if(-not $v -or -not $old.properties.ContainsKey($key) -or
+    [string]$v.Value -cne [string]$old.properties[$key]){
+   Fail 'RC012_ROLLBACK_OWNER_BASELINE_CHANGED'
+  }
+ }
+}
 function Find-NewRegistration {
  $matches=@(Get-ItemProperty -Path ($uninstallRoot+'\*') -ErrorAction SilentlyContinue |
   Where-Object {$_.PSObject.Properties['DisplayName'] -and $_.PSObject.Properties['DisplayVersion'] -and
@@ -151,6 +169,21 @@ function Assert-NewUninstaller($new,[string]$ownerInstallRoot){
  }
  return $file
 }
+$migrationLock=$null
+if($Mode -ne 'Plan'){
+ New-Item -ItemType Directory -Path $state -Force|Out-Null
+ if((Get-Item -LiteralPath $state -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)){
+  Fail 'RC012_MIGRATION_STATE_REPARSE_REFUSED'
+ }
+ $lockPath=Join-Path $state 'migration.lock'
+ try{
+  $migrationLock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,
+    [IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+ }catch [System.IO.IOException]{
+  Fail 'RC012_MIGRATION_LOCK_BUSY'
+ }
+}
+try {
 if($Mode -eq 'Recover'){
  $r=Read-Receipt
  if(-not $r){Fail 'RC012_NO_RECOVERY_RECEIPT'}
@@ -189,17 +222,41 @@ if(-not(Test-Path -LiteralPath $legacy -PathType Container) -or
 Assert-NoOwnerGui
 $installer=Assert-Installer
 if(Find-NewRegistration){Fail 'RC012_UNIFIED_ALREADY_REGISTERED'}
-if(Test-Path -LiteralPath $receipt){Fail 'RC012_PREEXISTING_MIGRATION_RECEIPT_RECONCILE'}
+$otherNsis=@(Get-ItemProperty -Path ($uninstallRoot+'\*') -ErrorAction SilentlyContinue |
+ Where-Object {$_.PSObject.Properties['DisplayName'] -and
+   $_.DisplayName -match '^Remote Commander [0-9]'})
+if($otherNsis.Count){Fail 'RC012_OTHER_NSIS_VERSION_REGISTERED'}
+$previous=Read-Receipt
+if($previous){Assert-Previous-Rollback $previous $old}
 if(Test-Path -LiteralPath $backup){Fail 'RC012_BACKUP_PATH_IN_USE'}
+if(Test-Path -LiteralPath $failed){Fail 'RC012_FAILED_INSTALL_QUARANTINE_PRESENT'}
+if(Test-Path -LiteralPath (Join-Path $local 'Programs\remote-commander-unified')){
+ Fail 'RC012_NSIS_DIRECTORY_ALREADY_PRESENT'
+}
 $report=[ordered]@{
  result='RC012_OWNER_LEGACY_GUI_MIGRATION_READY';version=$old.version
  targetVersion=$ExpectedVersion;installerSha256=$InstallerSha256.ToLowerInvariant()
  machineWideLegacyPresent=$false;existingGuiRunning=$false
  installerFamily='NSIS';currentFamily='Legacy-owner-inplace'
+ repeatAfterVerifiedRollback=[bool]$previous
  rollbackKind='same-volume atomic directory move + exact owner HKCU registry restore'
 }
 if($Mode -eq 'Plan'){$report|ConvertTo-Json -Compress;return}
 New-Item -ItemType Directory -Path $state -Force|Out-Null
+if($previous){
+ # Existing accepted owner state was restored; preserve its receipt in an
+ # immutable hash-addressed journal instead of making every next upgrade fail.
+ $history=Join-Path $state 'history'
+ New-Item -ItemType Directory -Path $history -Force|Out-Null
+ $previousSha=(Get-FileHash -LiteralPath $receipt -Algorithm SHA256).Hash.ToLowerInvariant()
+ $destination=Join-Path $history ('rollback-receipt-'+$previousSha+'.json')
+ if(Test-Path -LiteralPath $destination){Fail 'RC012_ROLLBACK_RECEIPT_ARCHIVE_COLLISION'}
+ [IO.File]::Move($receipt,$destination)
+ if((Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash -ine $previousSha){
+  Fail 'RC012_ROLLBACK_RECEIPT_ARCHIVE_SHA_MISMATCH'
+ }
+ Write-Output 'RC012_PRIOR_ROLLBACK_RECEIPT_ARCHIVED'
+}
 $r=[pscustomobject]@{
  schema=1;phase='PREPARED';legacy=$legacy;backup=$backup;old=$old
  newInstaller=$installer;newSha256=$InstallerSha256.ToLowerInvariant()
@@ -243,4 +300,7 @@ try{
  Restore-Legacy $r
  Write-Output 'RC012_MIGRATION_INSTALL_FAILED_LEGACY_ROLLBACK_PASS'
  throw $errorCode
+}
+} finally {
+ if($migrationLock){$migrationLock.Dispose()}
 }
