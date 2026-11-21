@@ -21,7 +21,7 @@ try{
     $principal=$candidate.Principal
     if($principal.UserId -notin @($me.User.Value,$me.Name,$env:USERNAME) -or
        [string]$principal.LogonType -ne 'Interactive' -or
-       [string]$principal.RunLevel -ne 'Limited'){continue}
+       [string]$principal.RunLevel -notin @('Limited','Highest')){continue}
     $origActions=@($candidate.Actions|Where-Object {$_ -ne $null})
     if($origActions.Count -ne 1){continue}
     $file=Join-Path $root $entry.file
@@ -45,6 +45,17 @@ try{
     [void]$rootNode.AppendChild($triggers)
   }
   $triggers.RemoveAll()
+  # A saved elevated owner-interactive task may be used as a source, but
+  # the disposable QA clone must run with least privilege. The original
+  # task and its security principal are never modified by this test.
+  $principalNode=$rootNode.SelectSingleNode("*[local-name()='Principals']/*[local-name()='Principal']")
+  if($null -eq $principalNode){throw 'V012_TASK_CLONE_PRINCIPAL_REQUIRED'}
+  $runLevel=$principalNode.SelectSingleNode("*[local-name()='RunLevel']")
+  if($null -eq $runLevel){
+    $runLevel=$xml.CreateElement('RunLevel',$ns)
+    [void]$principalNode.AppendChild($runLevel)
+  }
+  $runLevel.InnerText='LeastPrivilege'
   $settings=$rootNode.SelectSingleNode("*[local-name()='Settings']")
   if($null -eq $settings){throw 'V012_TASK_CLONE_NO_SETTINGS'}
   foreach($entry in @(@('Enabled','false'),@('AllowStartOnDemand','false'))){
@@ -64,7 +75,9 @@ try{
   $registered=$true
   $clone=Get-ScheduledTask -TaskName $qaName -ErrorAction Stop
   $actions=@($clone.Actions|Where-Object {$_ -ne $null})
-  if($clone.Settings.Enabled -or $clone.Settings.AllowStartOnDemand -or
+  if([string]$clone.Principal.RunLevel -ne 'Limited' -or
+     [string]$clone.Principal.LogonType -ne 'Interactive' -or
+     $clone.Settings.Enabled -or $clone.Settings.AllowStartOnDemand -or
      @($clone.Triggers|Where-Object {$_ -ne $null}).Count -ne 0 -or
      $actions.Count -ne 1 -or
      $actions[0].Execute -ne $origActions[0].Execute -or
