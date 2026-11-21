@@ -23,6 +23,14 @@ assert.ok(script.includes('test "$count" -eq "$expected_count"'));
 assert.ok(script.includes('expected_count=20'));
 assert.ok(script.includes('then expected_count=21; fi'));
 assert.ok(workflow.includes("steps.release_identity.outputs.accepted == 'true'"));
+test('Release Sync skips stable asset publisher on ordinary main development pushes',()=>{
+ const section=workflow.match(/^  publish:\n    if: ([^\n]+)/m);
+ assert.ok(section,'publish job and explicit event guard required');
+ assert.match(section[1],/github\.event_name\s*==\s*'push'/);
+ assert.match(section[1],/startsWith\(github\.ref,\s*'refs\/tags\/v'\)/);
+ assert.doesNotMatch(section[1],/github\.ref\s*!=/);
+});
+
 const git=(cwd,...args)=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'});
 test('R171 tag-only publication gate skips post-tag main without re-signing or retagging',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-posttag-r171-'));
@@ -232,7 +240,7 @@ test('v0.12 development QA provenance uses a separate trusted integration-only j
    'V012_QA_GITHUB_ATTESTATION_VERIFIED_NO_PROMOTE'])
    assert.ok(qa.includes(field),'missing QA attestation safety gate: '+field);
  const publish=workflow.split('  publish:\n')[1];
- assert.ok(publish?.includes("if: github.event_name != 'pull_request' && github.ref != 'refs/heads/integration/v012-unsigned-approval-20261110'"),
+ assert.ok(publish?.includes("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"),
    'publishing job must refuse the development integration branch');
  assert.ok(publish.includes("steps.release_identity.outputs.accepted == 'true'"),
    'Stable tag-only publication gate must remain intact');

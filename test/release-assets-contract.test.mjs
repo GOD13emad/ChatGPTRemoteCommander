@@ -92,7 +92,7 @@ for (const required of [
   '.\\installer\\build-setup.ps1',
   'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
   'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
-  "if: github.event_name != 'pull_request'",
+  "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
   'Remote-Commander-Setup-v${version}.exe',
   'bash tools/build-release-assets.sh dist/release',
   'sha256sum -c SHA256SUMS.txt',
