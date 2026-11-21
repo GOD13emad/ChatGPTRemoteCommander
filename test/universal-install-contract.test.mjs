@@ -31,5 +31,7 @@ test('an exact-source installer QA pass cannot authorize v0.12 stable or all-acc
   assert.match(engine,/realServicesStarted:false,ownerConsentGranted:false/u);
   assert.match(engine,/productionInstallEnabled:false/u);
   assert.match(engine,/releasePath\(target,state\.previous\)/u);
+  assert.match(engine,/core\.autocrlf=false/u);
+  assert.match(engine,/core\.eol=lf/u);
   assert.doesNotMatch(engine,/systemctl|schtasks|reg\.exe|sudo|winget|npm\s+install/u);
 });

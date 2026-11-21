@@ -151,7 +151,10 @@ function pack(opts){
   fs.mkdirSync(tmp,{recursive:true,mode:0o700});
   try{
     const archive=path.join(tmp,'source.tar');
-    exec('git',['-C',source,'archive','--format=tar','-o',archive,expected]);
+    // Canonical Git objects across Windows core.autocrlf=true and Linux false.
+    // Pin checkout conversion only for this child process; never change user Git config.
+    exec('git',['-c','core.autocrlf=false','-c','core.eol=lf',
+               '-C',source,'archive','--format=tar','-o',archive,expected]);
     const payload=path.join(tmp,'payload');
     fs.mkdirSync(payload);
     exec('tar',['-xf',archive,'-C',payload]);

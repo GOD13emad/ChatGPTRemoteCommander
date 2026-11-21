@@ -9,7 +9,7 @@ technical account profile/Tunnel identities are never rewritten.
 ## Evidence standard / DoD
 
 - Common package: one immutable Git commit and exact sorted, hashed, complete
-  file inventory. A Git archive avoids Windows CRLF checkout-dependent hashes.
+  file inventory. A Git archive must force core.autocrlf=false and core.eol=lf for Windows/Linux byte identity; this is child-process-local and does not change the user's Git config.
 - Common lifecycle: install, upgrade with previous-version retention,
   verification and rollback are implemented by the same source file and
   exercised on both OSes; dangerous roots, aliases and tampering are rejected.
