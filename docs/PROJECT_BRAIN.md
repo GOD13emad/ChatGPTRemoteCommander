@@ -1453,3 +1453,31 @@ qualification assertion extended to prevent untested changes to this Core.
 The production Signed Worker provider and its encrypted owner-controlled key,
 durable registration/administration, machine-global lease and actual Plugin
 operation route are STILL NOT INSTALLED or PROMOTED by this factory.
+
+
+**RC012 native one-Tunnel OAuth-free Signed Worker adapter (2026-11-21):** The original V1-01 Worker grant adapter requires a
+bearer/OAuth bridge and cannot be silently repurposed as a trusted ChatGPT
+conversation identity for the approved exclusive pair-Tunnel model. Added
+src/v012-private-native-worker-adapter.mjs as an OWNER-PROVISIONED, source-only
+adapter for the existing native mTLS pair/J01 owner stack; no OAuth, second
+Tunnel, new service or arbitrary chat identity. It verifies the independently
+native owner SID and current pair owner epoch, pinned Tunnel hash, canonical
+native route, durable worker enrollment+per-tool grants, exact owner-selected
+operation route and owner-supplied argument policy twice across awaits; fails
+closed on owner/session switch, grant expiry/revocation, tool mismatch, unsafe
+input and target drift. It exports only callbacks for the already-existing
+createWorkerIdentityAuthority, not an enrollment API or a default privilege.
+Its isolated real Ed25519 key signing + WorkflowStore append-only registered
+identity + V2GrantRegistry authorization + revoke exercise passed; mocked
+admin consent and device/Tunnel observations in this test are explicitly
+synthetic QA fixtures, NEVER evidence of an installed live Worker.
+Source-regression roster now pins this new fixture exactly once (28 files,
+15 bounded batches); final affected Linux batch 15/15 completed 60 PASS,
+0 FAIL. Unified native Windows/Linux Installer Pilot PR filters include
+both protected Core and this private owner/worker adapter. Existing installed
+Emad Laptop protected Core, actual API key, active Tunnel, profiles and owner
+credential store were not modified by this source-only validation.
+Next independent acceptance: provision owner-held real Ed25519 key through
+native credential provider, approve exact machine-global Worker grants under
+real J01, establish durable lease+real Plugin ingress, verify a genuine
+protected Core effect and reversible one-install cutover per host.

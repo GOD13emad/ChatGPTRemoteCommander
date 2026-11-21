@@ -89,6 +89,7 @@ test('PRIVATE ingress source changes trigger both native package jobs at the exa
    'src/server-v0.3.mjs','src/v2-private-*.mjs',
    'src/v101-private-*.mjs','src/v101-g1-loopback-runtime.mjs',
    'src/v012-private-core-runtime.mjs',
+   'src/v012-private-*.mjs','test/v012-private-*.test.mjs',
    'src/v2-native-owner-session-bindings.mjs',
    'src/worker-identity-authority.mjs',
    'test/v2-private-*.test.mjs'

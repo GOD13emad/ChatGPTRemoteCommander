@@ -97,3 +97,22 @@ an integration dependency repair: it does not itself create an Ed25519
 credential, enroll a Worker, approve access, grant a tool, or prove live
 cutover. A real owner-controlled key provider, exact action policy, signed
 Worker registry and machine-global lease remain mandatory to activate it. This exact protected Core source path is included in the Unified Installer Pilot PR filters; every subsequent change requires fresh source-pinned Windows/Linux builds.
+
+
+## Owner-pair local Signed Worker grant adapter (source stage)
+
+The owner-local src/v012-private-native-worker-adapter.mjs allows the
+existing WorkerIdentityAuthority to reuse the same native one-Tunnel J01
+owner epoch and V2GrantRegistry without adding OAuth or impersonating a
+specific ChatGPT chat. It validates the current pinned owner/Tunnel, same
+native operation route, exact registered Worker/key/policy binding, active
+grant revision and per-tool permission before AND after native argument
+authorization. The adapter exposes no network listener, no new Tunnel and
+no default Worker enrollment. The owner-provisioned callback selects the
+actual operation, not any MCP-supplied route. Its real Ed25519 signatures
+and WorkflowStore durable identity journal are exercised only with explicit
+synthetic test identity, mock admin approvals and disposable data; production
+requires live owner-key credential provisioning, native approval, machine
+lease and actual protected Core tool verification. The canonical source QA
+runner includes the fixture exactly once and the native package PR filter
+includes the new module.
