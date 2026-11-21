@@ -9,6 +9,14 @@ import {pathToFileURL} from 'node:url';
 
 const expectedPackage='chatgpt-remote-commander';
 const safeUnit=/^chatgpt-remote-commander[a-z0-9@._:-]*\.service$/i;
+export function isLinuxMigrationUnit(unit,profileName=null){
+  if(typeof unit!=='string')return false;
+  if(safeUnit.test(unit))return true;
+  return typeof profileName==='string'
+    &&/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    &&profileName!=='.'&&profileName!=='..'
+    &&unit===profileName+'-tunnel.service';
+}
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
 // The owner-selected tunnel profile is input, not a ChatGPT identity proof.
 // Never print/retain the YAML: it may contain the runtime API key.
@@ -68,6 +76,55 @@ function readOwnerTunnelBinding(){
     return {profilePresent:true,valid:false};
   }
 }
+/**
+ * Read only the one owner-local Linux Tunnel main-channel profile, whatever
+ * its chosen name. Profile bytes, names and credentials never leave this
+ * process. Ambiguous/misowned/linked profiles are not authorized evidence.
+ */
+export function readLinuxOwnerTunnelBinding({
+  home=process.env.HOME,ownerUid=process.getuid?.(),profileName=null
+}={}){
+  // A profile selector is observation only, never evidence of owner identity
+  // or authorization for the active Tunnel, J01 or release promotion.
+  if(profileName!==null&&(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    ||profileName==='.'||profileName==='..'))
+    return {profilePresent:false,valid:false};
+  if(typeof home!=='string'||!path.isAbsolute(home))
+    return {profilePresent:false,valid:false};
+  const directory=path.join(home,'.config','tunnel-client');
+  let names;
+  try{
+    const dir=fs.lstatSync(directory);
+    if(!dir.isDirectory()||dir.isSymbolicLink()
+      ||(ownerUid!==undefined&&(dir.uid!==ownerUid||(dir.mode&0o077)!==0)))
+      return {profilePresent:true,valid:false};
+    names=fs.readdirSync(directory).filter(v=>/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.yaml$/.test(v));
+  }catch(error){
+    if(error?.code==='ENOENT')return {profilePresent:false,valid:false};
+    return {profilePresent:true,valid:false};
+  }
+  if(names.length===0)return {profilePresent:false,valid:false};
+  if(profileName===null&&names.length!==1)
+    return {profilePresent:true,valid:false};
+  const selected=profileName===null?names[0]:profileName+'.yaml';
+  if(!names.includes(selected))return {profilePresent:true,valid:false};
+  const file=path.join(directory,selected);
+  try{
+    const stat=fs.lstatSync(file);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1
+      ||stat.size<1||stat.size>16384
+      ||(ownerUid!==undefined&&(stat.uid!==ownerUid||(stat.mode&0o077)!==0)))
+      return {profilePresent:true,valid:false};
+    const yaml=fs.readFileSync(file,'utf8');
+    const after=fs.lstatSync(file);
+    if(after.ino!==stat.ino||after.dev!==stat.dev||after.size!==stat.size
+      ||after.mtimeMs!==stat.mtimeMs)
+      return {profilePresent:true,valid:false};
+    const binding=parseMainTunnelBinding(yaml);
+    return {profilePresent:true,valid:!!binding,
+      port:binding?.port??null,tls:binding?.tls??false};
+  }catch{return {profilePresent:true,valid:false};}
+}
 function probeLoopbackCoreVersion(port){
   if(!Number.isSafeInteger(port)||port<1024||port>65535)return null;
   // Isolated bounded local GET. Never forwards the tunnel credential.
@@ -122,11 +179,25 @@ export function assessMigration(facts){
   if(!privateTunnel&&facts.platform==='win32'&&facts.tunnelProfilePresent===true
     &&facts.tunnelProfileValid===true&&facts.tunnelTargetTls!==true)
     blocked.push('G1_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
-  if(facts.platform==='win32'&&facts.tunnelProfilePresent===true){
+  // PRIVATE mode uses the SAME exclusive Tunnel with an owner-pinned local
+  // HTTPS/mTLS server. A healthy plaintext Router or an upgraded backend
+  // version does not authenticate the local tunnel client or J01 owner.
+  // This describes URL-based main-channel bindings, not the separate stdio
+  // transport, which requires its own admission contract.
+  if(privateTunnel&&facts.tunnelProfilePresent===true
+    &&facts.tunnelProfileValid!==true)
+    blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
+  if(privateTunnel&&facts.tunnelProfilePresent===true
+    &&facts.tunnelProfileValid===true&&facts.tunnelTargetTls!==true)
+    blocked.push('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED');
+  if(privateTunnel&&facts.routerDetected===true)
+    blocked.push('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE');
+  if(facts.tunnelProfilePresent===true){
     if(facts.tunnelProfileValid!==true)
       blocked.push('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED');
-    else if(typeof facts.tunnelTargetVersion!=='string'
-      ||!facts.tunnelTargetVersion.startsWith('0.12.'))
+    else if(facts.tunnelTargetTls!==true
+      &&(typeof facts.tunnelTargetVersion!=='string'
+        ||!facts.tunnelTargetVersion.startsWith('0.12.')))
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
   if(facts.platform==='win32' && oldPresent){
@@ -140,6 +211,12 @@ export function assessMigration(facts){
   }
   if(facts.platform==='linux' && oldPresent && !facts.allNativePayloadPathsAvailable)
     blocked.push('NATIVE_RUNTIME_TUNNEL_SERVICE_CONTINUITY_UNPROVEN');
+  if(facts.platform==='linux' && oldPresent
+    &&facts.nativeProtectedCoreFilesPresent===false)
+    blocked.push('NATIVE_PROTECTED_CORE_FILES_NOT_INSTALLED');
+  if(facts.platform==='linux' && oldPresent
+    &&facts.nativePackageIntegrityVerified===false)
+    blocked.push('NATIVE_INSTALLED_PACKAGE_INTEGRITY_UNVERIFIED');
   if(units.some(u=>u.active && !u.knownExecutable))
     blocked.push('ACTIVE_SERVICE_EXECUTABLE_UNMAPPED');
   if(units.some(u=>u.enabled && !u.knownExecutable))
@@ -169,8 +246,16 @@ export function assessMigration(facts){
     blocked.push('G1_CURRENT_SESSION_UNVERIFIED');
   if(!facts.j01OwnerNativeConsent)blocked.push('J01_NATIVE_OWNER_CONSENT_UNVERIFIED');
   if(!facts.revocableFullAccessProven)blocked.push('FULL_ACCESS_REVOCATION_UNVERIFIED');
-  if(!facts.trustedPublisherSignature)blocked.push('TRUSTED_RELEASE_SIGNATURE_MISSING');
-  if(!facts.signedUpdateRollbackAccepted)blocked.push('SIGNED_UPDATE_ROLLBACK_UNVERIFIED');
+  // Commercial code-signing is optional for the first owner-approved
+  // release. An independently pinned manifest AND candidate/rollback hashes
+  // provide a verifiable alternative; never accept an artifact's own hash
+  // without an owner-pinned trust anchor.
+  if(facts.trustedPublisherSignature!==true
+    &&facts.ownerPinnedNativeReleaseVerified!==true)
+    blocked.push('TRUSTED_RELEASE_PROVENANCE_UNVERIFIED');
+  if(facts.signedUpdateRollbackAccepted!==true
+    &&facts.ownerPinnedRollbackVerified!==true)
+    blocked.push('UPDATE_ROLLBACK_PROVENANCE_UNVERIFIED');
   if(!facts.installedCanaryAccepted)blocked.push('NATIVE_INSTALLED_CANARY_NOT_ACCEPTED');
   // No positive "promotion" operation exists in this tool. Even complete
   // evidence needs the independent release authority and owner acceptance.
@@ -187,6 +272,10 @@ export function assessMigration(facts){
     ownerStableRouterBackendVersion:facts.routerDetected===true?facts.routerBackendVersion:null,
     ownerStableRouterMappingMatches:facts.routerDetected===true&&facts.routerMappingMatches===true,
     ownerTunnelTargetRuntimeVersion:facts.tunnelProfileValid===true?facts.tunnelTargetVersion??null:null,
+    nativeProtectedCoreFilesPresent:facts.platform==='linux'
+      ?facts.nativeProtectedCoreFilesPresent===true:null,
+    nativePackageIntegrityVerified:facts.platform==='linux'
+      ?facts.nativePackageIntegrityVerified===true:null,
     activeCoreUnits:units.filter(u=>u.kind==='core'&&u.active).length,
     activeTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.active).length,
     enabledCoreUnits:units.filter(u=>u.kind==='core'&&u.enabled).length,
@@ -194,23 +283,66 @@ export function assessMigration(facts){
     unmappedUnits:units.filter(u=>(u.active||u.enabled)&&!u.knownExecutable).length,
     blocked:[...new Set(blocked)],promotionAuthority:'EXTERNAL_REQUIRED'});
 }
-function linuxFacts(){
+// Check actual dpkg-owned runtime capability, not just "0.12" package
+// metadata. Earlier 0.12 QA packages shipped before Private Core/J01 wiring.
+const NATIVE_V012_RUNTIME_FILES=Object.freeze([
+ 'runtime/node','tunnel/native-tunnel-launch.sh','tunnel/tunnel-client',
+ 'native-config-preflight.mjs','app/src/server-v0.3.mjs',
+ 'app/src/v012-private-core-runtime.mjs',
+ 'app/src/v2-private-pair-mcp-http-ingress.mjs',
+ 'app/src/v2-private-tunnel-https-gateway.mjs',
+ 'app/src/v2-private-pair-operation-gate.mjs',
+ 'app/src/v2-private-signed-worker-grant-adapter.mjs',
+ 'app/src/v101-private-pair-native-owner-stack.mjs',
+ 'app/src/native-owner-session-provider-linux.mjs',
+ 'app/src/native-tunnel-attestor.mjs',
+ 'app/package.json'
+]);
+export function inspectLinuxNativeCorePayload(
+ nativeRoot='/usr/lib/chatgpt-remote-commander'
+){
+ if(typeof nativeRoot!=='string'||!path.isAbsolute(nativeRoot))return false;
+ try{
+  const base=fs.lstatSync(nativeRoot);
+  if(!base.isDirectory()||base.isSymbolicLink())return false;
+  for(const rel of NATIVE_V012_RUNTIME_FILES){
+   const file=path.join(nativeRoot,rel);
+   const stat=fs.lstatSync(file);
+   // Official bundled Node is ~125 MB; source modules are far smaller.
+   // Do not mistake an intact embedded runtime for missing protected Core.
+   const maxBytes=rel==='runtime/node'?256*1024*1024
+     :rel==='tunnel/tunnel-client'?128*1024*1024
+     :48*1024*1024;
+   if(!stat.isFile()||stat.isSymbolicLink()||stat.size<1
+     ||stat.size>maxBytes
+     ||(process.platform==='linux'&&fs.realpathSync(file)!==file))return false;
+  }
+  const pkg=JSON.parse(fs.readFileSync(path.join(nativeRoot,'app','package.json'),'utf8'));
+  return pkg?.version==='0.12.0-dev.1';
+ }catch{return false;}
+}
+function linuxFacts({profileName=null}={}){
   const packageQuery=exec('dpkg-query',['-W','-f=${Package}|${Version}|${Status}',expectedPackage]);
   const [name,version,status]=packageQuery.stdout.trim().split('|');
   const exists=packageQuery.ok&&name===expectedPackage&&status==='install ok installed';
   const units=[];
-  const listing=exec('systemctl',['--user','list-units','--all','--no-legend','--plain','chatgpt-remote-commander*.service']);
-  const files=exec('systemctl',['--user','list-unit-files','--no-legend','--plain','chatgpt-remote-commander*.service']);
+  const profileTunnelUnit=typeof profileName==='string'
+    &&isLinuxMigrationUnit(profileName+'-tunnel.service',profileName)
+      ?profileName+'-tunnel.service':null;
+  const selectors=['chatgpt-remote-commander*.service',
+    ...(profileTunnelUnit?[profileTunnelUnit]:[])];
+  const listing=exec('systemctl',['--user','list-units','--all','--no-legend','--plain',...selectors]);
+  const files=exec('systemctl',['--user','list-unit-files','--no-legend','--plain',...selectors]);
   if(listing.ok&&files.ok){
     const names=new Set();
     const enabled=new Set();
     for(const line of listing.stdout.split(/\r?\n/)){
       const unit=line.trim().split(/\s+/)[0];
-      if(unit&&safeUnit.test(unit))names.add(unit);
+      if(unit&&isLinuxMigrationUnit(unit,profileName))names.add(unit);
     }
     for(const line of files.stdout.split(/\r?\n/)){
       const [unit,state]=line.trim().split(/\s+/);
-      if(!unit||!safeUnit.test(unit))continue;
+      if(!unit||!isLinuxMigrationUnit(unit,profileName))continue;
       names.add(unit);
       if(['enabled','enabled-runtime','linked','linked-runtime'].includes(state))enabled.add(unit);
     }
@@ -227,10 +359,25 @@ function linuxFacts(){
   }
   const nativeVersionOK=exists&&/^0\.12\.0~dev/.test(version||'');
   const knownNative=exec('test',['-f','/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh']);
+  const nativeProtectedCoreFilesPresent=nativeVersionOK
+    &&inspectLinuxNativeCorePayload();
+  // Existing dpkg metadata is not proof that installed bytes are intact.
+  // Never trust a self-consistent user-edited "v0.12" directory.
+  const integrity=exists?exec('dpkg',['-V',expectedPackage]):{ok:false,stdout:''};
+  const nativePackageIntegrityVerified=exists&&integrity.ok
+    &&integrity.stdout.trim()==='';
+  const tunnel=readLinuxOwnerTunnelBinding({profileName});
+  const targetVersion=tunnel.valid&&!tunnel.tls
+    ?probeLoopbackCoreVersion(tunnel.port):null;
   return {platform:'linux',connectionMode:'private-tunnel',
     inventoryReliable:packageQuery.ok&&listing.ok&&files.ok,
-    nativePackageInstalled:exists,allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok,
-    units};
+    nativePackageInstalled:exists,
+    nativeProtectedCoreFilesPresent,nativePackageIntegrityVerified,
+    allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok
+      &&nativeProtectedCoreFilesPresent,
+    tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
+    tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
+    tunnelTargetVersion:targetVersion,units};
 }
 /** Router mapping is an observation, not authorization to change routing. */
 export function classifyObservedRouterStatus(report,listenPort,backendHealthVersion){
@@ -340,20 +487,29 @@ function windowsFacts(){
     routerBackendVersion:route.detected?route.backendVersion:null,
     units:[]};
 }
-export function inspectLocalPlatform(platform=process.platform){
-  if(platform==='linux')return linuxFacts();
-  if(platform==='win32')return windowsFacts();
+export function inspectLocalPlatform(platform=process.platform,{profileName=null}={}){
+  if(platform==='linux')return linuxFacts({profileName});
+  if(platform==='win32'&&profileName===null)return windowsFacts();
   throw Error('RC012_MIGRATION_UNSUPPORTED_PLATFORM');
 }
-export function localReport(platform=process.platform){
-  const f=inspectLocalPlatform(platform);
+export function localReport(platform=process.platform,options={}){
+  const f=inspectLocalPlatform(platform,options);
   return assessMigration(f);
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   const argv=process.argv.slice(2);
-  if(argv.length!==1||argv[0]!=='--read-only')
+  if(argv.length<1||argv.length>2||argv[0]!=='--read-only')
     throw Error('RC012_MIGRATION_PREFLIGHT_READ_ONLY_ONLY');
-  const report=localReport(os.platform());
+  let profileName=null;
+  if(argv.length===2){
+    if(os.platform()!=='linux'||!argv[1].startsWith('--profile-name='))
+      throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
+    profileName=argv[1].slice('--profile-name='.length);
+    if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+      ||profileName==='.'||profileName==='..')
+      throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
+  }
+  const report=localReport(os.platform(),{profileName});
   process.stdout.write(JSON.stringify(report,null,2)+'\n');
   if(report.blocked.length)process.exitCode=2;
 }

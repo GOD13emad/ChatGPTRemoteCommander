@@ -87,7 +87,9 @@ test('continuation metadata is part of request idempotency identity',async()=>{
     await assert.rejects(api.execute('operation_start',{
       ...input,continuation:{projectId:'p1',eventKey:'op:req-2',root:f.base,summary:'changed'}
     }),/REQUEST_ID_CONFLICT/);
-    const settled=await waitTerminal(api,a.operationId);
+    // Worker startup and durable receipt can exceed 2s on loaded Windows CI.
+    // This test checks idempotency, not startup latency; still assert SUCCEEDED.
+    const settled=await waitTerminal(api,a.operationId,8000);
     assert.equal(settled.status,'SUCCEEDED',JSON.stringify({failureCode:settled.failureCode,exitCode:settled.exitCode}));
   }finally{await api.close();await f.dispose();}
 });

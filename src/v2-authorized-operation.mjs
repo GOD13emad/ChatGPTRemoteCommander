@@ -48,7 +48,7 @@ export async function executeV2BoundOperation(route, services, tool) {
   return services.withLease(resource, async () => {
     await check(); // Protect the gap between admission and lease acquisition.
     return services.receiptStore.execute(
-      { requestId, tool, input: { route: r } },
+      { requestId, tool, input: services.receiptInput??{ route: r } },
       async () => {
         await check(); // Protect the gap between receipt reservation and effect.
         return services.execute(r);

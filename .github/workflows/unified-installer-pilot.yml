@@ -4,6 +4,18 @@ on:
     paths:
       - "packaging/unified/**"
       - "test/unified-*"
+      # PRIVATE pair ingress and the installed Core tool surface are part of
+      # the shipped package, even when packaging scripts are unchanged.
+      - "src/server-v0.3.mjs"
+      - "src/v2-private-*.mjs"
+      - "src/v101-private-*.mjs"
+      - "src/v101-g1-loopback-runtime.mjs"
+      - "src/v2-native-owner-session-bindings.mjs"
+      - "src/v2-authorized-operation.mjs"
+      - "src/worker-identity-authority.mjs"
+      - "src/full-access-http-quarantine.mjs"
+      - "test/v2-private-*.test.mjs"
+      - "test/v101-private-*.test.mjs"
       - ".github/workflows/unified-installer-pilot.yml"
   workflow_dispatch:
 permissions:
@@ -22,9 +34,17 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Assert exact proposed source commit (never PR merge ref)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
       - name: Install pinned packaging tools
