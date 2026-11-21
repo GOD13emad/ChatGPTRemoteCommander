@@ -29,7 +29,7 @@ test('stale-poll restart budget applies independently to every owner profile bef
   assert.match(source,/REMOTE_COMMANDER_TUNNEL_ISOLATED_STALE_SECONDS/);
   assert.match(source,/REMOTE_COMMANDER_TUNNEL_STALE_RESTART_MIN_INTERVAL/);
 });
-test('stale recycle budget allows first attempt, defers bursts, resets after 15m, isolates profiles',()=>{
+test('stale recycle budget allows first attempt, defers bursts, resets after 15m, isolates profiles',{skip:process.platform!=='linux'},()=>{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-stale-cooldown-'));
   try {
     const bash=block('safe_profile')+'\n'+block('stale_restart_budget')+
@@ -63,7 +63,7 @@ stat -c 'STAMP_MODE=%a' "$VAR_DIR/tunnel-stale-restart-mmz-linux.epoch"
   }finally{fs.rmSync(temp,{force:true,recursive:true});}
 });
 
-test('shared cellular outage never kills ready owner-private tunnels; isolated stale recycles only after two fresh peers',()=>{
+test('shared cellular outage never kills ready owner-private tunnels; isolated stale recycles only after two fresh peers',{skip:process.platform!=='linux'},()=>{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-lte-shared-peer-'));
   try {
     const script=[
@@ -164,7 +164,7 @@ echo ISOLATED_RECYCLES="$(grep -c TUNNEL_ISOLATED_CONTROL_PLANE_STALE_RECYCLE "$
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
 
-test('a recent 100–400 second poll is not considered stuck under LTE-specific 600-second grace',()=>{
+test('a recent 100–400 second poll is not considered stuck under LTE-specific 600-second grace',{skip:process.platform!=='linux'},()=>{
   const script=[
     block('control_plane_fresh'),
     String.raw`
