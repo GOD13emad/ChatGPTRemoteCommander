@@ -89,7 +89,63 @@ try{
   if($LASTEXITCODE -ne 2 -or -not (($localOverride | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
     throw 'V012_WINDOWS_QA_LOCAL_OVERRIDE_NOT_REJECTED'
   }
-  'V012_WINDOWS_ACL_SNAPSHOT_NATIVE_QA_PASS files=2 restore=PASS privateDacl=PASS overlap=DENIED override=DENIED localOverride=DENIED'
+  foreach($mode in @('OwnerLocalRouting','OwnerLocalCredentials')) {
+    $rejected=@(& pwsh -NoProfile -File $script -Mode $mode -FixtureRoot $src 2>&1)
+    if($LASTEXITCODE -ne 2 -or -not (($rejected | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
+      throw 'V012_WINDOWS_QA_FIXED_SCOPE_OVERRIDE_NOT_REJECTED'
+    }
+  }
+  # Positive scoped mode proof against an isolated fake LocalAppData root.
+  # No installed Commander paths, profiles, or owner credentials are touched.
+  $fakeLocal=Join-Path $root 'simulated-localappdata'
+  $fakeState=Join-Path $fakeLocal 'ChatGPTRemoteCommander'
+  foreach($p in @($fakeLocal,$fakeState,(Join-Path $fakeLocal 'CommanderV2'),
+                 (Join-Path $fakeState 'routing'),(Join-Path $fakeState 'credentials'))){
+    [void](New-Item -ItemType Directory -Path $p -ErrorAction Stop)
+  }
+  $fakeSources=@(
+    [pscustomobject]@{Mode='OwnerLocalRouting';Name='routing';Component='routing'},
+    [pscustomobject]@{Mode='OwnerLocalCredentials';Name='credentials';Component='credentials'}
+  )
+  foreach($spec in $fakeSources){
+    $dir=Join-Path $fakeState $spec.Name
+    $f=Join-Path $dir 'fixture.dat'
+    [IO.File]::WriteAllText($f,'MODE_TEST')
+    foreach($entry in @($dir,$f)){
+      $acl=Get-Acl -LiteralPath $entry
+      $acl.SetOwner([Security.Principal.WindowsIdentity]::GetCurrent().User)
+      Set-Acl -LiteralPath $entry -AclObject $acl -ErrorAction Stop
+    }
+  }
+  $savedLocal=$env:LOCALAPPDATA
+  try{
+    $env:LOCALAPPDATA=$fakeLocal
+    foreach($spec in $fakeSources){
+      $o=@(& pwsh -NoProfile -NonInteractive -File $script -Mode $spec.Mode 2>&1)
+      if($LASTEXITCODE -ne 0){throw 'V012_WINDOWS_QA_FIXED_SCOPE_APPLY_FAILED'}
+      $lines=@($o | Where-Object {$_ -is [string] -and $_ -like 'V012_WIN_OWNER_STATE_SNAPSHOT=*'})
+      if($lines.Count -ne 1){throw 'V012_WINDOWS_QA_FIXED_SCOPE_RECEIPT_MISSING'}
+      $receipt=($lines[0] -replace '^V012_WIN_OWNER_STATE_SNAPSHOT=',''|ConvertFrom-Json)
+      if($receipt.mode -ne $spec.Mode -or $receipt.files -ne 1 -or
+         $receipt.offlineCopyAndRestore -ne 'PASS' -or
+         $receipt.liveConsistencyVerified -ne $false -or
+         $receipt.installedCutoverAuthorized -ne $false -or
+         @($receipt.localRuntimeComponents).Count -ne 1 -or
+         $receipt.localRuntimeComponents[0] -ne $spec.Component) {
+        throw 'V012_WINDOWS_QA_FIXED_SCOPE_RECEIPT_MISMATCH'
+      }
+      $expectedSnapshot=Join-Path (Join-Path $fakeLocal 'CommanderV2\migration-private') $receipt.snapshotId
+      $m=Get-Content -LiteralPath (Join-Path $expectedSnapshot 'manifest.json') -Raw
+      $digest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($m))).ToLowerInvariant()
+      if($digest -ne $receipt.manifestSha256){throw 'V012_WINDOWS_QA_FIXED_SCOPE_MANIFEST_MISMATCH'}
+      if([IO.File]::ReadAllText((Join-Path $fakeState ($spec.Name+'\fixture.dat'))) -ne 'MODE_TEST'){
+        throw 'V012_WINDOWS_QA_FIXED_SCOPE_SOURCE_CHANGED'
+      }
+    }
+  }finally{
+    $env:LOCALAPPDATA=$savedLocal
+  }
+  'V012_WINDOWS_ACL_SNAPSHOT_NATIVE_QA_PASS files=2 restore=PASS privateDacl=PASS overlap=DENIED override=DENIED localOverride=DENIED fixedScopeOverride=DENIED fixedScopePositive=PASS'
 }finally{
   if(Test-Path -LiteralPath $root){
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop

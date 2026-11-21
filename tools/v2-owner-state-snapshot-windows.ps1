@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('Fixture','OwnerRoaming','OwnerLocalRuntime')]
+  [ValidateSet('Fixture','OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials')]
   [string]$Mode,
   [string]$FixtureRoot,
   [string]$OutputParent,
@@ -126,17 +126,19 @@ try {
   $script:AdminGroupSourcesAllowed=$false
   $script:AdminGroupSourceEntries=0
   if($PermitAdministratorsGroupSource){
-    if($Mode -notin @('OwnerRoaming','OwnerLocalRuntime')){Stop-WithCode 'GROUP_SOURCE_MODE_RESTRICTED'}
+    if($Mode -notin @('OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials')){Stop-WithCode 'GROUP_SOURCE_MODE_RESTRICTED'}
     $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
       Stop-WithCode 'ADMIN_GROUP_SOURCE_NEEDS_NATIVE_ELEVATION'
     }
     $script:AdminGroupSourcesAllowed=$true
   }
-  if($Mode -in @('OwnerRoaming','OwnerLocalRuntime')){
+  if($Mode -in @('OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials')){
     if($FixtureRoot -or $OutputParent) { Stop-WithCode 'OWNER_PATH_OVERRIDE_DENIED' }
     $base=if($Mode -eq 'OwnerRoaming'){$env:APPDATA}else{$env:LOCALAPPDATA}
     $source=Join-Path $base 'ChatGPTRemoteCommander'
+    if($Mode -eq 'OwnerLocalRouting'){$source=Join-Path $source 'routing'}
+    if($Mode -eq 'OwnerLocalCredentials'){$source=Join-Path $source 'credentials'}
     $output=Join-Path $env:LOCALAPPDATA 'CommanderV2\migration-private'
   }else{
     if(-not $FixtureRoot -or -not $OutputParent) { Stop-WithCode 'FIXTURE_PATHS_REQUIRED' }
@@ -218,13 +220,17 @@ try {
     }
   }
   Remove-Item -LiteralPath $restore -Recurse -Force -ErrorAction Stop
+  $localRuntimeComponents=@()
+  if($Mode -eq 'OwnerLocalRuntime'){$localRuntimeComponents=@('routing','instances','credentials')}
+  elseif($Mode -eq 'OwnerLocalRouting'){$localRuntimeComponents=@('routing')}
+  elseif($Mode -eq 'OwnerLocalCredentials'){$localRuntimeComponents=@('credentials')}
   $summary=[ordered]@{
     schema=1;mode=$Mode;snapshotId=$id;files=$entries.Count;bytes=$counter.Bytes;
     manifestSha256=$manifestSha;
     ownerOnlyDaclVerified=$true;
     adminGroupOwnedSourceEntries=$script:AdminGroupSourceEntries;
     privilegedSourceReadAttested=$script:AdminGroupSourcesAllowed;
-    localRuntimeComponents=if($Mode -eq 'OwnerLocalRuntime'){@('routing','instances','credentials')}else{@()};
+    localRuntimeComponents=@($localRuntimeComponents);
     offlineCopyAndRestore='PASS';
     liveConsistencyVerified=$false;
     fullFleetMigrationAccepted=$false;
