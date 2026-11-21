@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot=resolve(fileURLToPath(new URL('../',import.meta.url)));
 
 test('versioned ZIP wizards use exact source tag+commit rather than stale default', {
   skip: process.platform !== 'linux' ? 'Linux release packaging requires Bash/Python' : false,
@@ -12,7 +15,7 @@ test('versioned ZIP wizards use exact source tag+commit rather than stale defaul
   const temp = mkdtempSync(join(tmpdir(), 'rc-release-pin-'));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
   const version = JSON.parse(readFileSync('package.json','utf8')).version;
-  const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  const commit = execFileSync('git', ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,'rev-parse','HEAD'], { encoding: 'utf8' }).trim();
   const out = join(temp, 'release');
   const built = spawnSync('bash',['tools/build-release-assets.sh',out],{
     encoding: 'utf8', timeout: 25000, maxBuffer: 4*1024*1024

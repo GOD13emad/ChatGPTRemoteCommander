@@ -1,3 +1,81 @@
+# 0.12.0-dev.8 — one universal owner-recovery Preflight (2026-11-21, NoPromote)
+
+- Advance one canonical Core/GUI/lockfile/desktop/Plugin/runtime/train version beyond dev.7; historical QA artifacts are never relabeled as dev.8.
+- Reconcile the generic Linux migration probe with the existing encrypted six-file same-owner, per-account Tunnel recovery capsules. Enforce source digest, owner UID/mode, intact ciphertext/receipt and independently verified disposable native TestRestore. Refuse changed profiles and tampered archives instead of staging a competing backup.
+- Preserve existing one-Tunnel-per-(account,host) identities. Verified profile restoration is not operational J01/Worker grant, protected live tunnel rebind, complete Core rollback, or fleet promotion. Keep NoPromote until separate acceptance.
+
+# 0.12.0-dev.7 — source-pinned unified Installer candidate (2026-11-21, NoPromote)
+
+- Advance source Core, GUI, lockfile, private plugin templates, desktop identity, Runtime version and release-train version together beyond the installed Debian `dev.6` baseline; do not relabel an old package.
+- Retain one source-driven Linux native/GUI merge and Windows NSIS build path, and keep each account/host Tunnel, API key and recovery profile independent.
+- Do not promote: current ChatGPT identity/J01 owner authorization, native rollback and fleet admission require separate positive evidence. Earlier `dev.1` build artifacts and tests are historical and cannot qualify the new version.
+
+# 0.12.0-dev.1 — unified-suite integration train opened (2026-11-07, NoPromote)
+
+- Opened the next development identity on the recovered exact dev23 source lineage; this is a private integration candidate, not a release.
+- Carries the previously qualified V1-05 source integration and the V1-08 updater candidate-version identity fix from the isolated QA tree. Other owner-owned V1 modules and Commander 2 capability reconciliation are not yet accepted into this source.
+- Windows/Linux packages, current GUI/Browser overlays, real G1/J01/origin-chat ACK, V2 listener, boot/login, signing, protected canary and rollback remain unaccepted.
+- Publish, installed promotion and automatic-update channel approval remain false.
+
+# 0.11.0-dev.105 — dev23-based V1-05 source-integration preview (2026-11-07, NoPromote)
+
+- Recovered exact development base commit `40256873627780cc7b62359935e43bac5ef856b3` from the owner-local `dev.23` release Git repository.
+- Ported the accepted V1-05 commit `110f25ceef30c2058a886c04dc2d0d699c549ec0` into an isolated V1-08 QA worktree; the port applied without Git conflicts. Additional uncommitted V1-05 edits remain outside this preview.
+- Synchronized package, Core, plugin templates, Windows Control Center and release-manifest version identity to `0.11.0-dev.105`; the historical train baseline `sourceBaseSha=c057494329490257e3d79046ea7599c60dde1e89` is intentionally unchanged.
+- Commander 2 branch `mmz/v2-unified-candidate-20261103` (`dev.19`) remains separate and unmerged, per V1-00 source authority. No branch push or remote mutation.
+- Hardened Windows updater candidate cleanup to attest the exact staged candidate version instead of a stale hard-coded `dev.23`.
+- This is a source-integration preview only. The active dev23 release-root GUI overlay remains V1-03-owned and unaccepted; it was preserved outside this clean base. No package artifact, installation, route switch, service restart, publication, autoupdate enablement or Stable promotion.
+
+# 0.11.0-dev.23 — isolate owner-session CUA channels (2026-11-01, NoPromote)
+
+- Separate CUA named pipes by owner broker channel: active and candidate no longer share a driver endpoint.
+- Require the exact channel pipe in the owner broker and Core CUA adapter; reject legacy/shared and foreign pipe names.
+- SelfTest is side-effect-free for CUA: no pipe probe, driver launch, GUI observation or desktop input. Actual broker launch starts only its own exact-channel driver and rejects ambiguous/unowned pipes.
+- Added active/candidate/invalid-pipe regression coverage. No task switch, deployment or live model/GUI run. NoPromote.
+
+# 0.11.0-dev.22 — owner-session candidate handoff and runtime pinning (2026-11-01, NoPromote)
+
+- Add a distinct owner-session sidecar preparer using CreateNew semantics and exact owner SID, version, broker/launcher/Node/CUA hashes and unoccupied candidate port.
+- Verify owner SID, launcher hash, Node version/SHA, package version and broker SHA again at launch; refuse port conflicts and stale/mismatched manifest/config.
+- No task creation or retargeting, no active broker/config mutation, and no candidate broker start during preparation. SelfTest is read-only with respect to GUI and Task Scheduler.
+- Source-only qualification; sidecar installation and live model/UI tests remain NOT_RUN. NoPromote.
+
+# 0.11.0-dev.21 — versioned owner-session broker packaging (2026-11-01, NoPromote)
+
+- Include the authenticated owner-workspace broker and versioned hash-verifying launcher in the canonical source and deterministic installer package.
+- Reduce broker exposure to workspace-only operations; remove generic owner PowerShell shell and diagnostic tool. Enforce no mouse, keyboard, foreground takeover or browser input/fallback in the packaged broker context.
+- Add owner/session, loopback/auth, release-root, broker/CUA hash and config binding checks; keep self-test read-only and task-neutral.
+- Source/contract qualification only; no Windows deployment, task switch, live UIA or model evaluation. NoPromote.
+
+# 0.11.0-dev.20 — align owner-proxy deadlines with native UIA effect bounds (2026-10-31, NoPromote)
+
+- Set the authenticated owner-proxy timeout to 14s for native UIA Observe and 22s for native SetValue/Invoke, exceeding their existing 11s/16s process limits without changing those effect limits.
+- Prevent an outer owner-proxy timeout from prematurely abandoning a still-running owner-session native action; keep target journal and uncertain-effect no-replay semantics intact.
+- Add deterministic deadline regression tests. No focus/input/policy expansion; local NoPromote candidate only.
+
+# 0.11.0-dev.19 — exact-window Windows UIA text entry (2026-10-31, NoPromote)
+
+- Add owner-session Windows UIA ValuePattern / LegacyIAccessiblePattern SetValue for fresh, exact-window enabled compose fields; text is passed through redirected UTF-8 stdin and only a SHA-256/length/readback receipt is returned.
+- Separate one-shot UIA InvokePattern, explicit target-bound authorization, exact foreground evidence and durable no-replay handling. No global input, clipboard or automatic retry.
+- Broker forwarding is limited to the authenticated interactive owner session; SYSTEM/Session 0 is rejected. Current allowKeyboard=false / allowWindowFocus=false stays enforced.
+- Source-only candidate; full check and security audit passed. Live Brave/model evaluation, publication and install remain NOT RUN / NoPromote.
+
+# 0.11.0-dev.18 — PID-verified Firefox AT-SPI semantic control (2026-10-29, NoPromote)
+
+- New explicit short-lived Workspace Accessibility tools on Linux: exact Firefox PID/HWND, focused target, owner takeover lease, fresh single-use labeled element tokens; native AT-SPI role/name/action validation. No pointer coordinates, monitor bypass, browser profile access, cookies or credential reads.
+- Dual-monitor Workspace Target's coordinate guard remains fail-closed. Release, installation and GUI input acceptance are separate from source qualification. No Stable or auto-update promotion approved.
+
+# 0.11.0-dev.17 — GNOME multi-monitor Workspace Target bounds (2026-10-29; development / NoPromote)
+
+- Firefox/P12 blocker: GNOME Meta.Window inventory now reports verified monitor index and window-frame bounds. Workspace Target binds to the exact owner window+monitor and refuses missing multi-monitor metadata, changed geometry or coordinates outside its rectangle. Native screenshot uses the target monitor instead of assuming display 0; no generic GUI injection or credential extraction.
+- Prior dev.16 route is the pilot baseline; this dev.17 source is not Stable or installed until exact-commit native installation and actual frame/click/type tests. Existing original Firefox profile remains untouched.
+
+# 0.11.0-dev.16 — owner-session Workspace Target + bounded local Runner (2026-10-28; development / NoPromote)
+
+- Add a new exact-window Workspace Target MCP contract for the owner's **already-running** Firefox and other GUI windows, without copying cookies/profiles or relaunching the browser. Native GUI leases, fresh frames, explicit takeover, and focused-window checks remain mandatory.
+- Increase bounded local Ollama proposal timeout from 12 to 24 seconds (below the parent 30-second deadline). On Emad Linux the qwen3:4b-instruct offline runner completed one enrolled read-only step, independently verified SHA-256, and reached `PROJECT_ACCEPTANCE_VERIFIED` after a prior 12-second timeout negative result. No implicit project enrollment.
+- Cross-host GUI ownership, fifth Core connector, signed artifacts and installed promotion remain NoPromote pending exact-commit tests and independent acceptance.
+
 # 0.11.0-dev.15 — reconcile fifth MMZ transfer peer into unified Core (2026-10-28; development / NoPromote)
 
 - Direct comparison of installed Windows Emad + MMZ Linux transfer candidates to canonical dev.14 found one missing enum member: MMZ. Merge missing peer into existing Core transfer-tools, with no duplicate transfer engine or legacy candidate file.

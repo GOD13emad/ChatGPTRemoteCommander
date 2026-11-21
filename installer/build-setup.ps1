@@ -3,6 +3,7 @@ param(
   [string]$SourceRef = '',
   [string]$ExpectedCommit = '',
   [string]$BrowserInstaller = '',
+  [string]$SourceBundle = '',
   [switch]$AllowDirty
 )
 $ErrorActionPreference='Stop'
@@ -10,6 +11,7 @@ $Root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Package=Get-Content (Join-Path $Root 'package.json') -Raw|ConvertFrom-Json
 $Version=if($VersionOverride){$VersionOverride}else{[string]$Package.version}
 if($Version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9._-]+)?$'){throw "Invalid setup version: $Version"}
+if($Version -cne [string]$Package.version){throw "SETUP_VERSION_MUST_MATCH_SOURCE_PACKAGE"}
 
 $Head=(git -C $Root rev-parse HEAD).Trim()
 if($Head -notmatch '^[0-9a-f]{40}$'){throw 'Could not resolve repository HEAD.'}
@@ -41,6 +43,16 @@ if(-not $AllowDirty){
   }
 }
 
+$RunnerVerifier=Join-Path $Root 'tools\windows-job-runner\verify-windows-job-runner.ps1'
+if(-not(Test-Path -LiteralPath $RunnerVerifier -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_VERIFIER_MISSING'}
+& pwsh.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $RunnerVerifier -Ensure
+if($LASTEXITCODE -ne 0){throw 'WINDOWS_JOB_RUNNER_BUILD_OR_VERIFY_FAILED'}
+$RunnerManifest=Get-Content -LiteralPath (Join-Path $Root 'tools\windows-job-runner\release-manifest.json') -Raw | ConvertFrom-Json
+$RunnerPath=Join-Path $Root 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
+if(-not(Test-Path -LiteralPath $RunnerPath -PathType Leaf)){throw 'WINDOWS_JOB_RUNNER_BUILD_OUTPUT_MISSING'}
+$RunnerSha=(Get-FileHash -LiteralPath $RunnerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if($RunnerSha -cne [string]$RunnerManifest.runnerSha256){throw 'WINDOWS_JOB_RUNNER_BUILD_HASH_MISMATCH'}
+
 & (Join-Path $Root 'desktop\build-windows.ps1')
 if($LASTEXITCODE -ne 0){throw 'Desktop payload build failed.'}
 
@@ -67,7 +79,8 @@ if(-not $Iscc){throw 'Inno Setup 6 compiler (ISCC.exe) is required to build the 
 $args=@(
   ('/DMyVersion='+$Version),
   ('/DMyCommit='+$ExpectedCommit),
-  ('/DMySourceRef='+$SourceRef)
+  ('/DMySourceRef='+$SourceRef),
+  ('/DWindowsJobRunner='+$RunnerPath)
 )
 $BrowserSha=$null
 if($BrowserInstaller){
@@ -76,6 +89,23 @@ if($BrowserInstaller){
   if([IO.Path]::GetExtension($BrowserInstaller) -ne '.exe'){throw 'Browser installer must be an .exe artifact.'}
   $BrowserSha=(Get-FileHash -LiteralPath $BrowserInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
   $args+=('/DBrowserSetup='+$BrowserInstaller)
+}
+$BundleSha=$null
+if($SourceBundle){
+  $SourceBundle=[IO.Path]::GetFullPath($SourceBundle)
+  if(-not(Test-Path -LiteralPath $SourceBundle -PathType Leaf)){throw 'Core source bundle missing.'}
+  if([IO.Path]::GetExtension($SourceBundle) -ne '.bundle'){throw 'Core source must be a Git .bundle file.'}
+  $file=Get-Item -LiteralPath $SourceBundle
+  if(($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Core bundle cannot be a reparse point.'}
+  & git.exe -C $Root bundle verify $SourceBundle | Out-Null
+  if($LASTEXITCODE -ne 0){throw 'Core source Git bundle validation failed.'}
+  $heads=@(& git.exe bundle list-heads $SourceBundle)
+  if($LASTEXITCODE -ne 0 -or -not($heads | Where-Object {$_ -match ('^'+[regex]::Escape($ExpectedCommit)+'\s+refs/heads/')})){
+    throw 'Core source bundle does not contain the exact source commit as a branch.'
+  }
+  $BundleSha=(Get-FileHash -LiteralPath $SourceBundle -Algorithm SHA256).Hash.ToLowerInvariant()
+  $args+=('/DCoreSourceBundle='+$SourceBundle)
+  $args+=('/DCoreSourceBundleSHA256='+$BundleSha)
 }
 $args+=(Join-Path $PSScriptRoot 'RemoteCommander.iss')
 
@@ -96,5 +126,8 @@ $result=[ordered]@{
   signatureStatus=[string]$Signature.Status
   browserBundled=[bool]$BrowserInstaller
   browserSha256=$BrowserSha
+  windowsJobRunnerSha256=$RunnerSha
+  coreBundled=[bool]$SourceBundle
+  coreSourceBundleSha256=$BundleSha
 }
 $result|ConvertTo-Json -Depth 5

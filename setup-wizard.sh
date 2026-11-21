@@ -17,6 +17,7 @@ BROWSER_EXPLICIT_ALL=0
 TUNNEL_ID=""
 APP_ID=""
 PROFILE="chatgpt-remote-commander"
+DISPLAY_NAME=""
 DEVICE_NAME="${HOSTNAME:-$(hostname 2>/dev/null || echo device)}"
 PLUGIN_OUTPUT=""
 
@@ -36,6 +37,7 @@ while [[ $# -gt 0 ]]; do
     --tunnel-id) TUNNEL_ID="$2"; shift 2 ;;
     --app-id) APP_ID="$2"; shift 2 ;;
     --profile) PROFILE="$2"; shift 2 ;;
+    --display-name) DISPLAY_NAME="$2"; shift 2 ;;
     --device-name) DEVICE_NAME="$2"; shift 2 ;;
     --plugin-output-directory) PLUGIN_OUTPUT="$2"; shift 2 ;;
     -h|--help)
@@ -43,7 +45,7 @@ while [[ $# -gt 0 ]]; do
 Usage: setup-wizard.sh [--standard-mode|--power-mode] [--gui-control]
   [--list-products] [--all | --product ID...] [--plan-only]
   [--skip-prerequisites] [--skip-install] [--skip-connect] [--skip-plugin]
-  [--tunnel-id ID] [--app-id ID] [--profile NAME] [--device-name NAME]
+  [--tunnel-id ID] [--app-id ID] [--profile NAME] [--display-name LABEL] [--device-name NAME]
   [--plugin-output-directory DIR]
 EOF
       exit 0 ;;
@@ -211,6 +213,9 @@ resolve_installer(){
   printf '%s\n' "$TMP/install.sh"
 }
 
+if [[ -z "$DISPLAY_NAME" && -t 0 ]]; then
+  read -r -p "Display name for profile $PROFILE (Enter to keep technical name): " DISPLAY_NAME
+fi
 echo "Remote Commander setup wizard — device=$DEVICE_NAME profile=$PROFILE mode=$MODE"
 if [[ "$SKIP_INSTALL" -eq 0 ]]; then
   INSTALLER="$(resolve_installer)"
@@ -250,6 +255,72 @@ fi
 TUNNEL_READY=false
 if [[ "$HEALTH_PORT" -gt 0 ]] && [[ "$(curl -fsS --max-time 3 "http://127.0.0.1:$HEALTH_PORT/readyz" 2>/dev/null || true)" == "ready" ]]; then
   TUNNEL_READY=true
+fi
+
+# Presentation metadata is optional and saved only for a verified, ready
+# enrolled profile. It never replaces the technical profile name or credentials.
+if [[ -n "$DISPLAY_NAME" ]]; then
+  [[ "$TUNNEL_READY" == true ]] || {
+    echo 'Display name not saved: enrolled Tunnel is not ready.' >&2; exit 2;
+  }
+  PROFILE_FOR_LABEL="$PROFILE" DISPLAY_NAME_FOR_LABEL="$DISPLAY_NAME" python3 - <<'LABEL_PY'
+import fcntl, json, os, pathlib, re, stat, tempfile, unicodedata
+name=os.environ["PROFILE_FOR_LABEL"]
+label=os.environ["DISPLAY_NAME_FOR_LABEL"]
+if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}",name) or ".." in name:
+    raise SystemExit("PROFILE_DISPLAY_TECHNICAL_NAME_INVALID")
+if (not label or len(label)>80 or label!=label.strip()
+        or any(unicodedata.category(c) in ("Cc","Cf") for c in label)):
+    raise SystemExit("PROFILE_DISPLAY_LABEL_INVALID")
+root=pathlib.Path(os.environ.get("XDG_STATE_HOME") or pathlib.Path.home()/".local/state")/"chatgpt-remote-commander"
+root.mkdir(mode=0o700,parents=True,exist_ok=True)
+info=root.lstat()
+if (not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode & 0o022):
+    raise SystemExit("PROFILE_DISPLAY_ROOT_UNTRUSTED")
+store=root/"profile-display-names.json"
+lock=os.open(str(store)+".lock",os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+try:
+    fcntl.flock(lock,fcntl.LOCK_EX)
+    labels={}
+    if store.exists() or store.is_symlink():
+        meta=store.lstat()
+        if (not stat.S_ISREG(meta.st_mode) or meta.st_uid!=os.getuid()
+                or meta.st_mode & 0o022 or meta.st_size>32768):
+            raise SystemExit("PROFILE_DISPLAY_STORE_UNTRUSTED")
+        doc=json.loads(store.read_text(encoding="utf-8"))
+        if (not isinstance(doc,dict) or set(doc)!={"schema","profiles"}
+                or type(doc["schema"]) is not int or doc["schema"]!=1
+                or not isinstance(doc["profiles"],dict) or len(doc["profiles"])>128):
+            raise SystemExit("PROFILE_DISPLAY_STORE_INVALID")
+        labels=doc["profiles"]
+        profile_names=set()
+        distinct_labels=set()
+        for k,v in labels.items():
+            if (not isinstance(k,str) or
+                not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}",k) or ".." in k or
+                not isinstance(v,str) or not v or v!=v.strip() or len(v)>80 or
+                any(unicodedata.category(c) in ("Cc","Cf") for c in v) or
+                k.casefold() in profile_names or v.casefold() in distinct_labels):
+                raise SystemExit("PROFILE_DISPLAY_STORE_INVALID")
+            profile_names.add(k.casefold())
+            distinct_labels.add(v.casefold())
+    if any(k.casefold()!=name.casefold() and v.casefold()==label.casefold()
+           for k,v in labels.items()):
+        raise SystemExit("PROFILE_DISPLAY_LABEL_COLLISION")
+    labels[name.casefold()]=label
+    fd,tmp=tempfile.mkstemp(prefix=".profile-display-",suffix=".tmp",dir=root)
+    try:
+        with os.fdopen(fd,"w",encoding="utf-8") as f:
+            json.dump({"schema":1,"profiles":labels},f,ensure_ascii=False,sort_keys=True,separators=(",",":"))
+            f.write(chr(10));f.flush();os.fsync(f.fileno())
+        os.chmod(tmp,0o600)
+        os.replace(tmp,store)
+    finally:
+        if os.path.exists(tmp):os.unlink(tmp)
+    print("PROFILE_DISPLAY_NAME_SAVED")
+finally:
+    os.close(lock)
+LABEL_PY
 fi
 
 PLUGIN_STATUS="SKIPPED"
