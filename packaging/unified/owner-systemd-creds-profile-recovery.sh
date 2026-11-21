@@ -3,20 +3,45 @@
 # Never changes the active Tunnel, profile, API key, service, or privileges.
 set -Eeuo pipefail
 umask 077
-mode="$1"
-if [ "$#" -ne 1 ] || [[ ! "$mode" =~ ^(Stage|Verify|TestRestore)$ ]];then
+mode="${1:-}"
+if { [ "$#" -ne 1 ] && [ "$#" -ne 2 ]; } ||
+   [[ ! "$mode" =~ ^(Stage|Verify|TestRestore)$ ]];then
  echo RC012_LINUX_OWNER_CREDS_MODE_INVALID >&2;exit 2
 fi
+explicitProfile=0
+profileName="Emad"
+if [ "$#" -eq 2 ];then
+ [[ "$2" == --profile-name=* ]] ||
+ { echo RC012_OWNER_PROFILE_ARGUMENT_INVALID >&2;exit 2; }
+ profileName="${2#--profile-name=}"
+ explicitProfile=1
+fi
+[[ "$profileName" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] &&
+ [ "$profileName" != "." ] && [ "$profileName" != ".." ] ||
+ { echo RC012_OWNER_PROFILE_ARGUMENT_INVALID >&2;exit 2; }
 uid="$(id -u)"
 config="$HOME/.config"
 backupParent="$HOME/.local/state/chatgpt-remote-commander/owner-recovery"
-target="$backupParent/rc012-native-pair-systemd-creds"
-files="tunnel-client/Emad.yaml
-chatgpt-remote-commander/private-pair/default/ca.crt
-chatgpt-remote-commander/private-pair/default/client.crt
-chatgpt-remote-commander/private-pair/default/client.key
-chatgpt-remote-commander/private-pair/default/server.crt
-chatgpt-remote-commander/private-pair/default/server.key"
+# The historical single-Emad capsule keeps its original identity and path.
+# Every explicit owner profile uses its own protected capsule; never borrow
+# another account's file set or overwrite a legacy owner recovery receipt.
+if [ "$explicitProfile" -eq 1 ];then
+ target="$backupParent/rc012-native-pair-systemd-creds-$profileName"
+else
+ target="$backupParent/rc012-native-pair-systemd-creds"
+fi
+pairName="$profileName"
+if [ "$profileName" = chatgpt-remote-commander ] ||
+   { [ "$profileName" = Emad ] &&
+     [ ! -e "$config/tunnel-client/chatgpt-remote-commander.yaml" ]; };then
+ pairName="default"
+fi
+files="tunnel-client/$profileName.yaml
+chatgpt-remote-commander/private-pair/$pairName/ca.crt
+chatgpt-remote-commander/private-pair/$pairName/client.crt
+chatgpt-remote-commander/private-pair/$pairName/client.key
+chatgpt-remote-commander/private-pair/$pairName/server.crt
+chatgpt-remote-commander/private-pair/$pairName/server.key"
 stage=""
 restore=""
 clean(){ if [ -n "$restore" ] && [ -d "$restore" ];then rm -rf -- "$restore";fi
@@ -91,7 +116,9 @@ if [ "$mode" = Verify ] || [ "$mode" = TestRestore ];then
 fi
 safe_dir "$config"
 safe_dir "$config/tunnel-client"
-safe_dir "$config/chatgpt-remote-commander/private-pair/default"
+safe_dir "$config/chatgpt-remote-commander"
+safe_dir "$config/chatgpt-remote-commander/private-pair"
+safe_dir "$config/chatgpt-remote-commander/private-pair/$pairName"
 baseline="$(digest_tree "$config")"
 for d in "$HOME/.local" "$HOME/.local/state" "$HOME/.local/state/chatgpt-remote-commander";do
  safe_dir "$d"

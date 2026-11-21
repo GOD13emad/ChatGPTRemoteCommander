@@ -84,3 +84,65 @@ test('Linux native owner credential recovery stages idempotently, verifies isola
     fs.rmSync(f.home,{force:true,recursive:true});
   }
 });
+
+
+test('profile-specific owner recovery capsules never share a Tunnel or private TLS pair',{
+ skip:process.platform!=='linux',timeout:60000
+},t=>{
+  const available=spawnSync('systemd-creds',['--version'],{encoding:'utf8',timeout:3000});
+  if(available.status!==0)return t.skip('systemd-creds binary unavailable');
+  const f=makeFixture();
+  const profileA='chatgpt-remote-commander';
+  const profileB='mmz-emad-laptop';
+  const cfg=path.join(f.home,'.config');
+  const fileA=path.join(cfg,'tunnel-client',profileA+'.yaml');
+  const fileB=path.join(cfg,'tunnel-client',profileB+'.yaml');
+  const pairB=path.join(cfg,'chatgpt-remote-commander','private-pair',profileB);
+  const capBase=path.dirname(f.recovery);
+  const capsule=profile=>path.join(capBase,'rc012-native-pair-systemd-creds-'+profile);
+  const input={HOME:f.home};
+  try{
+    fs.writeFileSync(fileA,'config_version: 1\\ncontrol_plane: owner-a-nonsecret-fixture\\n',{mode:0o600});
+    fs.writeFileSync(fileB,'config_version: 1\\ncontrol_plane: owner-b-nonsecret-fixture\\n',{mode:0o600});
+    fs.mkdirSync(pairB,{mode:0o700});
+    for(const name of names)
+      fs.writeFileSync(path.join(pairB,name),'NONPRODUCTION_ACCOUNT_B_'+name+'\\n',{mode:0o600});
+    for(const name of ['--profile-name=../../outside','--profile-name=..','--profile-name=bad/name']){
+      const denied=run(['Stage',name],input);
+      assert.notEqual(denied.status,0);
+      assert.match(denied.stderr,/RC012_OWNER_PROFILE_ARGUMENT_INVALID/);
+    }
+    const a=run(['Stage','--profile-name='+profileA],input);
+    if(a.status!==0 && /RC012_USER_CREDS/.test(a.stderr||''))
+      return t.skip('user/host systemd credential key unavailable on this runner');
+    assert.equal(a.status,0,a.stderr);
+    assert.ok(fs.existsSync(path.join(capsule(profileA),'owner-pair.cred')));
+    const foreignMissing=run(['Verify','--profile-name='+profileB],input);
+    assert.notEqual(foreignMissing.status,0);
+    const b=run(['Stage','--profile-name='+profileB],input);
+    assert.equal(b.status,0,b.stderr);
+    assert.notEqual(capsule(profileA),capsule(profileB));
+    for(const profile of [profileA,profileB]){
+      assert.equal(run(['Verify','--profile-name='+profile],input).status,0);
+      const restore=run(['TestRestore','--profile-name='+profile],input);
+      assert.equal(restore.status,0,restore.stderr);
+      assert.match(restore.stdout,/RC012_LINUX_OWNER_CREDS_DRY_RESTORE_PASS_files_6/);
+      assert.match(run(['Stage','--profile-name='+profile],input).stdout,
+        /RC012_LINUX_OWNER_CREDS_REUSED_files_6/);
+    }
+    const aReceipt=fs.readFileSync(path.join(capsule(profileA),'receipt'));
+    const aCipher=fs.readFileSync(path.join(capsule(profileA),'owner-pair.cred'));
+    try{
+      fs.copyFileSync(path.join(capsule(profileB),'receipt'),path.join(capsule(profileA),'receipt'));
+      fs.copyFileSync(path.join(capsule(profileB),'owner-pair.cred'),path.join(capsule(profileA),'owner-pair.cred'));
+      const mismatched=run(['Verify','--profile-name='+profileA],input);
+      assert.notEqual(mismatched.status,0,'cross-account backup must never verify');
+    }finally{
+      fs.writeFileSync(path.join(capsule(profileA),'receipt'),aReceipt,{mode:0o600});
+      fs.writeFileSync(path.join(capsule(profileA),'owner-pair.cred'),aCipher,{mode:0o600});
+    }
+    assert.equal(run(['Verify','--profile-name='+profileA],input).status,0);
+    assert.equal(fs.readFileSync(fileA,'utf8').includes('owner-a-nonsecret-fixture'),true);
+    assert.equal(fs.readFileSync(fileB,'utf8').includes('owner-b-nonsecret-fixture'),true);
+  }finally{fs.rmSync(f.home,{recursive:true,force:true});}
+});
