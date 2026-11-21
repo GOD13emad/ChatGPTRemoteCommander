@@ -17,10 +17,15 @@ runtime="/run/user/$(id -u)"
 [ "$(stat -c %a "$runtime")" = 700 ] || exit 2
 [ -z "$(ss -Hltpn "( sport = :$port )")" ] || { echo RC012_QA_PORT_BUSY;exit 2;}
 qa=$(mktemp -d "$runtime/rc012-core-qa-XXXXXXXX")
-brokerUnit="rc012-no-grant-broker-$(id -u)"
-qaUnit="rc012-no-grant-core-$(id -u)"
+# A stale failed transient unit must never block the next independent owner QA.
+# Use the mktemp-generated suffix to isolate concurrent run lifecycles.
+qaTag="${qa##*-}"
+brokerUnit="rc012-no-grant-broker-$(id -u)-$qaTag"
+qaUnit="rc012-no-grant-core-$(id -u)-$qaTag"
 cleanup(){
  systemctl --user stop "$brokerUnit.service" >/dev/null 2>&1 || :
+ # RuntimeMaxSec may leave a failed transient unit loaded after owner denial.
+ systemctl --user reset-failed "$brokerUnit.service" >/dev/null 2>&1 || :
  rm -rf -- "$qa"
 }
 trap cleanup EXIT
