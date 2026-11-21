@@ -34,6 +34,25 @@ test('native supervisor accepts only actual positive Control Plane Poll time',()
     assert.equal(parseNativeLastPoll(x),null);
 });
 
+test('native VPN route recovery accepts three minutes, but never a younger or weak shared stall',()=>{
+  const base={now,startedAt:now-180_000,ownLast:now-180_000,
+    peers:[{profile:'emad-mmz',last:now-180_000},
+      {profile:'saeid-mmz',last:now-180_000}],
+    marker:null,previous:null};
+  assert.equal(chooseNativeRecovery(base),true);
+  assert.equal(chooseNativeRecovery({...base,startedAt:now-179_999}),false);
+  assert.equal(chooseNativeRecovery({...base,ownLast:now-179_999}),false);
+  assert.equal(chooseNativeRecovery({...base,
+    peers:[{profile:'emad-mmz',last:now-179_999},
+      {profile:'saeid-mmz',last:now-180_000}]}),false);
+  assert.equal(chooseNativeRecovery({...base,previous:now-899_999}),false);
+  assert.equal(chooseNativeRecovery({...base,
+    marker:{profile:'emad-mmz',at:now-119_999}}),false);
+  assert.equal(chooseNativeRecovery({...base,
+    peers:[{profile:'emad-mmz',last:now-10_000},
+      {profile:'saeid-mmz',last:now-10_000}]}),true);
+});
+
 test('native shared outage elects only a single recovery candidate',()=>{
   assert.equal(chooseNativeRecovery(baseline()),true);
   // Losing connectivity or a marker from a failed restart never triggers a cascade.
@@ -76,7 +95,7 @@ test('native watchdog denies restarts on weak observations and cooldown',()=>{
     {...original,ownLast:now+1000},
     {...original,previous:now-30_000},
     {...original,peers:[fresh('emad-mmz'),stale('saeid-mmz')]}, // one fresh w/o marker
-    {...original,peers:[stale('emad-mmz'),{profile:'saeid-mmz',last:now-240_000}]},
+    {...original,peers:[stale('emad-mmz'),{profile:'saeid-mmz',last:now-150_000}]},
     {...original,peers:[stale('emad-mmz'),{profile:'saeid-mmz',last:null}]},
     {...original,peers:[stale('emad-mmz'),stale('emad-mmz')]},
     {...original,marker:{profile:'emad-mmz',at:now+10_000}}

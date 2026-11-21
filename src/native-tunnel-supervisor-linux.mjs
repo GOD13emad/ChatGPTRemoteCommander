@@ -11,7 +11,10 @@ const base='/usr/lib/chatgpt-remote-commander';
 const MAX_BODY=16384;
 const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MAX_AGE=86400000;
-const STALE=360000;
+// Six failed 30-second Polls are sufficient after a verified HTTPS WAN route.
+// Shared/isolated staged progression, per-profile 15-minute restart cooldown
+// and current-Tunnel successful-peer proof remain unchanged.
+const STALE=180000;
 const FRESH=120000;
 const COOLDOWN=900000;
 const STAGE=120000;
