@@ -213,7 +213,7 @@ jobs:
           echo "V012_QA_GITHUB_ATTESTATION_VERIFIED_NO_PROMOTE sha=$GITHUB_SHA"
 
   publish:
-    if: github.event_name != 'pull_request' && github.ref != 'refs/heads/integration/v012-unsigned-approval-20261110'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [build-windows-setup, build-linux-bootstrap]
     runs-on: ubuntu-latest
     permissions:
