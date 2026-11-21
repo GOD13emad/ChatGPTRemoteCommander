@@ -110,6 +110,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./test/unified-nsis-migration-guard.ps1
+      - name: Transactionally migrate legacy GUI to single Windows NSIS and restore original
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./test/unified-windows-owner-migration.ps1
       - name: Test exact source, privilege boundaries and embedded runtime
         run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs test/unified-migration-preflight.test.mjs test/unified-profile-recovery.test.mjs
       - name: Real Windows Electron GUI and restricted Core Start/Stop

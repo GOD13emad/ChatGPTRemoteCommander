@@ -59,6 +59,16 @@ test('one installer definition uses Windows NSIS per user and Linux DEB, not old
  assert.match(y,/target: deb/);
  assert.match(y,/packageName: chatgpt-remote-commander/);
  assert.match(y,/include: legacy-inno-guard[.]nsh/);
+ const migration=fs.readFileSync(path.join(repo,'packaging/unified/owner-windows-legacy-migrate.ps1'),'utf8');
+ assert.match(y,/owner-windows-legacy-migrate[.]ps1/);
+ for(const marker of ['RC012_OWNER_LEGACY_GUI_MIGRATION_READY',
+   'RC012_OWNER_GUI_TRANSACTIONAL_MIGRATION_INSTALL_PASS',
+   'RC012_OWNER_LEGACY_GUI_ROLLBACK_PASS',
+   'RC012_INSTALLER_SHA256_MISMATCH','RC012_LEGACY_GUI_RUNNING']){
+   assert.ok(migration.includes(marker),marker);
+ }
+ assert.match(migration,/Remove-Item -LiteralPath \$legacyKey/);
+ assert.match(migration,/Restore-Legacy \$r/);
  const nsis=fs.readFileSync(path.join(repo,'packaging/unified/legacy-inno-guard.nsh'),'utf8');
  assert.match(nsis,/!macro customInit/);
  assert.equal((nsis.match(/Uninstall\\RemoteCommander/g)||[]).length,3);
