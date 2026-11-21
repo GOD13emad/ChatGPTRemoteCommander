@@ -648,6 +648,25 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
     'original fixture readiness budget and body remain untouched');
 });
 
+test('Windows check qualification isolates MCP conformance before loaded server tests',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  let before=prioritizeSensitiveQualificationCommands(
+    boundNodeTestConcurrency(pkg.scripts.check,1).command);
+  before=isolateWindowsAgentHttpRegression(before);
+  before=isolateWindowsStartupReadinessRegressions(before);
+  const after=isolateWindowsMcpConformanceRegression(before);
+  const file='test/mcp-conformance.test.mjs';
+  const prefix='node --test --test-concurrency=1 '+file;
+  assert.equal(after.split(' && ')[0],prefix);
+  assert.equal(after.split(file).length-1,1,'one and only one MCP conformance fixture');
+  const files=cmd=>(cmd.match(/test\/[A-Za-z0-9_.-]+\.test\.mjs/g)||[]).sort();
+  assert.deepEqual(files(after),files(before),'preserve the exact original check file set');
+  assert.ok(read('tools/run-bounded-test-script.mjs').includes(
+    "if(process.platform==='win32'&&args.script==='check'){\n    command=isolateWindowsStartupReadinessRegressions(command);\n    command=isolateWindowsMcpConformanceRegression(command);\n  }"));
+  assert.throws(()=>isolateWindowsMcpConformanceRegression(prefix+' && '+before),
+    /CI_MCP_CONFORMANCE_CARDINALITY/);
+});
+
 test('bounded Windows adaptive fixture is scheduled cold with all original groups intact',()=>{
   const pkg=JSON.parse(read('package.json'));
   let cmd=prioritizeSensitiveQualificationCommands(boundNodeTestConcurrency(pkg.scripts.test,1).command);
@@ -738,13 +757,15 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,25,'G1 private owner TLS/Core, Windows/Linux J01 and encrypted recovery plus optional local planner remain source-pinned');
+  assert.equal(files.length,27,'G1 private owner TLS/Core, native J01, durable recovery and live owner-pinned Linux transport remain source-pinned');
   assert.ok(files.includes('test/v012-owner-local-canary.test.mjs'),'real owner-local canary and failed-bootstrap quarantine must run in CI');
   assert.ok(files.includes('test/owner-pinned-provenance.test.mjs'),'owner-pinned unsigned candidate and rollback integrity must run in CI');
   assert.ok(files.includes('test/owner-dpapi-profile-recovery.test.mjs'),'native Windows DPAPI backup and tamper rejection must run in CI');
   assert.ok(files.includes('test/owner-systemd-creds-profile-recovery.test.mjs'),'native Linux systemd-creds backup and tamper rejection must run in CI');
   assert.ok(files.includes('test/native-owner-session-provider-linux.test.mjs'),'active Linux owner session and systemd service J01 must stay pinned to Source QA');
   assert.ok(files.includes('test/local-ollama-planner.test.mjs'),'existing owner-local Ollama/llama.cpp planner adapter must run in source QA');
+  assert.ok(files.includes('test/native-tunnel-client-observer-linux.test.mjs'),'same-owner PID/socket/poll real native Tunnel attestation must run in source QA');
+  assert.ok(files.includes('test/v012-linux-owner-pinned-transport-bootstrap.test.mjs'),'owner-pinned exact Tunnel instance and invalid enrollment must run in source QA');
   assert.ok(files.includes('test/qa-v012-no-promote-ingress.test.mjs'),'NoPromote negative-only qualification must run in CI');
   assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
   assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');

@@ -108,6 +108,103 @@ test('Linux systemd owner service without XDG_SESSION_ID resolves only an active
   assert.match(snapshot.ownerSidHash,/^[0-9a-f]{64}$/);
 });
 
+test('Linux systemd manager without XDG_SESSION_TYPE or DISPLAY uses only native X11 logind seat',async()=>{
+  const environment=env();
+  delete environment.XDG_SESSION_ID;
+  delete environment.XDG_SESSION_TYPE;
+  delete environment.DISPLAY;
+  const calls=[];
+  const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+    envValue:environment,
+    execFileImpl:(file,args,options,callback)=>{
+      calls.push({file,args,options});
+      if(file===LOGINCTL){
+        assert.equal(args[1],'auto','never infer or forge an XDG_SESSION_ID');
+        return callback(null,logind(),'');
+      }
+      assert.equal(file,ZENITY);
+      assert.equal(options.env.DISPLAY,':0','only logind-authenticated local X11 display');
+      assert.equal(options.env.DBUS_SESSION_BUS_ADDRESS,'unix:path=/run/user/1000/bus');
+      assert.equal(options.env.XDG_SESSION_TYPE,undefined,
+        'untyped service remains untyped, not a forged GUI session variable');
+      callback(null,'','');
+    }
+  }));
+  const snap=await provider.getOwnerSessionSnapshot();
+  assert.equal(snap.osSessionId,'linux-logind-4');
+  assert.equal(snap.seatId,'seat0');
+  assert.equal(snap.sessionType,'x11');
+  assert.equal(snap.displayId,':0');
+  const accepted=await provider.requestConsent({
+    title:'Owner-scope QA only',message:'Native seat test: no ChatGPT binding or worker grant',
+    expectedOwnerSidHash:snap.ownerSidHash,expectedOsSessionId:snap.osSessionId
+  });
+  assert.equal(accepted,true);
+  assert.equal(calls.filter(x=>x.file===LOGINCTL).length,3);
+  assert.equal(calls.filter(x=>x.file===ZENITY).length,1);
+});
+
+test('missing graphical type never allows native Wayland user-manager fallback',async()=>{
+  const environment=env();
+  delete environment.XDG_SESSION_ID;
+  delete environment.XDG_SESSION_TYPE;
+  delete environment.DISPLAY;
+  environment.WAYLAND_DISPLAY='wayland-0';
+  const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+    envValue:environment,
+    execFileImpl:(file,args,options,callback)=>
+      callback(null,logind({Type:'wayland',Display:''}),'')
+  }));
+  await assert.rejects(provider.getOwnerSessionSnapshot(),
+    e=>e?.code==='NATIVE_OWNER_SESSION_TYPE_REQUIRED');
+});
+
+test('Linux owner user service without DISPLAY uses only logind-verified local X11 for consent',async()=>{
+  const environment=env();
+  delete environment.XDG_SESSION_ID;
+  delete environment.DISPLAY;
+  const calls=[];
+  const provider=createLinuxNativeOwnerSessionProvider(providerOptions({
+    envValue:environment,
+    execFileImpl:(file,args,options,callback)=>{
+      calls.push({file,args,options});
+      if(file===LOGINCTL)return callback(null,logind(),'');
+      assert.equal(file,ZENITY);
+      assert.equal(options.env.DISPLAY,':0','dialog must use verified native seat display');
+      assert.equal(options.env.DBUS_SESSION_BUS_ADDRESS,'unix:path=/run/user/1000/bus');
+      callback(null,'','');
+    }
+  }));
+  const snapshot=await provider.getOwnerSessionSnapshot();
+  assert.equal(snapshot.displayId,':0');
+  assert.equal(snapshot.osSessionId,'linux-logind-4');
+  const approved=await provider.requestConsent({
+    title:'Native owner QA',message:'Local owner confirmation',
+    expectedOwnerSidHash:snapshot.ownerSidHash,expectedOsSessionId:snapshot.osSessionId
+  });
+  assert.equal(approved,true,'test double explicitly approved; no real grant is issued');
+  assert.equal(calls.filter(x=>x.file===ZENITY).length,1);
+  assert.equal(calls.filter(x=>x.file===LOGINCTL).length,3);
+});
+
+test('only genuine user-manager fallback may resolve an absent X11 DISPLAY',async()=>{
+  const direct=env();delete direct.DISPLAY;
+  await assert.rejects(
+    createLinuxNativeOwnerSessionProvider(providerOptions({envValue:direct})).getOwnerSessionSnapshot(),
+    error=>error?.code==='NATIVE_OWNER_DISPLAY_MISMATCH');
+  const empty=env();delete empty.XDG_SESSION_ID;empty.DISPLAY='';
+  await assert.rejects(
+    createLinuxNativeOwnerSessionProvider(providerOptions({envValue:empty})).getOwnerSessionSnapshot(),
+    error=>error?.code==='NATIVE_OWNER_DISPLAY_MISMATCH');
+  const foreign=env();delete foreign.XDG_SESSION_ID;delete foreign.DISPLAY;
+  await assert.rejects(
+    createLinuxNativeOwnerSessionProvider(providerOptions({
+      envValue:foreign,
+      execFileImpl:(file,args,options,callback)=>callback(null,logind({User:'1001'}),'')
+    })).getOwnerSessionSnapshot(),
+    error=>error?.code==='NATIVE_OWNER_SESSION_NOT_ACTIVE');
+});
+
 test('Linux systemd logind auto fallback cannot select a foreign, remote or spoofed seat',async t=>{
   const invalid=[
     ['wrong-owner',{User:'1001'}],
@@ -132,7 +229,8 @@ test('Linux systemd logind auto fallback cannot select a foreign, remote or spoo
     ['missing-user-bus',e=>delete e.DBUS_SESSION_BUS_ADDRESS],
     ['foreign-user-bus',e=>e.DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/1001/bus'],
     ['wrong-runtime-directory',e=>e.XDG_RUNTIME_DIR='/run/user/1001'],
-    ['missing-session-type',e=>delete e.XDG_SESSION_TYPE],
+    ['explicit-empty-session-type',e=>e.XDG_SESSION_TYPE=''],
+    ['untrusted-session-type',e=>e.XDG_SESSION_TYPE='tty'],
     ['spoofed-session-id',e=>e.XDG_SESSION_ID='not-numeric']
   ]){
     await t.test(label,async()=>{

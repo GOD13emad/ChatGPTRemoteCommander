@@ -2,6 +2,17 @@
 # Build one native dpkg-managed Commander installation shared by Linux profiles.
 # This is a source QA artifact, NOT a signed Stable release or permission grant.
 set -euo pipefail
+# Offline mode is opt-in, immutable-input-only and never switches live units.
+OFFLINE_PINNED=0
+if [[ "${1:-}" == '--offline-verified-installed' && $# -eq 1 ]];then
+  OFFLINE_PINNED=1
+  [[ "${RC012_OFFLINE_NODE_ARCHIVE:-}" == /* &&
+    -f "${RC012_OFFLINE_NODE_ARCHIVE}" && ! -L "${RC012_OFFLINE_NODE_ARCHIVE}" ]] || {
+      echo 'RC012_OFFLINE_PINNED_NODE_ARCHIVE_REQUIRED' >&2;exit 2;
+    }
+elif [[ $# -ne 0 ]];then
+  echo 'RC012_NATIVE_BUILD_ARGUMENTS_INVALID' >&2;exit 2
+fi
 ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
 OUT="$ROOT/dist/installer/Remote-Commander-Linux-amd64.deb"
 NODE_VERSION=22.23.4
@@ -89,15 +100,25 @@ for rel in \
     echo "RC012_PROTECTED_NATIVE_CORE_REQUIRED_FILE_MISSING $rel" >&2; exit 4;
   }
 done
-BASE="https://nodejs.org/dist/v$NODE_VERSION"
-curl --fail --silent --show-error --location --retry 2 \
-  --connect-timeout 6 --max-time 75 "$BASE/SHASUMS256.txt" -o "$STAGE/SHASUMS256.txt"
-actual_manifest_line="$(grep -E "^[a-f0-9]{64}  $NODE_ASSET$" "$STAGE/SHASUMS256.txt")"
-test "$actual_manifest_line" = "$NODE_SHA256  $NODE_ASSET" || {
-  echo 'NODE_OFFICIAL_MANIFEST_PIN_MISMATCH' >&2; exit 6;
-}
-curl --fail --silent --show-error --location --retry 2 \
-  --connect-timeout 6 --max-time 180 "$BASE/$NODE_ASSET" -o "$STAGE/$NODE_ASSET"
+if [[ "$OFFLINE_PINNED" == 1 ]];then
+  # Owner-readable local cache is never trusted without the fixed release hash.
+  [[ "$(stat -c %u "$RC012_OFFLINE_NODE_ARCHIVE")" == "$(id -u)" &&
+      "$(stat -c %s "$RC012_OFFLINE_NODE_ARCHIVE")" -ge 10000000 &&
+      "$(stat -c %s "$RC012_OFFLINE_NODE_ARCHIVE")" -le 60000000 ]] || {
+      echo 'RC012_OFFLINE_NODE_CACHE_OWNERSHIP_OR_SIZE_INVALID' >&2;exit 6;
+    }
+  cp -- "$RC012_OFFLINE_NODE_ARCHIVE" "$STAGE/$NODE_ASSET"
+else
+  BASE="https://nodejs.org/dist/v$NODE_VERSION"
+  curl --fail --silent --show-error --location --retry 2 \
+    --connect-timeout 6 --max-time 75 "$BASE/SHASUMS256.txt" -o "$STAGE/SHASUMS256.txt"
+  actual_manifest_line="$(grep -E "^[a-f0-9]{64}  $NODE_ASSET$" "$STAGE/SHASUMS256.txt")"
+  test "$actual_manifest_line" = "$NODE_SHA256  $NODE_ASSET" || {
+    echo 'NODE_OFFICIAL_MANIFEST_PIN_MISMATCH' >&2; exit 6;
+  }
+  curl --fail --silent --show-error --location --retry 2 \
+    --connect-timeout 6 --max-time 180 "$BASE/$NODE_ASSET" -o "$STAGE/$NODE_ASSET"
+fi
 printf '%s  %s\n' "$NODE_SHA256" "$STAGE/$NODE_ASSET" | sha256sum -c --status || {
   echo 'NODE_RUNTIME_SHA_MISMATCH' >&2; exit 7;
 }
@@ -115,8 +136,54 @@ TUNNEL_UPSTREAM="$(node "$APP/tools/json-field.mjs" --file "$APP/tools/tunnel-cl
 [[ "$TUNNEL_VERSION" == 0.0.15 && "$TUNNEL_UPSTREAM" =~ ^[0-9a-f]{40}$ ]] || {
   echo 'NATIVE_TUNNEL_UNAPPROVED_PIN' >&2; exit 8;
 }
-/bin/bash "$APP/tools/install-tunnel-client-linux.sh" --install-dir "$STAGE/tunnel-download"
-TUNNEL_SRC="$STAGE/tunnel-download/tools/tunnel-client-v${TUNNEL_VERSION}-linux-amd64"
+if [[ "$OFFLINE_PINNED" == 1 ]];then
+  # Reuse only the independently-pinned, unmodified dpkg-owned static payload.
+  # Never use its owner profiles, API keys, credentials or running services.
+  TUNNEL_SRC="/usr/lib/chatgpt-remote-commander/tunnel"
+  PROVENANCE="/usr/share/doc/chatgpt-remote-commander/tunnel-client-provenance.json"
+  [[ "$(dpkg-query -W -f='${Status}' chatgpt-remote-commander)" == 'install ok installed' ]] || {
+    echo 'RC012_OFFLINE_TUNNEL_PACKAGE_NOT_INSTALLED' >&2;exit 8;
+  }
+  dpkg -V chatgpt-remote-commander >/dev/null || {
+    echo 'RC012_OFFLINE_INSTALLED_PACKAGE_CHANGED' >&2;exit 8;
+  }
+  [[ -d "$TUNNEL_SRC" && ! -L "$TUNNEL_SRC" &&
+      -f "$PROVENANCE" && ! -L "$PROVENANCE" ]] || {
+    echo 'RC012_OFFLINE_TUNNEL_ROOT_UNSAFE' >&2;exit 8;
+  }
+  [[ "$(stat -c %u "$TUNNEL_SRC")" == 0 &&
+      "$(stat -c %u "$PROVENANCE")" == 0 ]] || {
+    echo 'RC012_OFFLINE_TUNNEL_NOT_ROOT_OWNED' >&2;exit 8;
+  }
+  # Full installed binary and release-asset pins are independent of mutable
+  # user-installed YAML or the JSON receipt itself.
+  OFFLINE_TUNNEL_SHA=286769f6b1b1837e89896b4684a3ec59c919f860fa2bc159442e3839b6468711
+  OFFLINE_CLOUDFLARED_SHA=4e3f48f0bfa1fda6f86d055c60064e50f5d776ff8c0f3c773ae6083000ccd6e9
+  OFFLINE_ASSET_SHA=8c836dc5d68d68b663d9a5c5b28ff9fa780d9f7a3fffb1c306880b8f32fab5f1
+  for field in version releaseTag upstreamCommit assetSha256 binarySha256;do
+    case "$field" in
+      version) expected="$TUNNEL_VERSION" ;;
+      releaseTag) expected="v$TUNNEL_VERSION" ;;
+      upstreamCommit) expected="$TUNNEL_UPSTREAM" ;;
+      assetSha256) expected="$OFFLINE_ASSET_SHA" ;;
+      binarySha256) expected="$OFFLINE_TUNNEL_SHA" ;;
+    esac
+    [[ "$(node "$APP/tools/json-field.mjs" --file "$PROVENANCE" --field "$field")" == "$expected" ]] || {
+      echo 'RC012_OFFLINE_TUNNEL_PIN_MISMATCH' >&2;exit 8;
+    }
+  done
+  [[ "$(sha256sum "$TUNNEL_SRC/tunnel-client" | cut -d' ' -f1)" == "$OFFLINE_TUNNEL_SHA" &&
+      "$(sha256sum "$TUNNEL_SRC/cloudflared" | cut -d' ' -f1)" == "$OFFLINE_CLOUDFLARED_SHA" ]] || {
+      echo 'RC012_OFFLINE_TUNNEL_BINARY_SHA_MISMATCH' >&2;exit 8;
+    }
+  if find "$TUNNEL_SRC" -type l -print -quit | grep -q .;then
+    echo 'RC012_OFFLINE_TUNNEL_SYMLINK_UNSAFE' >&2;exit 8;
+  fi
+else
+  /bin/bash "$APP/tools/install-tunnel-client-linux.sh" --install-dir "$STAGE/tunnel-download"
+  TUNNEL_SRC="$STAGE/tunnel-download/tools/tunnel-client-v${TUNNEL_VERSION}-linux-amd64"
+  PROVENANCE="$STAGE/tunnel-download/var/tunnel-client-installed.json"
+fi
 TUNNEL="$DEB$PACKAGE_DIR/tunnel"
 for name in tunnel-client cloudflared LICENSE NOTICE; do
   [[ -f "$TUNNEL_SRC/$name" && ! -L "$TUNNEL_SRC/$name" ]] || {
@@ -127,7 +194,7 @@ cp -a -- "$TUNNEL_SRC/." "$TUNNEL/"
 [[ "$("$TUNNEL/tunnel-client" --version)" == "$TUNNEL_VERSION+$TUNNEL_UPSTREAM"* ]] || {
   echo 'NATIVE_TUNNEL_BINARY_PROVENANCE_MISMATCH' >&2; exit 8;
 }
-install -m 0644 "$STAGE/tunnel-download/var/tunnel-client-installed.json" \
+install -m 0644 "$PROVENANCE" \
   "$DEB/usr/share/doc/chatgpt-remote-commander/tunnel-client-provenance.json"
 cat > "$DEB/DEBIAN/control" <<EOF
 Package: chatgpt-remote-commander
@@ -168,8 +235,12 @@ USERUNIT
 # a valid same-owner profile and credential and explicitly enable its user unit.
 cat > "$DEB/usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service" <<'TUNNELUNIT'
 [Unit]
-Description=Remote Commander private tunnel for owner profile %i
-After=network-online.target chatgpt-remote-commander@%i.service
+Description=Remote Commander private tunnel for owner Tunnel profile %i
+# The owner's Tunnel profile identifier is NOT necessarily the native Core
+# profile id. An implicit @%i Core dependency can order the WRONG service.
+# Pair-to-Core mapping is owner-pinned via the Tunnel main-channel target,
+# independently verified and approved before either unit is activated.
+After=network-online.target
 Wants=network-online.target
 ConditionPathExists=%h/.config/tunnel-client/%i.yaml
 ConditionPathExists=%h/.config/chatgpt-remote-commander/credentials/%i.key
@@ -264,15 +335,22 @@ PREFLIGHT
 cat > "$DEB/usr/share/doc/chatgpt-remote-commander/README.txt" <<'DOC'
 One shared, dpkg-managed Remote Commander Core for all owner profiles.
 
-Profile config: ~/.local/state/chatgpt-remote-commander/profiles/PROFILE/config.json
-The included systemd USER template starts the same immutable Core for a profile:
+Native Core profile config:
+  ~/.local/state/chatgpt-remote-commander/profiles/CORE_PROFILE/config.json
+The included systemd USER template starts the same immutable Core for that id:
   systemctl --user daemon-reload
-  systemctl --user enable --now chatgpt-remote-commander@PROFILE.service
+  systemctl --user enable --now chatgpt-remote-commander@CORE_PROFILE.service
 
 The package also includes the SHA-pinned tunnel-client and its license, NOTICE
 and SBOM. It does not create tunnel credentials or enable the tunnel user service.
-After separate same-owner profile enrollment and native G1/J01 acceptance:
-  systemctl --user enable --now chatgpt-remote-commander-tunnel@PROFILE.service
+Tunnel profile identifiers may differ from native Core profile identifiers:
+  ~/.config/tunnel-client/TUNNEL_PROFILE.yaml
+  ~/.config/chatgpt-remote-commander/credentials/TUNNEL_PROFILE.key
+After verified owner-controlled pair-to-Core HTTPS/mTLS routing, native G1/J01
+binding, per-action signed Worker grant and reversible per-unit cutover:
+  systemctl --user enable --now chatgpt-remote-commander-tunnel@TUNNEL_PROFILE.service
+Do not use CORE_PROFILE as TUNNEL_PROFILE by inference, share any credentials,
+or start either service before exact profile ownership, route and rollback pass.
 Both user units stay disabled until the owner explicitly enables them.
 
 The package does not migrate credentials/configuration, stop old services, enable

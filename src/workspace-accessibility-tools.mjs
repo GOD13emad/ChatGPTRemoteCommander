@@ -28,15 +28,25 @@ const ownerBrowser=w=>/(?:firefox|brave|chrome|chromium|msedge|microsoft[ ._-]?e
  .test(String(w.wmClass??'')+' '+String(w.appName??''));
 const titleMatch=(a,b)=>a===b&&typeof a==='string'&&a.length>=4&&a.length<=300;
 
+// Retain only owner-session display coordinates, never credentials or generic
+// inherited process environment. AT-SPI uses the session bus and, on Wayland/
+// XWayland desktops, may also need the compositor display identifiers.
+export function ownerAtspiEnvironment(env=process.env){
+ const display=/^:[0-9]+(?:\.[0-9]+)?$/.test(env.DISPLAY??'')?env.DISPLAY:'';
+ const wayland=/^wayland-[0-9]+$/.test(env.WAYLAND_DISPLAY??'')?env.WAYLAND_DISPLAY:'';
+ const type=/^(?:wayland|x11)$/.test(env.XDG_SESSION_TYPE??'')?env.XDG_SESSION_TYPE:'';
+ const lang=/^[A-Za-z0-9_.@-]{1,64}$/.test(env.LANG??'')?env.LANG:'C.UTF-8';
+ return {PATH:'/usr/bin:/bin',HOME:env.HOME??'',USER:env.USER??'',
+  DBUS_SESSION_BUS_ADDRESS:env.DBUS_SESSION_BUS_ADDRESS??'',
+  XDG_RUNTIME_DIR:env.XDG_RUNTIME_DIR??'',
+  DISPLAY:display,WAYLAND_DISPLAY:wayland,XDG_SESSION_TYPE:type,LANG:lang};
+}
+
 export async function nativeAtspi(request,{timeoutMs=7000}={}){
  if(process.platform!=='linux')error('LINUX_ONLY');
  const file=fileURLToPath(new URL('../tools/owner-atspi-semantic.py',import.meta.url));
  return new Promise((resolve,reject)=>{
-  const child=spawn('/usr/bin/python3',[file],{stdio:['pipe','pipe','pipe'],windowsHide:true,env:{
-   PATH:'/usr/bin:/bin',HOME:process.env.HOME??'',USER:process.env.USER??'',
-   DBUS_SESSION_BUS_ADDRESS:process.env.DBUS_SESSION_BUS_ADDRESS??'',
-   XDG_RUNTIME_DIR:process.env.XDG_RUNTIME_DIR??''
-  }});
+  const child=spawn('/usr/bin/python3',[file],{stdio:['pipe','pipe','pipe'],windowsHide:true,env:ownerAtspiEnvironment()});
   let out='',err='',finished=false,expired=false;
   const timer=setTimeout(()=>{expired=true;child.kill('SIGKILL')},timeoutMs);
   child.stdout.on('data',x=>{out+=x.toString('utf8');if(out.length>45000)child.kill('SIGKILL')});

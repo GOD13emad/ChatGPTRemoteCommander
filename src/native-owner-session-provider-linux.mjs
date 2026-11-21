@@ -152,7 +152,11 @@ export function createLinuxNativeOwnerSessionProvider({
       &&cgroup.includes('/user@'+uid+'.service/')
       &&env.XDG_RUNTIME_DIR==='/run/user/'+uid
       &&env.DBUS_SESSION_BUS_ADDRESS==='unix:path=/run/user/'+uid+'/bus'
-      &&['wayland','x11'].includes(env.XDG_SESSION_TYPE);
+      // User managers omit the graphical type on some real owner desktops.
+      // Only a verified local logind X11 seat may supply a missing type.
+      // Explicit types still have to match the native seat exactly.
+      &&(env.XDG_SESSION_TYPE===undefined
+        ||['wayland','x11'].includes(env.XDG_SESSION_TYPE));
     if(!hasDirectSession&&!serviceSessionFallback)
       fail('NATIVE_OWNER_LOGIND_SESSION_REQUIRED');
     const sessionSelector=hasDirectSession?envSession:'auto';
@@ -175,10 +179,20 @@ export function createLinuxNativeOwnerSessionProvider({
       fail('NATIVE_OWNER_SESSION_NOT_ACTIVE');
     if(env.XDG_SESSION_TYPE!==undefined&&env.XDG_SESSION_TYPE!==p.Type)
       fail('NATIVE_OWNER_SESSION_TYPE_MISMATCH');
+    // An untyped systemd user manager may display the logind-pinned X11 seat,
+    // but must never guess a Wayland socket or trust a different user/session.
+    if(serviceSessionFallback&&env.XDG_SESSION_TYPE===undefined&&p.Type!=='x11')
+      fail('NATIVE_OWNER_SESSION_TYPE_REQUIRED');
 
     let displayId;
     if(p.Type==='x11'){
-      if(!clean(p.Display,128)||!clean(env.DISPLAY,128)||env.DISPLAY!==p.Display)
+      // The same-owner systemd user manager can omit DISPLAY even when
+      // logind independently proves its active, local X11 seat. Only that
+      // strictly-verified service fallback may use logind's exact display;
+      // an explicitly supplied but wrong/empty DISPLAY still fails closed.
+      if(!clean(p.Display,128)
+        ||(env.DISPLAY===undefined? !serviceSessionFallback
+          : !clean(env.DISPLAY,128)||env.DISPLAY!==p.Display))
         fail('NATIVE_OWNER_DISPLAY_MISMATCH');
       displayId=p.Display;
     }else{
@@ -230,7 +244,9 @@ export function createLinuxNativeOwnerSessionProvider({
       })();
       const result=await execute(execFileImpl,dialog,args,{
         encoding:'utf8',timeout:dialogTimeoutMs,maxBuffer:4096,
-        windowsHide:true,env:dialogEnvironment(env)
+        windowsHide:true,env:dialogEnvironment({
+          ...env,...(before.sessionType==='x11'?{DISPLAY:before.displayId}:{})
+        })
       });
       // Deny, close, timeout, absent display and wrong or empty code all deny.
       if(result.code!==0||(challenge!==null&&result.stdout.trim()!==challenge))

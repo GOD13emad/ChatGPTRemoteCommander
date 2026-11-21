@@ -76,6 +76,20 @@ linuxOnlyTest('one native Linux package installs one dpkg-owned code root shared
   assert.ok(match,'native preflight must be installed in the package');
 });
 
+linuxOnlyTest('unified native Linux merge guarantees owner-readable GUI directories',()=>{
+  const merge=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  assert.equal(spawnSync('bash',['-n',path.join(root,'packaging/unified/merge-native-deb.sh')]).status,0);
+  assert.match(merge,/desktop_root=opt_root\/'Remote Commander'/);
+  assert.match(merge,/opt_root\.chmod\(0o755\)/);
+  assert.match(merge,/current\.chmod\(0o755\)/);
+  assert.match(merge,/asset\.chmod\(0o755 if asset\.stat\(\)\.st_mode&0o111 else 0o644\)/);
+  assert.match(merge,/share_root=native\/'usr\/share'/);
+  assert.match(merge,/RC012_MERGED_GUI_FILE_NOT_READABLE/);
+  assert.match(merge,/current\.is_symlink\(\)/);
+  assert.match(merge,/RC012_MERGED_GUI_DIRECTORY_NOT_TRAVERSABLE/);
+  assert.doesNotMatch(merge,/chmod\(0o777\)/);
+});
+
 linuxOnlyTest('native package output guard rejects symlinked dist and installer parents',()=>{
   const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-package-output-symlink-'));
   try{
@@ -166,9 +180,22 @@ test('native per-owner tunnel unit loads existing credentials and never autostar
   assert.ok(unit,'tunnel unit must be included in the package');
   assert.match(unit,/LoadCredential=api-key:%h\/\.config\/chatgpt-remote-commander\/credentials\/%i\.key/);
   assert.match(unit,/ConditionPathExists=%h\/\.config\/tunnel-client\/%i\.yaml/);
+  // Real owner-host profiles can be named "MMZ" in the Core and
+  // "mmz-emad-laptop" in the Tunnel. Never order against a different
+  // or non-existing same-name native Core unit.
+  assert.match(unit,/After=network-online\.target/);
+  assert.doesNotMatch(unit,/^(?:After|Wants|Requires|BindsTo)=.*chatgpt-remote-commander@%i\.service/m);
   assert.match(unit,/NoNewPrivileges=yes/);
   assert.match(unit,/ProtectSystem=full/);
   assert.doesNotMatch(unit,/ExecStart=.*(curl|install|enroll|sudo|pkexec)/);
+  // Installer documentation must not silently bind two different owner
+  // identifiers to the same systemd instance.
+  const nativeHelp=source.match(/cat > "\$DEB\/usr\/share\/doc\/chatgpt-remote-commander\/README\.txt" <<'DOC'\n([\s\S]*?)\nDOC/)?.[1];
+  assert.ok(nativeHelp);
+  assert.match(nativeHelp,/chatgpt-remote-commander@CORE_PROFILE\.service/);
+  assert.match(nativeHelp,/chatgpt-remote-commander-tunnel@TUNNEL_PROFILE\.service/);
+  assert.match(nativeHelp,/Tunnel profile identifiers may differ from native Core profile identifiers/);
+  assert.doesNotMatch(nativeHelp,/@PROFILE\.service/);
   const launcher=source.match(/cat > "\$DEB\$PACKAGE_DIR\/tunnel\/native-tunnel-launch\.sh" <<'TUNNELLAUNCH'\n([\s\S]*?)\nTUNNELLAUNCH/)?.[1];
   assert.ok(launcher,'standalone tunnel launcher must be packaged');
   assert.match(launcher,/CREDENTIALS_DIRECTORY/);

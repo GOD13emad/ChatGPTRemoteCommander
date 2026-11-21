@@ -461,7 +461,12 @@ test('terminal operation receipts backfill exactly once into durable delivery af
       tool: 'run_project_command',
       arguments: { argv: ['done'] }
     });
-    await waitFor(first, started.operationId);
+    // The completion receipt is committed before the detached worker's final
+    // state projection. A second manager must not race the old worker's last
+    // atomic state write and mistake timestamp movement for duplicate backfill.
+    const terminal = await waitFor(first, started.operationId);
+    assert.equal(terminal.status, 'SUCCEEDED');
+    await waitForProcessExit(terminal.workerPid);
     await first.close?.();
     first = null;
 

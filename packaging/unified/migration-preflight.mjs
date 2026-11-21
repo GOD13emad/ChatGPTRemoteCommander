@@ -9,6 +9,14 @@ import {pathToFileURL} from 'node:url';
 
 const expectedPackage='chatgpt-remote-commander';
 const safeUnit=/^chatgpt-remote-commander[a-z0-9@._:-]*\.service$/i;
+export function isLinuxMigrationUnit(unit,profileName=null){
+  if(typeof unit!=='string')return false;
+  if(safeUnit.test(unit))return true;
+  return typeof profileName==='string'
+    &&/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    &&profileName!=='.'&&profileName!=='..'
+    &&unit===profileName+'-tunnel.service';
+}
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
 // The owner-selected tunnel profile is input, not a ChatGPT identity proof.
 // Never print/retain the YAML: it may contain the runtime API key.
@@ -74,8 +82,13 @@ function readOwnerTunnelBinding(){
  * process. Ambiguous/misowned/linked profiles are not authorized evidence.
  */
 export function readLinuxOwnerTunnelBinding({
-  home=process.env.HOME,ownerUid=process.getuid?.()
+  home=process.env.HOME,ownerUid=process.getuid?.(),profileName=null
 }={}){
+  // A profile selector is observation only, never evidence of owner identity
+  // or authorization for the active Tunnel, J01 or release promotion.
+  if(profileName!==null&&(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    ||profileName==='.'||profileName==='..'))
+    return {profilePresent:false,valid:false};
   if(typeof home!=='string'||!path.isAbsolute(home))
     return {profilePresent:false,valid:false};
   const directory=path.join(home,'.config','tunnel-client');
@@ -91,8 +104,11 @@ export function readLinuxOwnerTunnelBinding({
     return {profilePresent:true,valid:false};
   }
   if(names.length===0)return {profilePresent:false,valid:false};
-  if(names.length!==1)return {profilePresent:true,valid:false};
-  const file=path.join(directory,names[0]);
+  if(profileName===null&&names.length!==1)
+    return {profilePresent:true,valid:false};
+  const selected=profileName===null?names[0]:profileName+'.yaml';
+  if(!names.includes(selected))return {profilePresent:true,valid:false};
+  const file=path.join(directory,selected);
   try{
     const stat=fs.lstatSync(file);
     if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1
@@ -305,23 +321,28 @@ export function inspectLinuxNativeCorePayload(
   return pkg?.version==='0.12.0-dev.1';
  }catch{return false;}
 }
-function linuxFacts(){
+function linuxFacts({profileName=null}={}){
   const packageQuery=exec('dpkg-query',['-W','-f=${Package}|${Version}|${Status}',expectedPackage]);
   const [name,version,status]=packageQuery.stdout.trim().split('|');
   const exists=packageQuery.ok&&name===expectedPackage&&status==='install ok installed';
   const units=[];
-  const listing=exec('systemctl',['--user','list-units','--all','--no-legend','--plain','chatgpt-remote-commander*.service']);
-  const files=exec('systemctl',['--user','list-unit-files','--no-legend','--plain','chatgpt-remote-commander*.service']);
+  const profileTunnelUnit=typeof profileName==='string'
+    &&isLinuxMigrationUnit(profileName+'-tunnel.service',profileName)
+      ?profileName+'-tunnel.service':null;
+  const selectors=['chatgpt-remote-commander*.service',
+    ...(profileTunnelUnit?[profileTunnelUnit]:[])];
+  const listing=exec('systemctl',['--user','list-units','--all','--no-legend','--plain',...selectors]);
+  const files=exec('systemctl',['--user','list-unit-files','--no-legend','--plain',...selectors]);
   if(listing.ok&&files.ok){
     const names=new Set();
     const enabled=new Set();
     for(const line of listing.stdout.split(/\r?\n/)){
       const unit=line.trim().split(/\s+/)[0];
-      if(unit&&safeUnit.test(unit))names.add(unit);
+      if(unit&&isLinuxMigrationUnit(unit,profileName))names.add(unit);
     }
     for(const line of files.stdout.split(/\r?\n/)){
       const [unit,state]=line.trim().split(/\s+/);
-      if(!unit||!safeUnit.test(unit))continue;
+      if(!unit||!isLinuxMigrationUnit(unit,profileName))continue;
       names.add(unit);
       if(['enabled','enabled-runtime','linked','linked-runtime'].includes(state))enabled.add(unit);
     }
@@ -345,7 +366,7 @@ function linuxFacts(){
   const integrity=exists?exec('dpkg',['-V',expectedPackage]):{ok:false,stdout:''};
   const nativePackageIntegrityVerified=exists&&integrity.ok
     &&integrity.stdout.trim()==='';
-  const tunnel=readLinuxOwnerTunnelBinding();
+  const tunnel=readLinuxOwnerTunnelBinding({profileName});
   const targetVersion=tunnel.valid&&!tunnel.tls
     ?probeLoopbackCoreVersion(tunnel.port):null;
   return {platform:'linux',connectionMode:'private-tunnel',
@@ -466,20 +487,29 @@ function windowsFacts(){
     routerBackendVersion:route.detected?route.backendVersion:null,
     units:[]};
 }
-export function inspectLocalPlatform(platform=process.platform){
-  if(platform==='linux')return linuxFacts();
-  if(platform==='win32')return windowsFacts();
+export function inspectLocalPlatform(platform=process.platform,{profileName=null}={}){
+  if(platform==='linux')return linuxFacts({profileName});
+  if(platform==='win32'&&profileName===null)return windowsFacts();
   throw Error('RC012_MIGRATION_UNSUPPORTED_PLATFORM');
 }
-export function localReport(platform=process.platform){
-  const f=inspectLocalPlatform(platform);
+export function localReport(platform=process.platform,options={}){
+  const f=inspectLocalPlatform(platform,options);
   return assessMigration(f);
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   const argv=process.argv.slice(2);
-  if(argv.length!==1||argv[0]!=='--read-only')
+  if(argv.length<1||argv.length>2||argv[0]!=='--read-only')
     throw Error('RC012_MIGRATION_PREFLIGHT_READ_ONLY_ONLY');
-  const report=localReport(os.platform());
+  let profileName=null;
+  if(argv.length===2){
+    if(os.platform()!=='linux'||!argv[1].startsWith('--profile-name='))
+      throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
+    profileName=argv[1].slice('--profile-name='.length);
+    if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+      ||profileName==='.'||profileName==='..')
+      throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
+  }
+  const report=localReport(os.platform(),{profileName});
   process.stdout.write(JSON.stringify(report,null,2)+'\n');
   if(report.blocked.length)process.exitCode=2;
 }

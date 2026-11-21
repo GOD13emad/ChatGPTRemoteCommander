@@ -3,20 +3,50 @@
 # Never changes the active Tunnel, profile, API key, service, or privileges.
 set -Eeuo pipefail
 umask 077
-mode="$1"
-if [ "$#" -ne 1 ] || [[ ! "$mode" =~ ^(Stage|Verify|TestRestore)$ ]];then
+if [ "$#" -ne 1 ] && [ "$#" -ne 2 ];then
  echo RC012_LINUX_OWNER_CREDS_MODE_INVALID >&2;exit 2
+fi
+mode="$1"
+if [[ ! "$mode" =~ ^(Stage|Verify|TestRestore)$ ]];then
+ echo RC012_LINUX_OWNER_CREDS_MODE_INVALID >&2;exit 2
+fi
+profileName='Emad'
+if [ "$#" -eq 2 ];then
+ case "$2" in
+  --profile-name=*) profileName="${2#--profile-name=}" ;;
+  *) echo RC012_LINUX_OWNER_CREDS_PROFILE_INVALID >&2; exit 2 ;;
+ esac
+ if [[ ! "$profileName" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] ||
+    [ "$profileName" = '.' ] || [ "$profileName" = '..' ];then
+  echo RC012_LINUX_OWNER_CREDS_PROFILE_INVALID >&2;exit 2
+ fi
 fi
 uid="$(id -u)"
 config="$HOME/.config"
 backupParent="$HOME/.local/state/chatgpt-remote-commander/owner-recovery"
 target="$backupParent/rc012-native-pair-systemd-creds"
-files="tunnel-client/Emad.yaml
-chatgpt-remote-commander/private-pair/default/ca.crt
-chatgpt-remote-commander/private-pair/default/client.crt
-chatgpt-remote-commander/private-pair/default/client.key
-chatgpt-remote-commander/private-pair/default/server.crt
-chatgpt-remote-commander/private-pair/default/server.key"
+credentialName='rc012-native-pair'
+if [ "$profileName" != Emad ];then
+ target="$backupParent/rc012-native-pair-systemd-creds-$profileName"
+ credentialName="rc012-native-pair-$profileName"
+fi
+# Keep exactly the same identity rule as inspect-owner-private-tunnel-cutover:
+# canonical owner and historical *single* Emad may use default; another
+# account MUST have its own named private certificate directory. Changing
+# the ciphertext name alone never isolates the underlying TLS identity.
+pairNamespace='default'
+if [ "$profileName" != 'chatgpt-remote-commander' ];then
+ if [ "$profileName" != 'Emad' ] ||
+    [ -e "$config/tunnel-client/chatgpt-remote-commander.yaml" ];then
+  pairNamespace="$profileName"
+ fi
+fi
+files="tunnel-client/$profileName.yaml
+chatgpt-remote-commander/private-pair/$pairNamespace/ca.crt
+chatgpt-remote-commander/private-pair/$pairNamespace/client.crt
+chatgpt-remote-commander/private-pair/$pairNamespace/client.key
+chatgpt-remote-commander/private-pair/$pairNamespace/server.crt
+chatgpt-remote-commander/private-pair/$pairNamespace/server.key"
 stage=""
 restore=""
 clean(){ if [ -n "$restore" ] && [ -d "$restore" ];then rm -rf -- "$restore";fi
@@ -68,12 +98,12 @@ function verify_capsule(){
  { echo RC012_USER_CREDS_CIPHERTEXT_TAMPERED >&2;exit 2; }
  restore="$(mktemp -d "$backupParent/.dry-restore-XXXXXXXX")"
  chmod 700 "$restore"
- listing="$(systemd-creds decrypt --user --name=rc012-native-pair \
+ listing="$(systemd-creds decrypt --user --name="$credentialName" \
     "$dir/owner-pair.cred" - 2>/dev/null | tar -tf - | sha256sum | cut -d' ' -f1)" ||
  { echo RC012_USER_CREDS_ARCHIVE_CORRUPT >&2;exit 2; }
  [ "$listing" = "$(printf '%s\n' $files | sha256sum | cut -d' ' -f1)" ] ||
  { echo RC012_USER_CREDS_ARCHIVE_PATH_INVALID >&2;exit 2; }
- systemd-creds decrypt --user --name=rc012-native-pair \
+ systemd-creds decrypt --user --name="$credentialName" \
      "$dir/owner-pair.cred" - 2>/dev/null | tar -xf - -C "$restore"
  [ "$(digest_tree "$restore")" = "$baseline" ] ||
  { echo RC012_USER_CREDS_DRY_RESTORE_MISMATCH >&2;exit 2; }
@@ -91,7 +121,11 @@ if [ "$mode" = Verify ] || [ "$mode" = TestRestore ];then
 fi
 safe_dir "$config"
 safe_dir "$config/tunnel-client"
-safe_dir "$config/chatgpt-remote-commander/private-pair/default"
+if [ "$pairNamespace" != default ] &&
+  [ ! -d "$config/chatgpt-remote-commander/private-pair/$pairNamespace" ];then
+ echo RC012_USER_CREDS_PROFILE_PAIR_REQUIRED >&2;exit 2
+fi
+safe_dir "$config/chatgpt-remote-commander/private-pair/$pairNamespace"
 baseline="$(digest_tree "$config")"
 for d in "$HOME/.local" "$HOME/.local/state" "$HOME/.local/state/chatgpt-remote-commander";do
  safe_dir "$d"
@@ -109,7 +143,7 @@ stage="$(mktemp -d "$backupParent/.stage-XXXXXXXX")"
 chmod 700 "$stage"
 # Plaintext tar stays in the pipe; the only persistent archive is encrypted.
 tar -cf - -C "$config" -- $files |
- systemd-creds encrypt --user --with-key=host --name=rc012-native-pair \
+ systemd-creds encrypt --user --with-key=host --name="$credentialName" \
   - "$stage/owner-pair.cred" >/dev/null
 chmod 600 "$stage/owner-pair.cred"
 cipher="$(sha256sum "$stage/owner-pair.cred"|cut -d' ' -f1)"

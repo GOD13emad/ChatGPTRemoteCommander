@@ -42,7 +42,7 @@ test('native UIA observe and mutations are delegated only through authenticated 
  assert.equal(forwarded.params.arguments.requestId,expected);
  assert.equal(forwarded.params.arguments.explicitUserAuthorization.startsWith('Owner'),true);
  assert.equal(calls.length,2);
- assert.equal(timeouts[1],22000,'owner mutation budget must exceed the 16s native process bound');
+ assert.equal(timeouts[1],70000,'owner mutation budget must include owner consent and CUA action');
 });
 
 test('native UIA invoke is scoped, idempotency-rekeyed and explicit-consent gated',async()=>{
@@ -62,7 +62,7 @@ test('native UIA invoke is scoped, idempotency-rekeyed and explicit-consent gate
  assert.equal(forwarded.params.arguments.pid,1234);
  assert.equal(forwarded.params.arguments.windowId,9876);
  assert.equal(forwarded.params.arguments.application,'brave');
- assert.equal(timeouts[0],22000,'Invoke owner response budget must exceed the 16s native process bound');
+ assert.equal(timeouts[0],70000,'Invoke owner response budget must include owner consent and CUA action');
  assert.equal(calls[0].init.signal.aborted,false);
 });
 
@@ -76,4 +76,21 @@ test('native UIA cannot be forwarded when owner credential or loopback transport
   controlName:'Message ChatGPT',value:'x',foregroundChangeAuthorized:false,
   explicitUserAuthorization:'Owner permits this exact write'
  },{requestId:'outer-native-failure-0001'}),/WORKSPACE_OWNER_AGENT_UNAVAILABLE/);
+});
+
+
+test('exact-window owner click retains native consent budget and stable request identity',async()=>{
+ const {proxy,calls,timeouts}=fixture();
+ const args={pid:61388,windowId:2559368,elementToken:'s00000001:11',
+  explicitUserAuthorization:'Owner permits opening the current Remote Commander Operations Monitor'};
+ const result=await proxy.execute('workspace_window_click',args,{requestId:'rc012-owner-window-click-20261113'});
+ assert.equal(result.handled,true);
+ assert.equal(timeouts[0],70000,'must not timeout before the native owner consent expires');
+ const payload=JSON.parse(calls[0].init.body);
+ assert.equal(payload.params.name,'workspace_window_click');
+ assert.equal(payload.params.arguments.pid,61388);
+ assert.equal(payload.params.arguments.windowId,2559368);
+ assert.equal(payload.params.arguments.elementToken,'s00000001:11');
+ assert.equal(payload.params.arguments.requestId,'owrk-'+createHash('sha256').update('workspace-v1:workspace_window_click:rc012-owner-window-click-20261113').digest('hex').slice(0,48));
+ assert.equal(payload.params.arguments.explicitUserAuthorization,args.explicitUserAuthorization);
 });

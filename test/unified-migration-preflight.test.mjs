@@ -2,15 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
+import {mkdtemp,writeFile,mkdir,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,isLinuxMigrationUnit,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
+import {resolveLocalOwnerClientPair} from '../tools/owner-pair-private-source-canary.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
 
+test('exact selected independent Linux Tunnel is inventoried without adopting other owners',()=>{
+ assert.equal(isLinuxMigrationUnit('mmz-emad-laptop-tunnel.service','mmz-emad-laptop'),true);
+ assert.equal(isLinuxMigrationUnit('saeed-emad-laptop-tunnel.service','mmz-emad-laptop'),false);
+ assert.equal(isLinuxMigrationUnit('mmz-emad-laptop-tunnel.service',null),false);
+ assert.equal(isLinuxMigrationUnit('mmz-emad-laptop-tunnel.service','../mmz-emad-laptop'),false);
+ assert.equal(isLinuxMigrationUnit('chatgpt-remote-commander-mmz.service',null),true);
+});
 test('read-only Linux inventory preserves Native Tunnel and old live service blockers',()=>{
  const r=assessMigration({platform:'linux',inventoryReliable:true,
     nativePackageInstalled:true,allNativePayloadPathsAvailable:true,
@@ -58,14 +67,50 @@ test('Linux preflight inventories the one exact owner-private Tunnel without dis
   fs.chmodSync(profile,0o644);
   assert.deepEqual(read(),{profilePresent:true,valid:false});
   fs.chmodSync(profile,0o600);
-  fs.writeFileSync(path.join(folder,'Other.yaml'),yaml,{mode:0o600});
+  fs.writeFileSync(path.join(folder,'Other.yaml'),yaml.replace('47831','47832'),{mode:0o600});
   assert.deepEqual(read(),{profilePresent:true,valid:false});
+  const selected=profileName=>readLinuxOwnerTunnelBinding({home,ownerUid:process.getuid(),profileName});
+  assert.deepEqual(selected('Emad'),{profilePresent:true,valid:true,port:47831,tls:false});
+  assert.deepEqual(selected('Other'),{profilePresent:true,valid:true,port:47832,tls:false});
+  assert.deepEqual(selected('Missing'),{profilePresent:true,valid:false});
+  for(const badName of ['../Emad','', '.', '..','profile/escape'])
+    assert.deepEqual(selected(badName),{profilePresent:false,valid:false});
+  assert.doesNotMatch(JSON.stringify(selected('Other')),/DO_NOT_LOG|Other|api_key/);
   const bad=assessMigration({platform:'linux',connectionMode:'private-tunnel',
     inventoryReliable:true,nativePackageInstalled:true,
     allNativePayloadPathsAvailable:true,units:[],tunnelProfilePresent:true,
     tunnelProfileValid:false});
   assert.ok(bad.blocked.includes('OWNER_TUNNEL_MAIN_BINDING_UNVERIFIED'));
  }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+test('Linux CLI requires a bounded exact profile name and remains read-only',{
+  skip:process.platform!=='linux'
+},()=>{
+  const script=path.join(repo,'packaging','unified','migration-preflight.mjs');
+  for(const argv of [['--profile-name=Emad'],['--read-only','--profile-name=../Other'],
+    ['--read-only','--profile-name='],['--read-only','--profile-name=Other','more'],
+    ['--read-only','--profile-name=./foo']]){
+    const result=spawnSync(process.execPath,[script,...argv],{
+      cwd:repo,encoding:'utf8',timeout:6000});
+    assert.notEqual(result.status,0,argv.join(' '));
+    assert.match(result.stderr,/RC012_MIGRATION_PREFLIGHT_(?:READ_ONLY_ONLY|PROFILE_INVALID)/);
+  }
+});
+
+test('native Linux offline build requires an explicitly pinned local archive and verified dpkg binary',()=>{
+  const script=path.join(repo,'tools','build-native-linux-package.sh');
+  const source=fs.readFileSync(script,'utf8');
+  for(const guard of ['--offline-verified-installed','RC012_OFFLINE_NODE_ARCHIVE',
+    'RC012_OFFLINE_TUNNEL_BINARY_SHA_MISMATCH','dpkg -V chatgpt-remote-commander',
+    'RC012_OFFLINE_TUNNEL_PIN_MISMATCH','NODE_RUNTIME_SHA_MISMATCH'])
+      assert.ok(source.includes(guard),'missing immutable offline guard '+guard);
+  if(process.platform==='linux'){
+    const r=spawnSync('bash',[script,'--offline-verified-installed'],{
+      cwd:repo,encoding:'utf8',timeout:5000,env:{...process.env,RC012_OFFLINE_NODE_ARCHIVE:''}});
+    assert.equal(r.status,2);
+    assert.match(r.stderr,/RC012_OFFLINE_PINNED_NODE_ARCHIVE_REQUIRED/);
+  }
 });
 
 test('single native Linux package must contain the actual v0.12 protected Core, native J01 and worker grant modules',()=>{
@@ -524,6 +569,28 @@ test('offline one-Tunnel owner inspection never emits profile contents or writes
     assert.ok(!JSON.stringify(summary).includes('LOCAL_QA_FIXTURE_ONLY'));
     assert.ok(!JSON.stringify(summary).includes('qa-nonproduction-owner-label'));
     assert.equal(fs.readFileSync(profileFile,'utf8'),source);
+    // A second account must never silently re-use the primary default mTLS
+    // certificate pair, even if the profile is legitimate and well formed.
+    const otherProfile='mmz-emad-laptop';
+    const otherFile=path.join(profileDir,otherProfile+'.yaml');
+    fs.writeFileSync(otherFile,source.replace('47831','47910'),{mode:0o600});
+    const noPair=spawnSync(process.execPath,[script,'--target-port=47999',
+      '--profile-name='+otherProfile],options);
+    assert.notEqual(noPair.status,0);
+    assert.match(noPair.stderr,/RC012_OWNER_PAIR_PROFILE_ISOLATION_REQUIRED/);
+    const privateDir=path.join(path.dirname(certDir),otherProfile);
+    fs.mkdirSync(privateDir,{mode:0o700});
+    for(const name of ['client.crt','client.key','ca.crt'])
+      fs.writeFileSync(path.join(privateDir,name),
+        'separate-account-noncredential-fixture-'+name+'\n',{mode:0o600});
+    const ownPair=spawnSync(process.execPath,[script,'--target-port=47999',
+      '--profile-name='+otherProfile],options);
+    assert.equal(ownPair.status,0,ownPair.stderr);
+    const ownSummary=JSON.parse(ownPair.stdout);
+    assert.equal(ownSummary.profileName,otherProfile);
+    assert.equal(ownSummary.sourcePort,47910);
+    assert.equal(ownSummary.ownerCredentialsInOutput,false);
+    assert.equal(fs.readFileSync(otherFile,'utf8'),source.replace('47831','47910'));
     const invalid=spawnSync(process.execPath,[script,'--target-port=47999',
       '--profile-name=../../escape'],options);
     assert.notEqual(invalid.status,0);
@@ -531,3 +598,38 @@ test('offline one-Tunnel owner inspection never emits profile contents or writes
     assert.equal(fs.readFileSync(profileFile,'utf8'),source);
   }finally{fs.rmSync(isolated,{recursive:true,force:true});}
 });
+
+
+// The installed native Tunnel client uses tunnel.crt/key, unlike older client.crt/key QA.
+async function fixture(run){
+  const dir=await mkdtemp(path.join(os.tmpdir(),'rc012-client-pair-'));
+  try{await run(dir);}finally{await rm(dir,{recursive:true,force:true});}
+}
+
+test('real native Tunnel Client certificate names qualify as a complete pair',async()=>fixture(async dir=>{
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_MISSING/);
+  await writeFile(path.join(dir,'tunnel.crt'),'fixture-cert');
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_INVALID/);
+  await writeFile(path.join(dir,'tunnel.key'),'fixture-key');
+  assert.deepEqual(await resolveLocalOwnerClientPair(dir),{
+    cert:path.join(dir,'tunnel.crt'),key:path.join(dir,'tunnel.key')});
+}));
+
+test('legacy client certificate names remain preferred if both complete pairs exist',async()=>fixture(async dir=>{
+  for(const f of ['tunnel.crt','tunnel.key','client.crt','client.key'])
+    await writeFile(path.join(dir,f),'fixture');
+  assert.deepEqual(await resolveLocalOwnerClientPair(dir),{
+    cert:path.join(dir,'client.crt'),key:path.join(dir,'client.key')});
+}));
+
+test('partial client identity fails closed even if native Tunnel identity exists',async()=>fixture(async dir=>{
+  for(const f of ['tunnel.crt','tunnel.key','client.crt'])
+    await writeFile(path.join(dir,f),'fixture');
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_INVALID/);
+}));
+
+test('directories cannot masquerade as credential files',async()=>fixture(async dir=>{
+  await writeFile(path.join(dir,'tunnel.crt'),'fixture');
+  await mkdir(path.join(dir,'tunnel.key'));
+  await assert.rejects(resolveLocalOwnerClientPair(dir),/RC012_PROTECTED_CANARY_CLIENT_PAIR_INVALID/);
+}));
