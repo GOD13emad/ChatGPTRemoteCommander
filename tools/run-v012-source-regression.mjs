@@ -96,9 +96,9 @@ for (let index = range.first-1; index < range.last; index++) {
     ], {
       stdio: 'inherit',
       windowsHide: true,
-      // Native owner recovery declares 30s/60s test timeouts and must not
+      // Native owner recovery declares 50s/60s test timeouts and must not
       // share one 30s wall-time budget with unrelated test files.
-      timeout: index === 13 ? (part === 0 ? 35000 : 65000) : 30000
+      timeout: index === 13 ? (part === 0 ? 55000 : 65000) : 30000
     });
     if (result.error) {
       process.stderr.write('V012_SOURCE_REGRESSION_RUNNER_FAILED batch=' + (index + 1) +

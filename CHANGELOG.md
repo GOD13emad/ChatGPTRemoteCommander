@@ -1,3 +1,9 @@
+# 0.12.0-dev.8 — one universal owner-recovery Preflight (2026-11-21, NoPromote)
+
+- Advance one canonical Core/GUI/lockfile/desktop/Plugin/runtime/train version beyond dev.7; historical QA artifacts are never relabeled as dev.8.
+- Reconcile the generic Linux migration probe with the existing encrypted six-file same-owner, per-account Tunnel recovery capsules. Enforce source digest, owner UID/mode, intact ciphertext/receipt and independently verified disposable native TestRestore. Refuse changed profiles and tampered archives instead of staging a competing backup.
+- Preserve existing one-Tunnel-per-(account,host) identities. Verified profile restoration is not operational J01/Worker grant, protected live tunnel rebind, complete Core rollback, or fleet promotion. Keep NoPromote until separate acceptance.
+
 # 0.12.0-dev.7 — source-pinned unified Installer candidate (2026-11-21, NoPromote)
 
 - Advance source Core, GUI, lockfile, private plugin templates, desktop identity, Runtime version and release-train version together beyond the installed Debian `dev.6` baseline; do not relabel an old package.

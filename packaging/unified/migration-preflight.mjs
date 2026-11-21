@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {pathToFileURL,fileURLToPath} from 'node:url';
 
 const expectedPackage='chatgpt-remote-commander';
 // Release identity must be derived from the same canonical source used by the
@@ -146,6 +146,95 @@ export function readLinuxOwnerTunnelBinding({
  * only sha256sum and systemd-creds -> sha256sum children access the bytes.
  * Invalid receipts/permissions/symlinks/name mismatches fail closed.
  */
+// Canonical six-file same-owner recovery capsule from the universal installer.
+// A passing Verify is an independently decryptable *profile-only* receipt:
+// never a Core, service, J01 or release-promotion grant. The existing native
+// recovery implementation performs a bounded, owner-private disposable restore
+// and removes it before returning. No operational files are modified.
+// Do not mistake the older opt-in YAML-only receipt for this newer capsule.
+function verifyLinuxSixFileOwnerCapsule({home,ownerUid,profileName}){
+ const valid=typeof profileName==='string'
+  &&/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+  &&profileName!=='.'&&profileName!=='..';
+ if(!valid||typeof home!=='string'||!path.isAbsolute(home)
+   ||!Number.isSafeInteger(ownerUid)||ownerUid<0)return false;
+ const parent=path.join(home,'.local','state','chatgpt-remote-commander','owner-recovery');
+ const canonical=path.join(home,'.config','tunnel-client','chatgpt-remote-commander.yaml');
+ const explicit=path.join(parent,'rc012-native-pair-systemd-creds-'+profileName);
+ const legacy=profileName==='Emad'&&!fs.existsSync(canonical)
+  ?path.join(parent,'rc012-native-pair-systemd-creds'):null;
+ const useLegacy=!fs.existsSync(explicit)&&legacy!==null&&fs.existsSync(legacy);
+ const directory=useLegacy?legacy:explicit;
+ const pair=profileName==='chatgpt-remote-commander'
+  ||(profileName==='Emad'&&!fs.existsSync(canonical))?'default':profileName;
+ const entries=[
+  'tunnel-client/'+profileName+'.yaml',
+  ...['ca.crt','client.crt','client.key','server.crt','server.key']
+   .map(name=>'chatgpt-remote-commander/private-pair/'+pair+'/'+name)
+ ];
+ const config=path.join(home,'.config');
+ const digest=file=>{
+  const p=spawnSync('sha256sum',[file],{encoding:'utf8',timeout:5000,
+    maxBuffer:1024,stdio:['ignore','pipe','ignore']});
+  return p.status===0?/^([a-f0-9]{64})\s/.exec(p.stdout||'')?.[1]??null:null;
+ };
+ const ownedDirectory=dir=>{
+  const st=fs.lstatSync(dir);
+  return st.isDirectory()&&!st.isSymbolicLink()&&st.uid===ownerUid
+    &&(st.mode&0o077)===0&&fs.realpathSync(dir)===path.resolve(dir);
+ };
+ const ownedFile=(file,max)=>{
+  const st=fs.lstatSync(file);
+  if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1
+    ||st.uid!==ownerUid||(st.mode&0o077)!==0
+    ||st.size<1||st.size>max)return null;
+  return st;
+ };
+ const same=(f,old)=>{
+  const n=fs.lstatSync(f);
+  return n.dev===old.dev&&n.ino===old.ino
+    &&n.size===old.size&&n.mtimeMs===old.mtimeMs
+    &&n.ctimeMs===old.ctimeMs;
+ };
+ try{
+  if(!ownedDirectory(parent)||!ownedDirectory(directory))return false;
+  const receipt=path.join(directory,'receipt');
+  const cipher=path.join(directory,'owner-pair.cred');
+  const r=ownedFile(receipt,256),c=ownedFile(cipher,262144);
+  if(!r||!c)return false;
+  const match=/^RC012_USER_CREDS_V1\n([a-f0-9]{64})\n([a-f0-9]{64})\n$/
+    .exec(fs.readFileSync(receipt,'utf8'));
+  if(!match||digest(cipher)!==match[2])return false;
+  if(!ownedDirectory(path.join(config,'tunnel-client'))
+    ||!ownedDirectory(path.join(config,'chatgpt-remote-commander','private-pair',pair)))
+    return false;
+  const files=entries.map((name,i)=>{
+    const file=path.join(config,...name.split('/'));
+    return {file,name,stat:ownedFile(file,i===0?16384:65536)};
+  });
+  if(files.some(x=>!x.stat)
+    ||files.reduce((sum,x)=>sum+x.stat.size,0)>524288)return false;
+  const baseline=createHash('sha256');
+  for(const {file,name} of files){
+    const hash=digest(file);
+    if(!hash)return false;
+    baseline.update(name+':'+hash+'\n');
+  }
+  if(baseline.digest('hex')!==match[1])return false;
+  const script=path.join(path.dirname(fileURLToPath(import.meta.url)),
+    'owner-systemd-creds-profile-recovery.sh');
+  const args=useLegacy?['Verify']:['Verify','--profile-name='+profileName];
+  const result=spawnSync('/bin/bash',[script,...args],{
+    encoding:'utf8',timeout:45000,maxBuffer:256,
+    env:{...process.env,HOME:home},stdio:['ignore','pipe','ignore']
+  });
+  return result.status===0
+    &&result.stdout?.trim()==='RC012_LINUX_OWNER_CREDS_VERIFY_PASS_files_6'
+    &&same(receipt,r)&&same(cipher,c)
+    &&files.every(({file,stat})=>same(file,stat));
+ }catch{return false;}
+}
+
 export function verifyLinuxPrivateProfileBackup({
   home=process.env.HOME,ownerUid=process.getuid?.(),profileName=null,
   recoveryDir=process.env.REMOTE_COMMANDER_OWNER_PROFILE_RECOVERY
@@ -153,8 +242,10 @@ export function verifyLinuxPrivateProfileBackup({
   const validName=typeof profileName==='string'
     &&/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
     &&profileName!=='.'&&profileName!=='..';
-  if(!validName||typeof home!=='string'||!path.isAbsolute(home)
-    ||typeof recoveryDir!=='string'||!path.isAbsolute(recoveryDir))return false;
+  if(!validName||typeof home!=='string'||!path.isAbsolute(home))return false;
+  if(recoveryDir===undefined)
+    return verifyLinuxSixFileOwnerCapsule({home,ownerUid,profileName});
+  if(typeof recoveryDir!=='string'||!path.isAbsolute(recoveryDir))return false;
   if(!recoveryDir.startsWith(path.resolve(home)+path.sep))return false;
   const fixedReceipt='rc012-owner-private-profile-backups-verified.json';
   const encryptedName='tunnel-profile-'+profileName+'-owner-restorable.cred';

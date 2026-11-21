@@ -12,7 +12,7 @@ $function=[regex]::Match($source,'(?ms)^function Convert-DesktopNumericVersion\(
 if(-not$function.Success){throw 'DESKTOP_VERSION_FUNCTION_NOT_FOUND'}
 . ([scriptblock]::Create($function.Value))
 $expected=@(
-  [pscustomobject]@{source='0.12.0-dev.7';file='0.12.0.7'},
+  [pscustomobject]@{source='0.12.0-dev.8';file='0.12.0.8'},
   [pscustomobject]@{source='0.11.0-dev.105';file='0.11.0.105'},
   [pscustomobject]@{source='0.12.0-rc.9';file='0.12.0.9'},
   [pscustomobject]@{source='1.0.0';file='1.0.0.0'},

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {verifyLinuxPrivateProfileBackup} from '../packaging/unified/migration-preflight.mjs';
 import {fileURLToPath} from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -40,7 +41,7 @@ function makeFixture(){
 }
 
 test('Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',{
- skip:process.platform!=='linux',timeout:30000
+ skip:process.platform!=='linux',timeout:50000
 },t=>{
   const syntax=spawnSync('bash',['-n',script],{encoding:'utf8'});
   assert.equal(syntax.status,0,syntax.stderr);
@@ -65,18 +66,27 @@ test('Linux native owner credential recovery stages idempotently, verifies isola
     const restoration=run(['TestRestore'],input);
     assert.equal(restoration.status,0,restoration.stderr);
     assert.match(restoration.stdout,/RC012_LINUX_OWNER_CREDS_DRY_RESTORE_PASS_files_6/);
+    assert.equal(verifyLinuxPrivateProfileBackup({home:f.home,
+      ownerUid:process.getuid(),profileName:'Emad'}),true,
+      'canonical preflight must consume the actual same-owner six-file capsule');
     assert.equal(fs.readdirSync(path.dirname(f.recovery)).filter(x=>x.startsWith('.dry-restore-')).length,0);
     const repeat=run(['Stage'],input);
     assert.equal(repeat.status,0,repeat.stderr);
     assert.match(repeat.stdout,/RC012_LINUX_OWNER_CREDS_REUSED_files_6/);
     assert.equal(fs.readFileSync(f.yaml,'utf8'),f.source);
     fs.appendFileSync(f.yaml,'# source changed\n');
+    assert.equal(verifyLinuxPrivateProfileBackup({home:f.home,
+      ownerUid:process.getuid(),profileName:'Emad'}),false,
+      'a current profile changed after sealing must not inherit restore acceptance');
     const stale=run(['Stage'],input);
     assert.notEqual(stale.status,0);
     assert.match(stale.stderr,/RC012_USER_CREDS_EXISTING_BASELINE_CHANGED/);
     fs.writeFileSync(f.yaml,f.source);
     ciphertext[0]^=0x02;
     fs.writeFileSync(path.join(f.recovery,'owner-pair.cred'),ciphertext);
+    assert.equal(verifyLinuxPrivateProfileBackup({home:f.home,
+      ownerUid:process.getuid(),profileName:'Emad'}),false,
+      'ciphertext tamper must fail canonical preflight as well as native restore');
     const tampered=run(['Verify'],input);
     assert.notEqual(tampered.status,0);
     assert.match(tampered.stderr,/RC012_USER_CREDS_CIPHERTEXT_TAMPERED/);
