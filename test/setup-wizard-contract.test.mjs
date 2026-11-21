@@ -44,3 +44,10 @@ test('manual bind helpers bind both portable and native plugin manifests',()=>{
     assert.equal(t.includes('plugin_'),true);
   }
 });
+
+test('installer ZIP includes identity map module used by the Plugin generator',()=>{
+  const source=fs.readFileSync(path.join(root,'tools/build-release-assets.sh'),'utf8');
+  assert.match(source,/src\/profile-identity-registry\.mjs/u);
+  assert.match(source,/\$installer_stage\/src\/profile-identity-registry\.mjs/u);
+  assert.match(source,/SHA256SUMS-INSTALLER\.txt/u);
+});
