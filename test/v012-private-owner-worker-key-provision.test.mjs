@@ -7,7 +7,8 @@ import {spawnSync} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {
-  keyIdForSeed,inspectOwnerWorkerKeyCapsule
+  keyIdForSeed,inspectOwnerWorkerKeyCapsule,
+  rebindOwnerWorkerKeyCapsule
 } from '../tools/provision-owner-worker-key-linux.mjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
@@ -98,7 +99,7 @@ test('owner-native worker key CLI cannot be used to stage with invalid modes or 
   for(const args of [
     [],['--enroll'],['--stage','synthetic-profile'],
     ['--enroll','../another-owner'],['--preflight','../another-owner'],
-    ['--enroll','a/b']
+    ['--enroll','a/b'],['--rebind','../another-owner']
   ]){
     const result=spawnSync(process.execPath,[script,...args],{
       encoding:'utf8',timeout:4500,maxBuffer:2048
@@ -117,4 +118,107 @@ test('owner-native worker key CLI cannot be used to stage with invalid modes or 
     'O_EXCL','O_NOFOLLOW','privateDir','fs.renameSync(stage,directory)',
     'workerGrantIssued:false','fullAccessActive:false'
   ])assert.ok(source.includes(token),'missing fail-closed native owner gate: '+token);
+});
+
+
+const CERT='d'.repeat(64);
+const nextIdentity={...id,
+  expectedTunnelIdHash:'c'.repeat(64),
+  expectedClientLeafDerSha256:CERT
+};
+test('realistic Tunnel restart leaves old signed worker receipt invalid until native owner approves one-time stable rebind',async()=>{
+  const root=make();
+  try{
+    const f=capsule(root), oldFile=path.join(f.folder,'worker-key-id.json');
+    const cipherFile=path.join(f.folder,'worker-ed25519-seed.cred');
+    const oldBytes=fs.readFileSync(oldFile),oldCipher=fs.readFileSync(cipherFile);
+    const oldHash=hash(oldBytes);
+    const args={directory:f.folder,profile:id.profileId,identity:nextIdentity,
+      ownerUid:process.getuid(),unseal:()=>Buffer.from(f.seed)};
+    assert.throws(()=>inspectOwnerWorkerKeyCapsule(args),
+      {code:'RC012_WORKER_KEY_RECEIPT_INVALID'});
+    await assert.rejects(rebindOwnerWorkerKeyCapsule({
+      ...args,authorizeOwner:async()=>false,verifyCurrent:async()=>true
+    }),{code:'RC012_WORKER_KEY_REBIND_OWNER_CONSENT_REQUIRED'});
+    assert.deepEqual(fs.readFileSync(oldFile),oldBytes);
+    assert.deepEqual(fs.readFileSync(cipherFile),oldCipher);
+    const ready=await rebindOwnerWorkerKeyCapsule({
+      ...args,authorizeOwner:async()=>true,verifyCurrent:async()=>true
+    });
+    assert.deepEqual(ready,{rebound:true,receiptSchema:2});
+    const actual=inspectOwnerWorkerKeyCapsule(args);
+    assert.equal(actual.receiptSchema,2);
+    assert.equal(actual.keyId,f.keyId);
+    const record=JSON.parse(fs.readFileSync(oldFile,'utf8'));
+    assert.equal(record.schema,2);
+    assert.equal(record.clientLeafDerSha256,CERT);
+    assert.equal(Object.hasOwn(record,'tunnelIdHash'),false);
+    assert.deepEqual(fs.readFileSync(cipherFile),oldCipher);
+    const preserved=path.join(root,'worker-identity-receipt-history',
+      'v1-'+oldHash+'.json');
+    assert.deepEqual(fs.readFileSync(preserved),oldBytes);
+    const anotherLive={...nextIdentity,expectedTunnelIdHash:'e'.repeat(64)};
+    assert.equal(inspectOwnerWorkerKeyCapsule({...args,identity:anotherLive}).verified,true);
+    let asked=false;
+    assert.deepEqual(await rebindOwnerWorkerKeyCapsule({
+      ...args,identity:anotherLive,
+      authorizeOwner:async()=>{asked=true;return true;},
+      verifyCurrent:async()=>true
+    }),{rebound:false,receiptSchema:2});
+    assert.equal(asked,false);
+    assert.equal(fs.existsSync(path.join(root,'.worker-key-rebind.lock')),false);
+    assert.throws(()=>inspectOwnerWorkerKeyCapsule({
+      ...args,identity:{...anotherLive,expectedClientLeafDerSha256:'a'.repeat(64)}
+    }),{code:'RC012_WORKER_KEY_RECEIPT_INVALID'});
+    assert.throws(()=>inspectOwnerWorkerKeyCapsule({
+      ...args,identity:{...anotherLive,expectedOwnerSidHash:'f'.repeat(64)}
+    }),{code:'RC012_WORKER_KEY_RECEIPT_INVALID'});
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('worker rebind rejects stale owner, corrupted ciphertext and mid-approval Tunnel replacement',async()=>{
+  const root=make();
+  try{
+    const f=capsule(root), meta=path.join(f.folder,'worker-key-id.json');
+    const baseline=fs.readFileSync(meta);
+    const args={directory:f.folder,profile:id.profileId,identity:nextIdentity,
+      ownerUid:process.getuid(),unseal:()=>Buffer.from(f.seed)};
+    await assert.rejects(rebindOwnerWorkerKeyCapsule({
+      ...args,authorizeOwner:async()=>true,verifyCurrent:async()=>false
+    }),{code:'RC012_WORKER_KEY_REBIND_TUNNEL_CHANGED'});
+    assert.deepEqual(fs.readFileSync(meta),baseline);
+    await assert.rejects(rebindOwnerWorkerKeyCapsule({
+      ...args,identity:{...nextIdentity,expectedOwnerSidHash:'f'.repeat(64)},
+      authorizeOwner:async()=>true,verifyCurrent:async()=>true
+    }),{code:'RC012_WORKER_KEY_RECEIPT_INVALID'});
+    assert.deepEqual(fs.readFileSync(meta),baseline);
+    const bad=path.join(f.folder,'worker-ed25519-seed.cred');
+    fs.appendFileSync(bad,Buffer.from('BAD'));
+    await assert.rejects(rebindOwnerWorkerKeyCapsule({
+      ...args,authorizeOwner:async()=>true,verifyCurrent:async()=>true
+    }),{code:'RC012_WORKER_KEY_RECEIPT_INVALID'});
+    assert.deepEqual(fs.readFileSync(meta),baseline);
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('owner rebind refuses a Tunnel change between consent and atomic commit',async()=>{
+  const root=make();
+  try{
+    const f=capsule(root),meta=path.join(f.folder,'worker-key-id.json');
+    const previous=fs.readFileSync(meta);
+    let checks=0;
+    await assert.rejects(rebindOwnerWorkerKeyCapsule({
+      directory:f.folder,profile:id.profileId,identity:nextIdentity,
+      ownerUid:process.getuid(),unseal:()=>Buffer.from(f.seed),
+      authorizeOwner:async()=>true,
+      verifyCurrent:async()=>{checks++;return checks===1;}
+    }),{code:'RC012_WORKER_KEY_REBIND_TUNNEL_CHANGED'});
+    assert.equal(checks,2);
+    assert.deepEqual(fs.readFileSync(meta),previous);
+    assert.equal(fs.existsSync(path.join(root,'.worker-key-rebind.lock')),false);
+    assert.throws(()=>inspectOwnerWorkerKeyCapsule({
+      directory:f.folder,profile:id.profileId,identity:nextIdentity,
+      ownerUid:process.getuid(),unseal:()=>Buffer.from(f.seed)
+    }),{code:'RC012_WORKER_KEY_RECEIPT_INVALID'});
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
