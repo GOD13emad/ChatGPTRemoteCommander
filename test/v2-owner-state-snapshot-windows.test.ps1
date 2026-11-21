@@ -89,7 +89,7 @@ try{
   if($LASTEXITCODE -ne 2 -or -not (($localOverride | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
     throw 'V012_WINDOWS_QA_LOCAL_OVERRIDE_NOT_REJECTED'
   }
-  foreach($mode in @('OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig','OwnerLocalCredentialEligible')) {
+  foreach($mode in @('OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig','OwnerLocalCredentialEligible','OwnerLocalInstanceConfigEligible')) {
     $rejected=@(& pwsh -NoProfile -File $script -Mode $mode -FixtureRoot $src 2>&1)
     if($LASTEXITCODE -ne 2 -or -not (($rejected | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
       throw 'V012_WINDOWS_QA_FIXED_SCOPE_OVERRIDE_NOT_REJECTED'
@@ -108,7 +108,8 @@ try{
     [pscustomobject]@{Mode='OwnerLocalRouting';Name='routing';Component='routing';File='fixture.dat'},
     [pscustomobject]@{Mode='OwnerLocalCredentials';Name='credentials';Component='credentials';File='fixture.dpapi'},
     [pscustomobject]@{Mode='OwnerLocalCredentialEligible';Name='credentials';Component='credentials-eligible-subset';File='fixture.dpapi'},
-    [pscustomobject]@{Mode='OwnerLocalInstanceConfig';Name='instances';Component='instances-non-db-config';File='fixture.json'}
+    [pscustomobject]@{Mode='OwnerLocalInstanceConfig';Name='instances';Component='instances-non-db-config';File='fixture.json'},
+    [pscustomobject]@{Mode='OwnerLocalInstanceConfigEligible';Name='instances';Component='instances-non-db-eligible-subset';File='fixture.json'}
   )
   foreach($spec in $fakeSources){
     $dir=Join-Path $fakeState $spec.Name
@@ -131,14 +132,19 @@ try{
       $lines=@($o | Where-Object {$_ -is [string] -and $_ -like 'V012_WIN_OWNER_STATE_SNAPSHOT=*'})
       if($lines.Count -ne 1){throw 'V012_WINDOWS_QA_FIXED_SCOPE_RECEIPT_MISSING'}
       $receipt=($lines[0] -replace '^V012_WIN_OWNER_STATE_SNAPSHOT=',''|ConvertFrom-Json)
-      if($receipt.mode -ne $spec.Mode -or $receipt.files -ne 1 -or
+      $expectedCredentialScope=($spec.Mode -eq 'OwnerLocalCredentials')
+      $expectedConfigScope=($spec.Mode -eq 'OwnerLocalInstanceConfig')
+      if($receipt.credentialScopeComplete -ne $expectedCredentialScope -or
+         $receipt.configScopeComplete -ne $expectedConfigScope -or
+         $receipt.mode -ne $spec.Mode -or $receipt.files -ne 1 -or
          $receipt.offlineCopyAndRestore -ne 'PASS' -or
          $receipt.liveConsistencyVerified -ne $false -or
          $receipt.installedCutoverAuthorized -ne $false -or
          @($receipt.localRuntimeComponents).Count -ne 1 -or
          $receipt.localRuntimeComponents[0] -ne $spec.Component -or
-         ($spec.Mode -eq 'OwnerLocalInstanceConfig' -and $receipt.skippedDatabaseFiles -ne 1) -or
-         ($spec.Mode -eq 'OwnerLocalCredentialEligible' -and ($receipt.discoveredCredentialFiles -ne 1 -or $receipt.excludedCredentialFiles -ne 0 -or $receipt.credentialScopeComplete -ne $false))) {
+         ($spec.Mode -in @('OwnerLocalInstanceConfig','OwnerLocalInstanceConfigEligible') -and $receipt.skippedDatabaseFiles -ne 1) -or
+         ($spec.Mode -eq 'OwnerLocalCredentialEligible' -and ($receipt.discoveredCredentialFiles -ne 1 -or $receipt.excludedCredentialFiles -ne 0 -or $receipt.credentialScopeComplete -ne $false)) -or
+         ($spec.Mode -eq 'OwnerLocalInstanceConfigEligible' -and ($receipt.discoveredConfigFiles -ne 1 -or $receipt.excludedConfigFiles -ne 0 -or $receipt.excludedConfigDirectories -ne 0 -or $receipt.configScopeComplete -ne $false))) {
         throw 'V012_WINDOWS_QA_FIXED_SCOPE_RECEIPT_MISMATCH'
       }
       $expectedSnapshot=Join-Path (Join-Path $fakeLocal 'CommanderV2\migration-private') $receipt.snapshotId
