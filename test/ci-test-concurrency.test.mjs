@@ -751,7 +751,13 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
   assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');
   assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
-  assert.ok(runner.includes('timeout: 30000'),'no extension of the per-process timeout');
+  assert.ok(runner.includes('timeout: index === 13 ? (part === 0 ? 35000 : 65000) : 30000'),
+    'ordinary processes retain 30s, only isolated owner-credential fixtures get declared 30/60s deadlines plus 5s overhead');
+  assert.ok(runner.includes('index === 13 ? linuxOwnerRecoveryTests.map(name =>'),
+    'only the named native credential tests may use longer bounded deadlines');
+  for(const name of ['Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',
+    'profile-specific owner recovery capsules never share a Tunnel or private TLS pair'])
+    assert.ok(runner.includes(name),'native credential fixture must remain covered: '+name);
   assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
 });
 
