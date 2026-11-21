@@ -206,7 +206,19 @@ try{
  $p=Start-Process -FilePath $installer -ArgumentList '/S' -PassThru -Wait
  if($p.ExitCode -ne 0){Fail ('RC012_NSIS_INSTALLER_EXIT_'+$p.ExitCode)}
  $new=Find-NewRegistration
- if(-not $new){Fail 'RC012_NSIS_REGISTERED_INSTALL_NOT_FOUND'}
+ if(-not $new){
+  if($env:GITHUB_ACTIONS -eq 'true'){
+   $candidates=@(Get-ItemProperty -Path ($uninstallRoot+'\*') -ErrorAction SilentlyContinue |
+     Where-Object {$_.PSObject.Properties['DisplayName'] -and $_.DisplayName -match 'Commander'} |
+     Select-Object DisplayName,DisplayVersion,PSChildName,InstallLocation)
+   Write-Output ('RC012_NSIS_CI_UNINSTALL_REGISTRATION_DIAG '+($candidates|ConvertTo-Json -Compress -Depth 4))
+   $d=Join-Path $local 'Programs'
+   $names=@(Get-ChildItem -LiteralPath $d -Directory -ErrorAction SilentlyContinue |
+     Where-Object {$_.Name -match 'Commander'}|Select-Object -ExpandProperty Name)
+   Write-Output ('RC012_NSIS_CI_PROGRAM_DIRECTORY_DIAG '+($names -join '|'))
+  }
+  Fail 'RC012_NSIS_REGISTERED_INSTALL_NOT_FOUND'
+ }
  $newRoot=Assert-NewInstalled $new
  $r.phase='INSTALLED';$r.newInstallLocation=$newRoot;Save-Receipt $r
  Write-Output 'RC012_OWNER_GUI_TRANSACTIONAL_MIGRATION_INSTALL_PASS'
