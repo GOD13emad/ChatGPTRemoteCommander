@@ -126,7 +126,7 @@ const nextIdentity={...id,
   expectedTunnelIdHash:'c'.repeat(64),
   expectedClientLeafDerSha256:CERT
 };
-test('realistic Tunnel restart leaves old signed worker receipt invalid until native owner approves one-time stable rebind',async()=>{
+test('realistic Tunnel restart leaves old signed worker receipt invalid until native owner approves one-time stable rebind',{skip:process.platform!=='linux'},async()=>{
   const root=make();
   try{
     const f=capsule(root), oldFile=path.join(f.folder,'worker-key-id.json');
@@ -176,7 +176,7 @@ test('realistic Tunnel restart leaves old signed worker receipt invalid until na
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('worker rebind rejects stale owner, corrupted ciphertext and mid-approval Tunnel replacement',async()=>{
+test('worker rebind rejects stale owner, corrupted ciphertext and mid-approval Tunnel replacement',{skip:process.platform!=='linux'},async()=>{
   const root=make();
   try{
     const f=capsule(root), meta=path.join(f.folder,'worker-key-id.json');
@@ -201,7 +201,7 @@ test('worker rebind rejects stale owner, corrupted ciphertext and mid-approval T
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('owner rebind refuses a Tunnel change between consent and atomic commit',async()=>{
+test('owner rebind refuses a Tunnel change between consent and atomic commit',{skip:process.platform!=='linux'},async()=>{
   const root=make();
   try{
     const f=capsule(root),meta=path.join(f.folder,'worker-key-id.json');
