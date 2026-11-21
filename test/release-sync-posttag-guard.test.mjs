@@ -23,6 +23,14 @@ assert.ok(script.includes('test "$count" -eq "$expected_count"'));
 assert.ok(script.includes('expected_count=20'));
 assert.ok(script.includes('then expected_count=21; fi'));
 assert.ok(workflow.includes("steps.release_identity.outputs.accepted == 'true'"));
+test('Release Sync skips stable asset publisher on ordinary main development pushes',()=>{
+ const section=workflow.match(/^  publish:\n    if: ([^\n]+)/m);
+ assert.ok(section,'publish job and explicit event guard required');
+ assert.match(section[1],/github\.event_name\s*==\s*'push'/);
+ assert.match(section[1],/startsWith\(github\.ref,\s*'refs\/tags\/v'\)/);
+ assert.doesNotMatch(section[1],/github\.ref\s*!=/);
+});
+
 const git=(cwd,...args)=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'});
 test('R171 tag-only publication gate skips post-tag main without re-signing or retagging',t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-posttag-r171-'));
