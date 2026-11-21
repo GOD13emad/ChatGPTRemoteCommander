@@ -6,11 +6,36 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const modulePath=path.join(repo,'packaging/unified/migration-preflight.mjs');
+
+test('Windows exact owner selector has no default or cross-profile credential fallback',()=>{
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-windows-scoped-profile-'));
+ const folder=path.join(home,'tunnel-client');
+ const make=(name,port)=>fs.writeFileSync(path.join(folder,name+'.yaml'),[
+  'config_version: 1','control_plane:','  api_key: TEST_ONLY_DO_NOT_USE',
+  'mcp:','  server_urls:','    - channel: main',
+  '      url: "http://127.0.0.1:'+port+'/mcp"'
+ ].join('\n'),{mode:0o600});
+ try{
+  fs.mkdirSync(folder,{mode:0o700});
+  make('aliemad-Server',48833);
+  make('MMZ',48834);
+  assert.deepEqual(readWindowsOwnerTunnelBinding({appData:home,profileName:'aliemad-Server'}),
+    {profilePresent:true,valid:true,port:48833,tls:false});
+  assert.deepEqual(readWindowsOwnerTunnelBinding({appData:home,profileName:'MMZ'}),
+    {profilePresent:true,valid:true,port:48834,tls:false});
+  assert.deepEqual(readWindowsOwnerTunnelBinding({appData:home}),
+    {profilePresent:false,valid:false});
+  for(const invalid of ['../aliemad-Server','.','..','',null,'a/b']){
+    assert.deepEqual(readWindowsOwnerTunnelBinding({appData:home,profileName:invalid}),
+      {profilePresent:false,valid:false});
+  }
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
 
 test('read-only Linux inventory preserves Native Tunnel and old live service blockers',()=>{
  const r=assessMigration({platform:'linux',inventoryReliable:true,

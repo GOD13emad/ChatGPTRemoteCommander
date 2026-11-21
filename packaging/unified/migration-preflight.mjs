@@ -74,11 +74,15 @@ export function parseMainTunnelBinding(yaml){
     ||port<1024||port>65535)return null;
   return Object.freeze({port,channel:'main',path:'/mcp',tls:url.protocol==='https:'});
 }
-function readOwnerTunnelBinding(){
-  const appData=process.env.APPDATA;
-  if(typeof appData!=='string'||!path.isAbsolute(appData))
+export function readWindowsOwnerTunnelBinding({
+  appData=process.env.APPDATA,profileName='chatgpt-remote-commander'
+}={}){
+  if(typeof profileName!=='string'
+    ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    ||profileName==='.'||profileName==='..'
+    ||typeof appData!=='string'||!path.isAbsolute(appData))
     return {profilePresent:false,valid:false};
-  const file=path.join(appData,'tunnel-client','chatgpt-remote-commander.yaml');
+  const file=path.join(appData,'tunnel-client',profileName+'.yaml');
   try{
     const stat=fs.lstatSync(file);
     if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16384)
@@ -686,8 +690,10 @@ export function windowsOwnerDpapiVerifyOutputAccepted(status,stdout){
   return status===0 && typeof stdout==='string'
     && stdout.trim()==='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
 }
-function verifyWindowsOwnerDpapiBackup(){
-  if(process.platform!=='win32')return false;
+function verifyWindowsOwnerDpapiBackup(profileName='chatgpt-remote-commander'){
+  if(process.platform!=='win32'||typeof profileName!=='string'
+    ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
+    ||profileName==='.'||profileName==='..')return false;
   const programFiles=process.env.ProgramFiles,appData=process.env.APPDATA;
   if(typeof programFiles!=='string'||!path.win32.isAbsolute(programFiles)
     ||typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
@@ -699,7 +705,7 @@ function verifyWindowsOwnerDpapiBackup(){
     if(!binary.isFile()||binary.isSymbolicLink()
       ||!source.isFile()||source.isSymbolicLink())return false;
     const result=spawnSync(exe,['-NoLogo','-NoProfile','-NonInteractive',
-      '-File',script,'-Mode','Verify','-ProfileName','chatgpt-remote-commander'],{
+      '-File',script,'-Mode','Verify','-ProfileName',profileName],{
       encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:1024,
       stdio:['ignore','pipe','ignore']
     });
@@ -707,7 +713,12 @@ function verifyWindowsOwnerDpapiBackup(){
       &&windowsOwnerDpapiVerifyOutputAccepted(result.status,result.stdout);
   }catch{return false;}
 }
-function windowsFacts(){
+function windowsFacts({profileName=null}={}){
+  const selectedProfile=profileName??'chatgpt-remote-commander';
+  if(typeof selectedProfile!=='string'
+    ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(selectedProfile)
+    ||selectedProfile==='.'||selectedProfile==='..')
+    throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
   const paths=[
     'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander',
     'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander',
@@ -720,7 +731,7 @@ function windowsFacts(){
   const installerFamily=present.length===1
     ?classifyWindowsUninstallRegistryResponse(present[0].stdout)
     :present.length===0?'none':'multiple-or-unverified';
-  const tunnel=readOwnerTunnelBinding();
+  const tunnel=readWindowsOwnerTunnelBinding({profileName:selectedProfile});
   const targetVersion=tunnel.valid?probeLoopbackCoreVersion(tunnel.port):null;
   const routerReport=tunnel.valid?probeLoopbackRouterStatus(tunnel.port):null;
   const backendVersion=routerReport?.activePort
@@ -736,12 +747,12 @@ function windowsFacts(){
     routerDetected:route.detected,routerMappingMatches:route.mappingMatches,
     routerBackendPort:route.detected?route.backendPort:null,
     routerBackendVersion:route.detected?route.backendVersion:null,
-    profileBackupReceiptVerified:verifyWindowsOwnerDpapiBackup(),
+    profileBackupReceiptVerified:verifyWindowsOwnerDpapiBackup(selectedProfile),
     units:[]};
 }
 export function inspectLocalPlatform(platform=process.platform,{profileName=null}={}){
   if(platform==='linux')return linuxFacts({profileName});
-  if(platform==='win32'&&profileName===null)return windowsFacts();
+  if(platform==='win32')return windowsFacts({profileName});
   throw Error('RC012_MIGRATION_UNSUPPORTED_PLATFORM');
 }
 export function localReport(platform=process.platform,options={}){
@@ -754,7 +765,8 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1]
     throw Error('RC012_MIGRATION_PREFLIGHT_READ_ONLY_ONLY');
   let profileName=null;
   if(argv.length===2){
-    if(os.platform()!=='linux'||!argv[1].startsWith('--profile-name='))
+    if(!['linux','win32'].includes(os.platform())
+      ||!argv[1].startsWith('--profile-name='))
       throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
     profileName=argv[1].slice('--profile-name='.length);
     if(!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
@@ -762,6 +774,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1]
       throw Error('RC012_MIGRATION_PREFLIGHT_PROFILE_INVALID');
   }
   const report=localReport(os.platform(),{profileName});
-  process.stdout.write(JSON.stringify(report,null,2)+'\n');
+  process.stdout.write(JSON.stringify(profileName===null?report:
+    {...report,ownerProfileName:profileName},null,2)+'\n');
   if(report.blocked.length)process.exitCode=2;
 }
