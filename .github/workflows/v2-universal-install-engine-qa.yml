@@ -16,6 +16,7 @@ on:
       - 'tools/v012-unified-release-entry.mjs'
       - 'tools/v012-unified-release-assemble.mjs'
       - 'test/v012-unified-release-candidate.test.mjs'
+      - 'test/v012-packaged-headless-runtime.test.mjs'
       - 'tools/v012-native-build-deb-qa.sh'
       - 'tools/v012-native-build-nsis-qa.ps1'
       - 'tools/v012-candidate-windows-nsis.nsi'
@@ -45,7 +46,7 @@ jobs:
           node --check tools/v2-universal-native-install.mjs
           node --check tools/v012-unified-release-assemble.mjs
           node --check tools/v012-unified-release-entry.mjs
-          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs test/v012-unified-release-candidate.test.mjs
+          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs test/v012-unified-release-candidate.test.mjs test/v012-packaged-headless-runtime.test.mjs
   universal-windows:
     runs-on: windows-2022
     timeout-minutes: 8
@@ -70,7 +71,7 @@ jobs:
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           node --check tools/v012-unified-release-entry.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
-          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs test/v012-unified-release-candidate.test.mjs
+          node --test test/v2-universal-install-engine.test.mjs test/v2-universal-bundle-build.test.mjs test/v2-universal-native-plan.test.mjs test/v2-universal-native-install.test.mjs test/v012-unified-release-candidate.test.mjs test/v012-packaged-headless-runtime.test.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
   v012-native-candidate-linux:
     runs-on: ubuntu-24.04
