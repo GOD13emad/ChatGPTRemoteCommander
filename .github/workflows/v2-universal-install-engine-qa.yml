@@ -97,6 +97,13 @@ jobs:
           if dpkg-query -W commander-v2 >/dev/null 2>&1; then echo NATIVE_PACKAGE_REGISTRATION_REMAINS; exit 30; fi
           test ! -e '/opt/Commander V2/bin/commander-v2.mjs'
           echo V012_UNIFIED_REAL_SOURCE_NATIVE_LINUX_INSTALL_PURGE_PASS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Commander-V2-v0.12.0-rc1-linux-x64-qa
+          path: ${{ runner.temp }}/Commander-V2-v0.12.0-rc1-linux-x64.deb
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
   v012-native-candidate-windows:
     runs-on: windows-2022
     timeout-minutes: 23
@@ -141,3 +148,10 @@ jobs:
           if(Test-Path -LiteralPath $reg){throw 'V012_NSI_REGISTRATION_REMAINS'}
           if(Test-Path -LiteralPath $entry){throw 'V012_NSI_EXECUTABLE_REMAINS'}
           'V012_UNIFIED_REAL_SOURCE_NATIVE_WINDOWS_INSTALL_UNINSTALL_PASS'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Commander-V2-v0.12.0-rc1-windows-x64-qa
+          path: ${{ runner.temp }}/Commander-V2-v0.12.0-rc1-windows-x64.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
