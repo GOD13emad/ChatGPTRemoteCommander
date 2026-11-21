@@ -3,7 +3,8 @@
 # Stage/Verify only. No restore, service change, profile mutation, or key output.
 [CmdletBinding()]
 param(
-  [ValidateSet('Stage','Verify','TestRestore')][string]$Mode='Stage'
+  [ValidateSet('Stage','Verify','TestRestore')][string]$Mode='Stage',
+  [string]$ProfileName
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -15,14 +16,25 @@ if(-not $owner.User){throw 'RC012_OWNER_SID_UNAVAILABLE'}
 $sid=$owner.User.Value
 $sourceRoot=$env:APPDATA
 $backupRoot=Join-Path $sourceRoot 'ChatGPTRemoteCommander\owner-recovery'
-$target=Join-Path $backupRoot 'rc012-native-pair-dpapi'
+# Legacy no-ProfileName capsule remains unchanged, explicit owner profiles
+# get their own namespaced encrypted backup and same-owner TLS private pair.
+$profileExplicit=$PSBoundParameters.ContainsKey('ProfileName')
+if($profileExplicit){
+ if([string]::IsNullOrWhiteSpace($ProfileName) -or
+    $ProfileName -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$' -or
+    $ProfileName -in @('.','..')){throw 'RC012_DPAPI_OWNER_PROFILE_INVALID'}
+}else{$ProfileName='chatgpt-remote-commander'}
+$pairName=if($ProfileName -ceq 'chatgpt-remote-commander'){'default'}else{$ProfileName}
+$capsuleName=if($profileExplicit){'rc012-native-pair-dpapi-'+$ProfileName}
+             else{'rc012-native-pair-dpapi'}
+$target=Join-Path $backupRoot $capsuleName
 $files=@(
- 'tunnel-client\chatgpt-remote-commander.yaml',
- 'ChatGPTRemoteCommander\private-pair\default\ca.crt',
- 'ChatGPTRemoteCommander\private-pair\default\client.crt',
- 'ChatGPTRemoteCommander\private-pair\default\client.key',
- 'ChatGPTRemoteCommander\private-pair\default\server.crt',
- 'ChatGPTRemoteCommander\private-pair\default\server.key'
+ ('tunnel-client\'+$ProfileName+'.yaml'),
+ ('ChatGPTRemoteCommander\private-pair\'+$pairName+'\ca.crt'),
+ ('ChatGPTRemoteCommander\private-pair\'+$pairName+'\client.crt'),
+ ('ChatGPTRemoteCommander\private-pair\'+$pairName+'\client.key'),
+ ('ChatGPTRemoteCommander\private-pair\'+$pairName+'\server.crt'),
+ ('ChatGPTRemoteCommander\private-pair\'+$pairName+'\server.key')
 )
 function Assert-PrivateFile([string]$File){
  $item=Get-Item -LiteralPath $File -Force -ErrorAction Stop
@@ -102,12 +114,14 @@ function Verify-Capsule([string]$Directory,[bool]$TestRestore=$false){
  $cipher=[IO.File]::ReadAllBytes($blob)
  $meta=Get-Content -LiteralPath $receipt -Raw -Encoding UTF8 | ConvertFrom-Json
  if($meta.schema -ne 1 -or $meta.mode -ne 'DPAPI_CURRENT_USER' -or $meta.cipherSha256 -cne (Hash $cipher) -or $meta.entries -ne $files.Count){throw 'RC012_DPAPI_RECEIPT_INVALID'}
+ if($profileExplicit -and $meta.profileName -cne $ProfileName){throw 'RC012_DPAPI_PROFILE_BINDING_INVALID'}
  try{
    $raw=[Security.Cryptography.ProtectedData]::Unprotect(
       $cipher,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
  }catch{throw 'RC012_DPAPI_CURRENT_USER_DECRYPT_FAILED'}
  $obj=[Text.Encoding]::UTF8.GetString($raw)|ConvertFrom-Json
  if($obj.schema -ne 1 -or $obj.ownerSid -ne $sid -or @($obj.files).Count -ne $files.Count){throw 'RC012_DPAPI_CONTENT_INVALID'}
+ if($profileExplicit -and $obj.profileName -cne $ProfileName){throw 'RC012_DPAPI_PROFILE_BINDING_INVALID'}
  $total=0
  $restoreDir=$null
  if($TestRestore){
@@ -169,13 +183,13 @@ $stage=Join-Path $backupRoot ('.stage-'+[guid]::NewGuid().ToString('N'))
 try{
  Ensure-PrivateDirectory $stage $true
  $payload=[Text.Encoding]::UTF8.GetBytes((@{
-   schema=1;ownerSid=$sid;files=$entries
+   schema=1;ownerSid=$sid;files=$entries;profileName=$ProfileName
  }|ConvertTo-Json -Depth 6 -Compress))
  $sealed=[Security.Cryptography.ProtectedData]::Protect(
    $payload,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
  [IO.File]::WriteAllBytes((Join-Path $stage 'owner-capsule.dpapi'),$sealed)
  $meta=@{schema=1;mode='DPAPI_CURRENT_USER';entries=$files.Count;
-   cipherSha256=(Hash $sealed)}
+   cipherSha256=(Hash $sealed);profileName=$ProfileName}
  [IO.File]::WriteAllText((Join-Path $stage 'receipt.json'),
    ($meta|ConvertTo-Json -Compress),[Text.UTF8Encoding]::new($false))
  [void](Verify-Capsule $stage)

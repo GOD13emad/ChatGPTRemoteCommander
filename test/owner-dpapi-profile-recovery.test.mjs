@@ -9,9 +9,11 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const script=path.resolve(here,'../packaging/unified/owner-dpapi-profile-recovery.ps1');
 const pwsh=process.platform==='win32'?(process.env.ProgramFiles
   ?path.join(process.env.ProgramFiles,'PowerShell','7','pwsh.exe'):'pwsh.exe'):'pwsh';
-function execute(appData,mode){
- const result=spawnSync(pwsh,['-NoLogo','-NoProfile','-NonInteractive',
-   '-File',script,'-Mode',mode],{
+function execute(appData,mode,profileName=null){
+ const args=['-NoLogo','-NoProfile','-NonInteractive',
+   '-File',script,'-Mode',mode];
+ if(profileName!==null)args.push('-ProfileName',profileName);
+ const result=spawnSync(pwsh,args,{
    encoding:'utf8',windowsHide:true,timeout:10000,maxBuffer:8192,
    env:{...process.env,APPDATA:appData}
  });
@@ -82,4 +84,68 @@ test('Windows owner DPAPI recovery capsule stages and verifies only encrypted ow
  }finally{
    fs.rmSync(owner,{recursive:true,force:true});
  }
+});
+
+
+test('Windows DPAPI capsules isolate each explicit owner profile and reject cross-profile restores',{
+ skip:process.platform!=='win32',timeout:60000
+},()=>{
+ const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-dpapi-multipair-'));
+ const names=['chatgpt-remote-commander','MMZ'];
+ const profileDir=path.join(home,'tunnel-client');
+ const base=path.join(home,'ChatGPTRemoteCommander');
+ const pairRoot=path.join(base,'private-pair');
+ const recovery=path.join(base,'owner-recovery');
+ const fileNames=['ca.crt','client.crt','client.key','server.crt','server.key'];
+ const capsule=n=>path.join(recovery,'rc012-native-pair-dpapi-'+n);
+ try{
+   fs.mkdirSync(profileDir,{recursive:true});
+   fs.mkdirSync(path.join(pairRoot,'default'),{recursive:true});
+   fs.mkdirSync(path.join(pairRoot,'MMZ'),{recursive:true});
+   for(const name of names){
+     const certName=name==='chatgpt-remote-commander'?'default':name;
+     fs.writeFileSync(path.join(profileDir,name+'.yaml'),
+       'config_version: 1\ncontrol_plane:\n  api_key: NONPRODUCTION_OWNER_'+name+'\n');
+     for(const file of fileNames)
+       fs.writeFileSync(path.join(pairRoot,certName,file),
+         'SYNTHETIC_OWNER_'+name+'_'+file+'\n');
+   }
+   for(const invalid of ['', '../wrong','..','bad/name','a'.repeat(65)]){
+     const x=execute(home,'Stage',invalid);
+     assert.notEqual(x.status,0,invalid);
+     assert.match(x.stderr,/RC012_DPAPI_OWNER_PROFILE_INVALID/);
+   }
+   const a=execute(home,'Stage',names[0]);
+   assert.equal(a.status,0,a.stderr);
+   const missing=execute(home,'Verify',names[1]);
+   assert.notEqual(missing.status,0,'profile B must not inherit profile A backup');
+   const b=execute(home,'Stage',names[1]);
+   assert.equal(b.status,0,b.stderr);
+   for(const name of names){
+     assert.equal(execute(home,'Verify',name).status,0);
+     const restored=execute(home,'TestRestore',name);
+     assert.equal(restored.status,0,restored.stderr);
+     assert.match(restored.stdout,/RESTORE_SIMULATION_PASS files=6/);
+     assert.match(execute(home,'Stage',name).stdout,/BACKUP_REUSED files=6/);
+   }
+   assert.equal(fs.existsSync(path.join(recovery,'rc012-native-pair-dpapi')),false,
+     'explicit profile scopes must not create or mutate the legacy capsule');
+   const payloadName='owner-capsule.dpapi',receiptName='receipt.json';
+   const originalPayload=fs.readFileSync(path.join(capsule(names[1]),payloadName));
+   const originalReceipt=fs.readFileSync(path.join(capsule(names[1]),receiptName));
+   try{
+     fs.copyFileSync(path.join(capsule(names[0]),payloadName),path.join(capsule(names[1]),payloadName));
+     fs.copyFileSync(path.join(capsule(names[0]),receiptName),path.join(capsule(names[1]),receiptName));
+     const crossed=execute(home,'Verify',names[1]);
+     assert.notEqual(crossed.status,0);
+     assert.match(crossed.stderr,/RC012_DPAPI_PROFILE_BINDING_INVALID/);
+   }finally{
+     fs.writeFileSync(path.join(capsule(names[1]),payloadName),originalPayload);
+     fs.writeFileSync(path.join(capsule(names[1]),receiptName),originalReceipt);
+   }
+   assert.equal(execute(home,'Verify',names[1]).status,0);
+   for(const name of names)
+     assert.match(fs.readFileSync(path.join(profileDir,name+'.yaml'),'utf8'),
+       /NONPRODUCTION_OWNER_/);
+ }finally{fs.rmSync(home,{force:true,recursive:true});}
 });
