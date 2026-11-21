@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {snapshotOneSqlite} from '../tools/v012-owner-instances-sqlite-backup.mjs';
+import {snapshotOneSqlite,selectEligibleDatabases} from '../tools/v012-owner-instances-sqlite-backup.mjs';
 
 test('online backup excludes a live uncommitted WAL row and proves disposable restore',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'v012-instances-sqlite-fixture-'));
@@ -43,4 +43,14 @@ test('existing output is never overwritten',async()=>{
   await assert.rejects(snapshotOneSqlite(source,dest,restore),/OUTPUT_EXISTS/);
   assert.equal(fs.readFileSync(dest,'utf8'),'ORIGINAL_BYTES');
  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+
+test('partial current-token backup declares exclusion rather than inventing access',()=>{
+ const inputs=[{file:'owner-a'},{file:'group-b'},{file:'owner-c'}];
+ const result=selectEligibleDatabases(inputs,p=>{if(p==='group-b')throw Error('ACL_REJECTED')});
+ assert.deepEqual(result.eligible.map(x=>x.file),['owner-a','owner-c']);
+ assert.equal(result.excludedBySourceAcl,1);
+ assert.equal(inputs.length,3);
+ assert.throws(()=>selectEligibleDatabases([{file:'group-b'}],()=>{throw Error('DENIED')}),/NO_TOKEN_ELIGIBLE_DATABASES/);
 });

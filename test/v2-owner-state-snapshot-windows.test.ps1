@@ -89,7 +89,7 @@ try{
   if($LASTEXITCODE -ne 2 -or -not (($localOverride | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
     throw 'V012_WINDOWS_QA_LOCAL_OVERRIDE_NOT_REJECTED'
   }
-  foreach($mode in @('OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig')) {
+  foreach($mode in @('OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig','OwnerLocalCredentialEligible')) {
     $rejected=@(& pwsh -NoProfile -File $script -Mode $mode -FixtureRoot $src 2>&1)
     if($LASTEXITCODE -ne 2 -or -not (($rejected | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
       throw 'V012_WINDOWS_QA_FIXED_SCOPE_OVERRIDE_NOT_REJECTED'
@@ -106,7 +106,8 @@ try{
   }
   $fakeSources=@(
     [pscustomobject]@{Mode='OwnerLocalRouting';Name='routing';Component='routing';File='fixture.dat'},
-    [pscustomobject]@{Mode='OwnerLocalCredentials';Name='credentials';Component='credentials';File='fixture.dat'},
+    [pscustomobject]@{Mode='OwnerLocalCredentials';Name='credentials';Component='credentials';File='fixture.dpapi'},
+    [pscustomobject]@{Mode='OwnerLocalCredentialEligible';Name='credentials';Component='credentials-eligible-subset';File='fixture.dpapi'},
     [pscustomobject]@{Mode='OwnerLocalInstanceConfig';Name='instances';Component='instances-non-db-config';File='fixture.json'}
   )
   foreach($spec in $fakeSources){
@@ -136,7 +137,8 @@ try{
          $receipt.installedCutoverAuthorized -ne $false -or
          @($receipt.localRuntimeComponents).Count -ne 1 -or
          $receipt.localRuntimeComponents[0] -ne $spec.Component -or
-         ($spec.Mode -eq 'OwnerLocalInstanceConfig' -and $receipt.skippedDatabaseFiles -ne 1)) {
+         ($spec.Mode -eq 'OwnerLocalInstanceConfig' -and $receipt.skippedDatabaseFiles -ne 1) -or
+         ($spec.Mode -eq 'OwnerLocalCredentialEligible' -and ($receipt.discoveredCredentialFiles -ne 1 -or $receipt.excludedCredentialFiles -ne 0 -or $receipt.credentialScopeComplete -ne $false))) {
         throw 'V012_WINDOWS_QA_FIXED_SCOPE_RECEIPT_MISMATCH'
       }
       $expectedSnapshot=Join-Path (Join-Path $fakeLocal 'CommanderV2\migration-private') $receipt.snapshotId

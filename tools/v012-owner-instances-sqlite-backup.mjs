@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync,backup} from 'node:sqlite';
 
@@ -26,10 +26,11 @@ function noAliases(p){
 }
 function acl(action,paths){
  const adapter=fileURLToPath(new URL('./v2-universal-owner-acl.ps1',import.meta.url));
- const result=execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',adapter,
+ const result=spawnSync('pwsh',['-NoProfile','-NonInteractive','-File',adapter,
   '-Action',action],{input:JSON.stringify(paths),encoding:'utf8',timeout:20000,
-   windowsHide:true,maxBuffer:4096});
- if(!result.includes('V2_OWNER_ACL_PASS'))fail('ACL_NOT_VERIFIED');
+   windowsHide:true,maxBuffer:4096,stdio:['pipe','pipe','pipe']});
+ if(result.error||result.status!==0||typeof result.stdout!=='string'||
+    !result.stdout.includes('V2_OWNER_ACL_PASS'))fail('ACL_NOT_VERIFIED');
 }
 function sources(root){
  noAliases(root);
@@ -68,6 +69,17 @@ function sources(root){
  }
  return found;
 }
+// Partial mode preserves every DB the *current token* can lawfully access.
+// A denied source remains explicitly excluded; never claim complete restore.
+export function selectEligibleDatabases(candidates,assertSourceAllowed){
+ const eligible=[];let excludedBySourceAcl=0;
+ for(const f of candidates){
+  try{assertSourceAllowed(f.file);eligible.push(f);}
+  catch{excludedBySourceAcl++;}
+ }
+ if(eligible.length===0)fail('NO_TOKEN_ELIGIBLE_DATABASES');
+ return {eligible,excludedBySourceAcl};
+}
 export async function snapshotOneSqlite(source,target,restored){
  if(fs.existsSync(target)||fs.existsSync(restored))fail('OUTPUT_EXISTS');
  const db=new DatabaseSync(source,{readOnly:true});
@@ -90,7 +102,9 @@ export async function snapshotOneSqlite(source,target,restored){
 }
 async function run(){
  if(process.platform!=='win32'||process.argv.length!==3||
-    process.argv[2]!=='--snapshot')fail('EXPLICIT_WINDOWS_SNAPSHOT_REQUIRED');
+    !['--snapshot','--snapshot-eligible-subset'].includes(process.argv[2]))
+   fail('EXPLICIT_WINDOWS_SNAPSHOT_REQUIRED');
+ const allowPartial=process.argv[2]==='--snapshot-eligible-subset';
  if(!process.env.LOCALAPPDATA)fail('LOCALAPPDATA_NOT_SET');
  const base=path.resolve(process.env.LOCALAPPDATA);
  const root=path.join(base,'ChatGPTRemoteCommander','instances');
@@ -98,9 +112,16 @@ async function run(){
  noAliases(root);noAliases(parent);
  acl('CheckSources',[root]);
  acl('CheckPrivate',[parent]);
- const selected=sources(root);
- acl('CheckSources',selected.map(x=>x.file));
- const id='v012-instances-sqlite-'+crypto.randomUUID();
+ const discovered=sources(root);
+ let selected,excludedBySourceAcl=0;
+ if(allowPartial){
+   ({eligible:selected,excludedBySourceAcl}=selectEligibleDatabases(
+     discovered,file=>acl('CheckSources',[file])));
+ }else{
+   acl('CheckSources',discovered.map(x=>x.file));
+   selected=discovered;
+ }
+ const id='v012-instances-sqlite-'+(allowPartial?'eligible-subset-':'')+crypto.randomUUID();
  const dest=path.join(parent,id);
  fs.mkdirSync(dest,{recursive:false});
  let accepted=false;
@@ -120,14 +141,19 @@ async function run(){
    records.push({relative:f.relative,backup:'db-'+index+'.sqlite',
     sha256:result.sha256,bytes:result.bytes});
   }
-  const manifest={schema:1,scope:'owner-local-instances-sqlite',
+  const manifest={schema:1,scope:allowPartial?'current-token-eligible-instances-sqlite':'owner-local-instances-sqlite',
+   discoveredDatabases:discovered.length,excludedBySourceAcl,
+   allDiscoveredDatabasesCovered:excludedBySourceAcl===0,
    entries:records,files:records.length,bytes:total};
   const json=JSON.stringify(manifest),digest=sha(json),mf=path.join(dest,'manifest.json');
   fs.writeFileSync(mf,json,{flag:'wx'});acl('MakePrivate',[mf]);
   if(sha(fs.readFileSync(mf))!==digest)fail('MANIFEST_READBACK_FAILED');
   acl('CheckPrivate',[dest,data,mf,...records.map(x=>path.join(data,x.backup))]);
   const receipt={schema:1,snapshotId:id,files:records.length,bytes:total,
-   manifestSha256:digest,sqliteOnlineBackup:'PASS',
+   manifestSha256:digest,discoveredDatabases:discovered.length,
+   excludedBySourceAcl,allDiscoveredDatabasesCovered:excludedBySourceAcl===0,
+   sourceSelectionMode:allowPartial?'explicit-token-eligible-subset':'all-candidates',
+   sqliteOnlineBackup:'PASS',
    sqliteIntegrity:'PASS',disposableRestore:'PASS',privateOwnerAcl:'PASS',
    originalDatabasesReplaced:false,wholeServiceConsistent:false,
    credentialScopeCovered:false,cutoverAuthorized:false};

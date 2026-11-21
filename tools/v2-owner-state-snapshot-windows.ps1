@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory=$true)]
-  [ValidateSet('Fixture','OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig')]
+  [ValidateSet('Fixture','OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig','OwnerLocalCredentialEligible')]
   [string]$Mode,
   [string]$FixtureRoot,
   [string]$OutputParent,
@@ -85,7 +85,7 @@ function Assert-Private-Acl([string]$target,[Security.Principal.SecurityIdentifi
      Stop-WithCode 'EXISTING_DESTINATION_ACL_NOT_PRIVATE'
   }
 }
-function Copy-Tree([string]$from,[string]$dest,[string]$relative,[Security.Principal.SecurityIdentifier]$sid,[System.Collections.Generic.List[object]]$manifest,[hashtable]$counter,[bool]$skipDatabases=$false) {
+function Copy-Tree([string]$from,[string]$dest,[string]$relative,[Security.Principal.SecurityIdentifier]$sid,[System.Collections.Generic.List[object]]$manifest,[hashtable]$counter,[bool]$skipDatabases=$false,[bool]$eligibleCredentialsOnly=$false) {
   Confirm-Owner $from $sid
   foreach($item in @(Get-ChildItem -LiteralPath $from -Force -ErrorAction Stop | Sort-Object -Property Name)) {
     if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { Stop-WithCode 'SOURCE_REPARSE_POINT' }
@@ -98,6 +98,26 @@ function Copy-Tree([string]$from,[string]$dest,[string]$relative,[Security.Princ
         Stop-WithCode 'UNCLASSIFIED_INSTANCE_FILE'
       }
     }
+    if($eligibleCredentialsOnly -and $item -is [System.IO.FileInfo]){
+      if($item.Extension.ToLowerInvariant() -ne '.dpapi'){Stop-WithCode 'UNCLASSIFIED_CREDENTIAL_FILE'}
+      $counter.DiscoveredCredentialFiles++
+      try{
+        $credentialAcl=Get-Acl -LiteralPath $item.FullName -ErrorAction Stop
+        $actualOwner=$credentialAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+        if($actualOwner -ne $sid.Value -and
+           -not ($actualOwner -eq 'S-1-5-32-544' -and $script:AdminGroupSourcesAllowed)){
+          $counter.ExcludedCredentialFiles++
+          continue
+        }
+        $null=Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256 -ErrorAction Stop
+      }catch [System.UnauthorizedAccessException]{
+        $counter.ExcludedCredentialFiles++
+        continue
+      }catch [System.Security.SecurityException]{
+        $counter.ExcludedCredentialFiles++
+        continue
+      }
+    }
     $rel=if($relative) { $relative+'/'+$item.Name }else{$item.Name}
     $dst=Join-Path $dest $item.Name
     if(Test-Path -LiteralPath $dst) { Stop-WithCode 'DESTINATION_COLLISION' }
@@ -105,7 +125,7 @@ function Copy-Tree([string]$from,[string]$dest,[string]$relative,[Security.Princ
     if($item.PSIsContainer) {
       [void](New-Item -ItemType Directory -Path $dst -ErrorAction Stop)
       Private-Acl $dst $true $sid
-      Copy-Tree $item.FullName $dst $rel $sid $manifest $counter $skipDatabases
+      Copy-Tree $item.FullName $dst $rel $sid $manifest $counter $skipDatabases $eligibleCredentialsOnly
     } elseif($item -is [System.IO.FileInfo]) {
       if($manifest.Count -ge 10000 -or $item.Length -gt 134217728 -or $counter.Bytes+$item.Length -gt 134217728) {
         Stop-WithCode 'FILE_OR_BYTE_BUDGET'
@@ -135,19 +155,19 @@ try {
   $script:AdminGroupSourcesAllowed=$false
   $script:AdminGroupSourceEntries=0
   if($PermitAdministratorsGroupSource){
-    if($Mode -notin @('OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig')){Stop-WithCode 'GROUP_SOURCE_MODE_RESTRICTED'}
+    if($Mode -notin @('OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig','OwnerLocalCredentialEligible')){Stop-WithCode 'GROUP_SOURCE_MODE_RESTRICTED'}
     $principal=[Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
     if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
       Stop-WithCode 'ADMIN_GROUP_SOURCE_NEEDS_NATIVE_ELEVATION'
     }
     $script:AdminGroupSourcesAllowed=$true
   }
-  if($Mode -in @('OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig')){
+  if($Mode -in @('OwnerRoaming','OwnerLocalRuntime','OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig','OwnerLocalCredentialEligible')){
     if($FixtureRoot -or $OutputParent) { Stop-WithCode 'OWNER_PATH_OVERRIDE_DENIED' }
     $base=if($Mode -eq 'OwnerRoaming'){$env:APPDATA}else{$env:LOCALAPPDATA}
     $source=Join-Path $base 'ChatGPTRemoteCommander'
     if($Mode -eq 'OwnerLocalRouting'){$source=Join-Path $source 'routing'}
-    if($Mode -eq 'OwnerLocalCredentials'){$source=Join-Path $source 'credentials'}
+    if($Mode -in @('OwnerLocalCredentials','OwnerLocalCredentialEligible')){$source=Join-Path $source 'credentials'}
     if($Mode -eq 'OwnerLocalInstanceConfig'){$source=Join-Path $source 'instances'}
     $output=Join-Path $env:LOCALAPPDATA 'CommanderV2\migration-private'
   }else{
@@ -180,7 +200,7 @@ try {
   [void](New-Item -ItemType Directory -Path $data -ErrorAction Stop)
   Private-Acl $data $true $sid
   $entries=[System.Collections.Generic.List[object]]::new()
-  $counter=@{Bytes=[long]0;SkippedDatabaseFiles=0}
+  $counter=@{Bytes=[long]0;SkippedDatabaseFiles=0;ExcludedCredentialFiles=0;DiscoveredCredentialFiles=0}
   if($Mode -eq 'OwnerLocalRuntime'){
     # Fixed owner-local runtime subset; do not sweep multi-GiB QA, caches,
     # browser profiles or other-user workspace state.
@@ -201,8 +221,9 @@ try {
       Copy-Tree $from $componentDest $component $sid $entries $counter
     }
   }else{
-    Copy-Tree $source $data '' $sid $entries $counter ($Mode -eq 'OwnerLocalInstanceConfig')
+    Copy-Tree $source $data '' $sid $entries $counter ($Mode -eq 'OwnerLocalInstanceConfig') ($Mode -eq 'OwnerLocalCredentialEligible')
   }
+  if($Mode -eq 'OwnerLocalCredentialEligible' -and $entries.Count -eq 0){Stop-WithCode 'NO_ELIGIBLE_CREDENTIAL_FILES'}
   $manifestData=[ordered]@{schema=1;mode=$Mode;entries=@($entries.ToArray());files=$entries.Count;bytes=$counter.Bytes}
   $manifestJson=ConvertTo-Json -InputObject $manifestData -Depth 8 -Compress
   $manifestFile=Join-Path $created 'manifest.json'
@@ -234,6 +255,7 @@ try {
   if($Mode -eq 'OwnerLocalRuntime'){$localRuntimeComponents=@('routing','instances','credentials')}
   elseif($Mode -eq 'OwnerLocalRouting'){$localRuntimeComponents=@('routing')}
   elseif($Mode -eq 'OwnerLocalCredentials'){$localRuntimeComponents=@('credentials')}
+  elseif($Mode -eq 'OwnerLocalCredentialEligible'){$localRuntimeComponents=@('credentials-eligible-subset')}
   elseif($Mode -eq 'OwnerLocalInstanceConfig'){$localRuntimeComponents=@('instances-non-db-config')}
   $summary=[ordered]@{
     schema=1;mode=$Mode;snapshotId=$id;files=$entries.Count;bytes=$counter.Bytes;
@@ -243,6 +265,9 @@ try {
     privilegedSourceReadAttested=$script:AdminGroupSourcesAllowed;
     localRuntimeComponents=@($localRuntimeComponents);
     skippedDatabaseFiles=$counter.SkippedDatabaseFiles;
+    discoveredCredentialFiles=$counter.DiscoveredCredentialFiles;
+    excludedCredentialFiles=$counter.ExcludedCredentialFiles;
+    credentialScopeComplete=($counter.ExcludedCredentialFiles -eq 0 -and $Mode -ne 'OwnerLocalCredentialEligible');
     offlineCopyAndRestore='PASS';
     liveConsistencyVerified=$false;
     fullFleetMigrationAccepted=$false;
