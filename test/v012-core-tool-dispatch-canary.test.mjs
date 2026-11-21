@@ -54,7 +54,7 @@ test('isolated 0.12 standard Core dispatches real read_text without authorizing 
       await pause(100);
     }
     assert.ok(health,'CORE_HEALTH_TIMEOUT '+stderr);
-    assert.equal(health.version,'0.12.0-dev.8');
+    assert.equal(health.version,'0.12.0-dev.9');
     assert.equal(health.access.effectiveTier,'STANDARD');
     const rpc=async(id,method,params)=> {
       const res=await fetch(base+'/mcp',{method:'POST',

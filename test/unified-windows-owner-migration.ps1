@@ -9,7 +9,7 @@ $installer=@(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'dist/u
 if($installer.Count -ne 1){throw 'RC012_MIGRATION_ONE_EXACT_INSTALLER_REQUIRED'}
 $exe=$installer[0].FullName
 $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
-$version='0.12.0-dev.8'
+$version='0.12.0-dev.9'
 $script=Join-Path $env:GITHUB_WORKSPACE 'packaging/unified/owner-windows-legacy-migrate.ps1'
 $legacyKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommander'
 $install=Join-Path $env:LOCALAPPDATA 'Programs\Remote Commander'

@@ -53,7 +53,7 @@ test('identical engine installs, upgrades and rolls back verified artifacts with
   const target=path.join(temp,'rc-universal-qa-candidate');
   try{
     const v1=bundle(temp,'6','a'.repeat(40));
-    const v2=bundle(temp,'8','b'.repeat(40));
+    const v2=bundle(temp,'9','b'.repeat(40));
     assert.equal(run('--verify-package','--bundle',v1).value.status,'QA_PACKAGE_VERIFIED');
     const first=run('--qa-install','--bundle',v1,'--target',target,
                     '--expected-commit','a'.repeat(40));
@@ -66,7 +66,7 @@ test('identical engine installs, upgrades and rolls back verified artifacts with
                       '--expected-commit','b'.repeat(40));
     assert.equal(changed.code,0,changed.raw);
     assert.equal(changed.value.status,'QA_UPGRADE_VERIFIED');
-    assert.equal(changed.value.version,'0.12.0-dev.8');
+    assert.equal(changed.value.version,'0.12.0-dev.9');
     assert.ok(changed.value.previous);
     const rollback=run('--qa-rollback','--target',target);
     assert.equal(rollback.code,0,rollback.raw);

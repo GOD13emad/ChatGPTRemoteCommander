@@ -52,7 +52,7 @@ test('owner-local 0.12 canary boots with full-capability intent while legacy pri
       await pause(100);
     }
     assert.ok(health,'CANARY_HEALTH_TIMEOUT '+stderr);
-    assert.equal(health.version,'0.12.0-dev.8');
+    assert.equal(health.version,'0.12.0-dev.9');
     assert.equal(health.access.configuredTier,'FULL_ACCESS');
     // A hosted native runner may have an actually elevated OS token; only
     // that worker may truthfully report FULL_ACCESS. User-local canaries
