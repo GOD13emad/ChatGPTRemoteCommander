@@ -30,6 +30,8 @@ technical account profile/Tunnel identities are never rewritten.
     node tools/universal-install/engine.mjs --qa-upgrade --bundle ABS_NEW_BUNDLE --target ABS_OWNER_HOME/rc-universal-qa-TEST --expected-commit EXACT40
     node tools/universal-install/engine.mjs --qa-rollback --target ABS_OWNER_HOME/rc-universal-qa-TEST
 
+The mandatory npm test runner now begins with test:universal-install on both OSes.
+
 QA ONLY until approved! The engine copies complete source into immutable
 owner-local QA releases and atomically swaps owner-local active metadata.
 It never replaces installed Commander Core/Browser/UI, starts native service,
