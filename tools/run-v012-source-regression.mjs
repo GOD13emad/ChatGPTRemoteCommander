@@ -30,8 +30,9 @@ const files = [
   "test/native-tunnel-client-observer-linux.test.mjs"
 ];
 
-// Keep every file once while bounding expensive Windows native process/SQLite
-// fixtures inside the unchanged 30-second per-batch execution budget.
+// Keep every file once. Windows hosted CI runs native process/SQLite fixtures
+// under shared runner load; retain a finite 90-second budget only for its
+// WorkflowStore batch. Local/Commander batch replay stays bounded to 30 seconds.
 const batches = [
   files.slice(0, 2),
   files.slice(2, 4),
@@ -67,13 +68,15 @@ const range=selectedRange(process.argv.slice(2));
 for (let index = range.first-1; index < range.last; index++) {
   const batch = batches[index];
   if (!batch.length) continue;
-  process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length + ' files=' + batch.length + '\n');
+  const timeoutMs = process.platform === 'win32' && process.env.GITHUB_ACTIONS === 'true' && index === 5
+    ? 90000 : 30000;
+  process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length + ' files=' + batch.length + ' timeoutMs=' + timeoutMs + '\n');
   const result = spawnSync(process.execPath, [
     '--test', '--test-concurrency=1', ...batch
   ], {
     stdio: 'inherit',
     windowsHide: true,
-    timeout: 30000
+    timeout: timeoutMs
   });
 
   if (result.error) {
