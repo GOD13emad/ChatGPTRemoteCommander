@@ -8,6 +8,20 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 const expectedPackage='chatgpt-remote-commander';
+// Release identity must be derived from the same canonical source used by the
+// unified GUI/native package. Reject an inconsistent or unrecognized train.
+export function candidateNativeDebianVersion(sourceVersion,guiVersion){
+  if(typeof sourceVersion!=='string'||sourceVersion!==guiVersion||
+     !/^0\.12\.0-dev\.[1-9][0-9]*$/.test(sourceVersion))return null;
+  return sourceVersion.replace('-dev.','~dev.');
+}
+function readCandidateNativeDebianVersion(){
+  try{
+    const source=JSON.parse(fs.readFileSync(new URL('../../package.json',import.meta.url),'utf8'));
+    const gui=JSON.parse(fs.readFileSync(new URL('./package.json',import.meta.url),'utf8'));
+    return candidateNativeDebianVersion(source.version,gui.version);
+  }catch{return null;}
+}
 const safeUnit=/^chatgpt-remote-commander[a-z0-9@._:-]*\.service$/i;
 export function isLinuxMigrationUnit(unit,profileName=null){
   if(typeof unit!=='string')return false;
@@ -245,8 +259,8 @@ function exec(program,args){
   try{
     const r=spawnSync(program,args,{encoding:'utf8',windowsHide:true,timeout:7000,
       maxBuffer:512*1024,stdio:['ignore','pipe','pipe']});
-    return {ok:r.status===0,stdout:r.stdout||''};
-  }catch{return {ok:false,stdout:''};}
+    return {ok:r.status===0,stdout:r.stdout||'',status:r.status};
+  }catch{return {ok:false,stdout:'',status:null};}
 }
 export function assessMigration(facts){
   if(!facts||!['linux','win32'].includes(facts.platform))throw Error('RC012_MIGRATION_PLATFORM_INVALID');
@@ -297,6 +311,17 @@ export function assessMigration(facts){
       if(['unverified','multiple-or-unverified'].includes(facts.ownerRegisteredInstallerFamily))
         blocked.push('OWNER_INSTALLER_IDENTITY_UNVERIFIED');
     }
+  }
+  // A native package version is not the active Core version. Prevent a fleet
+  // cutover from silently downgrading/reinstalling an older DEB over a newer
+  // installed identity even when a source-pinned QA build otherwise passes.
+  if(facts.platform==='linux'&&oldPresent){
+    if(facts.candidateNativePackageVersionVerified!==true)
+      blocked.push('NATIVE_CANDIDATE_VERSION_COMPARISON_UNVERIFIED');
+    if(facts.candidateNativePackageDowngrade===true)
+      blocked.push('NATIVE_CANDIDATE_PACKAGE_DOWNGRADE_REFUSED');
+    else if(facts.candidateNativePackageSameVersion===true)
+      blocked.push('NATIVE_CANDIDATE_PACKAGE_SAME_VERSION_REFUSED');
   }
   if(facts.platform==='linux' && oldPresent && !facts.allNativePayloadPathsAvailable)
     blocked.push('NATIVE_RUNTIME_TUNNEL_SERVICE_CONTINUITY_UNPROVEN');
@@ -361,6 +386,12 @@ export function assessMigration(facts){
     ownerStableRouterBackendVersion:facts.routerDetected===true?facts.routerBackendVersion:null,
     ownerStableRouterMappingMatches:facts.routerDetected===true&&facts.routerMappingMatches===true,
     ownerTunnelTargetRuntimeVersion:facts.tunnelProfileValid===true?facts.tunnelTargetVersion??null:null,
+    nativeCandidateVersionComparisonVerified:facts.platform==='linux'
+      ?facts.candidateNativePackageVersionVerified===true:null,
+    nativeCandidateDowngradeDetected:facts.platform==='linux'
+      ?facts.candidateNativePackageDowngrade===true:null,
+    nativeCandidateSameVersionDetected:facts.platform==='linux'
+      ?facts.candidateNativePackageSameVersion===true:null,
     nativeProtectedCoreFilesPresent:facts.platform==='linux'
       ?facts.nativeProtectedCoreFilesPresent===true:null,
     nativePackageIntegrityVerified:facts.platform==='linux'
@@ -414,6 +445,16 @@ function linuxFacts({profileName=null}={}){
   const packageQuery=exec('dpkg-query',['-W','-f=${Package}|${Version}|${Status}',expectedPackage]);
   const [name,version,status]=packageQuery.stdout.trim().split('|');
   const exists=packageQuery.ok&&name===expectedPackage&&status==='install ok installed';
+  const candidateDebVersion=readCandidateNativeDebianVersion();
+  // dpkg's own Debian-version comparator is the authority. Do not compare
+  // lexical SemVer strings or trust the running 0.11 Core as package metadata.
+  const higher=exists&&candidateDebVersion
+    ?exec('dpkg',['--compare-versions',version,'gt',candidateDebVersion]):null;
+  const equal=exists&&candidateDebVersion
+    ?exec('dpkg',['--compare-versions',version,'eq',candidateDebVersion]):null;
+  const candidateNativePackageVersionVerified=candidateDebVersion!==null
+    &&(!exists||(higher?.status===0||higher?.status===1)
+      &&(equal?.status===0||equal?.status===1));
   const units=[];
   const profileTunnelUnit=typeof profileName==='string'
     &&isLinuxMigrationUnit(profileName+'-tunnel.service',profileName)
@@ -461,6 +502,9 @@ function linuxFacts({profileName=null}={}){
   return {platform:'linux',connectionMode:'private-tunnel',
     inventoryReliable:packageQuery.ok&&listing.ok&&files.ok,
     nativePackageInstalled:exists,
+    candidateNativePackageVersionVerified,
+    candidateNativePackageDowngrade:higher?.status===0,
+    candidateNativePackageSameVersion:equal?.status===0,
     nativeProtectedCoreFilesPresent,nativePackageIntegrityVerified,
     allNativePayloadPathsAvailable:nativeVersionOK&&knownNative.ok
       &&nativeProtectedCoreFilesPresent,

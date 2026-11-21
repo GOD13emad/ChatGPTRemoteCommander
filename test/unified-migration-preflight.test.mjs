@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -606,4 +606,47 @@ test('Linux encrypted backup guard independently decrypts an exact owner-local r
   assert.equal(JSON.stringify({valid:verify()}),'{\"valid\":false}');
   assert.ok(!JSON.stringify({valid:verify()}).includes(secret));
  }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+test('one native DEB derives its version from the exact same source and GUI train',()=>{
+  assert.equal(candidateNativeDebianVersion('0.12.0-dev.1','0.12.0-dev.1'),
+    '0.12.0~dev.1');
+  assert.equal(candidateNativeDebianVersion('0.12.0-dev.7','0.12.0-dev.7'),
+    '0.12.0~dev.7');
+  for(const [source,gui] of [
+    ['0.12.0-dev.1','0.12.0-dev.7'],
+    ['0.12.0-dev.01','0.12.0-dev.01'],
+    ['0.11.0-dev.7','0.11.0-dev.7'],
+    ['0.12.0-rc.1','0.12.0-rc.1'],
+    ['0.12.0-dev.1+other','0.12.0-dev.1+other'],
+    [null,null]
+  ]) assert.equal(candidateNativeDebianVersion(source,gui),null,
+    String(source)+' / '+String(gui));
+});
+test('native owner Installer migration rejects downgrade, same-version and unverifiable identity',()=>{
+  const base={platform:'linux',connectionMode:'private-tunnel',
+    inventoryReliable:true,nativePackageInstalled:true,
+    allNativePayloadPathsAvailable:true,
+    candidateNativePackageVersionVerified:true,
+    candidateNativePackageDowngrade:false,candidateNativePackageSameVersion:false,
+    units:[]};
+  const upgrade=assessMigration(base);
+  assert.equal(upgrade.nativeCandidateVersionComparisonVerified,true);
+  assert.ok(!upgrade.blocked.includes('NATIVE_CANDIDATE_PACKAGE_DOWNGRADE_REFUSED'));
+  assert.ok(!upgrade.blocked.includes('NATIVE_CANDIDATE_PACKAGE_SAME_VERSION_REFUSED'));
+  const downgrade=assessMigration({...base,candidateNativePackageDowngrade:true});
+  assert.equal(downgrade.decision,'NO_PROMOTE');
+  assert.equal(downgrade.nativeCandidateDowngradeDetected,true);
+  assert.ok(downgrade.blocked.includes('NATIVE_CANDIDATE_PACKAGE_DOWNGRADE_REFUSED'));
+  const same=assessMigration({...base,candidateNativePackageSameVersion:true});
+  assert.ok(same.blocked.includes('NATIVE_CANDIDATE_PACKAGE_SAME_VERSION_REFUSED'));
+  const unverifiable=assessMigration({...base,candidateNativePackageVersionVerified:false});
+  assert.ok(unverifiable.blocked.includes('NATIVE_CANDIDATE_VERSION_COMPARISON_UNVERIFIED'));
+  const windows=assessMigration({platform:'win32',legacyInnoPresent:true,
+    candidateNativePackageDowngrade:true,inventoryReliable:true,units:[]});
+  assert.equal(windows.nativeCandidateVersionComparisonVerified,null);
+  assert.ok(!windows.blocked.includes('NATIVE_CANDIDATE_PACKAGE_DOWNGRADE_REFUSED'));
+  for(const report of [downgrade,same,unverifiable])
+    assert.equal(JSON.stringify(report).includes('0.12.0~dev.6'),false,
+      'do not publish installed DEB revision or owner identity');
 });
