@@ -70,6 +70,8 @@ function makeFixture({ root, planner, scheduler = false, runner = {}, afterDispa
 }
 
 async function claimWorker(root) {
+  // Simulate a loaded Windows runner delaying the worker's first IPC message.
+  if (process.argv[4] === '--qa-slow-start') await new Promise(resolve => setTimeout(resolve, 8500));
   const release = deferred();
   process.on('message', message => { if (message?.kind === 'release') release.resolve(); });
   const fixture = makeFixture({ root, planner: async () => {
@@ -286,7 +288,9 @@ if (process.argv[2] === '--claim-worker') {
     });
   }
 
-  test('separate Node processes cannot claim the same project run concurrently', { timeout: 12000 }, async () => {
+  // Windows hosted runners can delay Node child IPC startup; keep a bounded, real cross-process claim check.
+  const claimWinCI = process.platform === 'win32';
+  test('separate Node processes cannot claim the same project run concurrently', { timeout: claimWinCI ? 30000 : 12000 }, async () => {
     const fixture = makeFixture({ planner: async () => { throw new Error('Competing parent must not plan'); } });
     const entered = deferred(), completed = deferred();
     // Attach rejection handlers immediately; a worker startup failure must not
@@ -295,8 +299,8 @@ if (process.argv[2] === '--claim-worker') {
     let child, exited, workerTimer;
     try {
       await fixture.create(); await fixture.start();
-      child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--claim-worker', fixture.root], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true });
-      workerTimer = setTimeout(() => child.kill(), 8000);
+      child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--claim-worker', fixture.root, ...(process.platform === 'win32' ? ['--qa-slow-start'] : [])], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true });
+      workerTimer = setTimeout(() => child.kill(), claimWinCI ? 22000 : 8000);
       let stderr = '';
       child.stderr.on('data', chunk => { stderr += chunk.toString(); });
       child.on('message', message => {
