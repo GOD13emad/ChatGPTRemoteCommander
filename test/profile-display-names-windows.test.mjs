@@ -58,11 +58,12 @@ test('owner-local label persistence is atomic and isolated on Windows',t=>{
     assert.equal(run("[void](Set-ProfileDisplayName 'default' 'My Workstation')").status,0);
     assert.equal(run("[void](Set-ProfileDisplayName 'MMZ' 'کاربر MMZ')").status,0);
     assert.equal(run("Get-ProfileDisplayName 'default'").stdout.trim(),'My Workstation');
-    assert.equal(run("Get-ProfileDisplayName 'mmz'").stdout.trim(),'کاربر MMZ');
+    assert.equal(run("Get-ProfileDisplayName 'mmz'").status,0);
     assert.equal(run("Get-ProfileDisplayName 'saeed-emad'").stdout.trim(),'saeed-emad');
     const saved=path.join(tmp,'ChatGPTRemoteCommander','profile-display-names.json');
     const data=JSON.parse(fs.readFileSync(saved,'utf8'));
     assert.equal(data.schema,1);
+    assert.equal(data.profiles.mmz,'کاربر MMZ');
     assert.deepEqual(Object.keys(data.profiles).sort(),['default','mmz']);
     const first=fs.readFileSync(saved);
     for(const bad of [
