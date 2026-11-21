@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -680,4 +680,13 @@ test('native owner Installer migration rejects downgrade, same-version and unver
   for(const report of [downgrade,same,unverifiable])
     assert.equal(JSON.stringify(report).includes('0.12.0~dev.6'),false,
       'do not publish installed DEB revision or owner identity');
+});
+
+test('Windows owner DPAPI six-file proof is strictly bound to native success receipt',()=>{
+  const marker='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
+  assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,marker+'\r\n'),true);
+  assert.equal(windowsOwnerDpapiVerifyOutputAccepted(1,marker),false);
+  assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,marker+' extra'),false);
+  assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,'RC012_WINDOWS_OWNER_DPAPI_RESTORE_SIMULATION_PASS files=6'),false);
+  assert.equal(windowsOwnerDpapiVerifyOutputAccepted(null,marker),false);
 });

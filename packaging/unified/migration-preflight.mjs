@@ -682,6 +682,31 @@ export function classifyWindowsUninstallRegistryResponse(raw){
     return 'inno-unverified';
   return 'unverified';
 }
+export function windowsOwnerDpapiVerifyOutputAccepted(status,stdout){
+  return status===0 && typeof stdout==='string'
+    && stdout.trim()==='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
+}
+function verifyWindowsOwnerDpapiBackup(){
+  if(process.platform!=='win32')return false;
+  const programFiles=process.env.ProgramFiles,appData=process.env.APPDATA;
+  if(typeof programFiles!=='string'||!path.win32.isAbsolute(programFiles)
+    ||typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
+  const exe=path.win32.join(programFiles,'PowerShell','7','pwsh.exe');
+  const script=path.join(path.dirname(fileURLToPath(import.meta.url)),
+    'owner-dpapi-profile-recovery.ps1');
+  try{
+    const binary=fs.lstatSync(exe),source=fs.lstatSync(script);
+    if(!binary.isFile()||binary.isSymbolicLink()
+      ||!source.isFile()||source.isSymbolicLink())return false;
+    const result=spawnSync(exe,['-NoLogo','-NoProfile','-NonInteractive',
+      '-File',script,'-Mode','Verify','-ProfileName','chatgpt-remote-commander'],{
+      encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:1024,
+      stdio:['ignore','pipe','ignore']
+    });
+    return !result.error&&!result.signal
+      &&windowsOwnerDpapiVerifyOutputAccepted(result.status,result.stdout);
+  }catch{return false;}
+}
 function windowsFacts(){
   const paths=[
     'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander',
@@ -711,6 +736,7 @@ function windowsFacts(){
     routerDetected:route.detected,routerMappingMatches:route.mappingMatches,
     routerBackendPort:route.detected?route.backendPort:null,
     routerBackendVersion:route.detected?route.backendVersion:null,
+    profileBackupReceiptVerified:verifyWindowsOwnerDpapiBackup(),
     units:[]};
 }
 export function inspectLocalPlatform(platform=process.platform,{profileName=null}={}){
