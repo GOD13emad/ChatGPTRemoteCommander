@@ -75,6 +75,7 @@ test('identical engine installs, upgrades and rolls back verified artifacts with
     const status=run('--qa-status','--target',target);
     assert.equal(status.code,0);
     assert.equal(status.value.version,'0.12.0-dev.6');
+    assert.equal(status.value.revision,3);
     assert.equal(status.value.previous,changed.value.current);
     assert.equal(run('--qa-upgrade','--bundle',v2,'--target',target,
                      '--expected-commit','b'.repeat(40)).code,2);

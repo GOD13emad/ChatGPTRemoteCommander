@@ -213,7 +213,9 @@ function atomicState(target,state){
   const data=JSON.stringify(state,null,2)+'\n';
   fs.writeFileSync(pending,data,{mode:0o600,flag:'wx'});
   try{
-    const handle=fs.openSync(pending,'r');try{fs.fsyncSync(handle)}finally{fs.closeSync(handle)}
+    // Windows FlushFileBuffers requires a writable handle. The already
+    // owner-private pending metadata is opened r+ on both OSes, then synced.
+    const handle=fs.openSync(pending,'r+');try{fs.fsyncSync(handle)}finally{fs.closeSync(handle)}
     fs.renameSync(pending,dest);
   } finally {if(fs.existsSync(pending))fs.unlinkSync(pending)}
   const fresh=qaState(target);
