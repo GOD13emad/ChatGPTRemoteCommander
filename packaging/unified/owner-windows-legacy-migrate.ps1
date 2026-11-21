@@ -6,7 +6,7 @@ param(
  [ValidateSet('Plan','Apply','Recover')][string]$Mode='Plan',
  [string]$InstallerPath='',
  [string]$InstallerSha256='',
- [string]$ExpectedVersion='0.12.0-dev.8'
+ [string]$ExpectedVersion='0.12.0-dev.9'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'

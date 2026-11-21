@@ -13,7 +13,7 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.deepEqual(manifest.fleetCoverage.acceptedHostIds,[]);
  assert.equal(manifest.fleetCoverage.mappingVerified,false);
  assert.equal(manifest.fleetCoverage.bootLoginAndRollbackVerified,false);
- assert.equal(manifest.sourceVersion,'0.12.0-dev.8');
+ assert.equal(manifest.sourceVersion,'0.12.0-dev.9');
  assert.equal(manifest.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
  assert.equal(manifest.sourceBaseSha,'40256873627780cc7b62359935e43bac5ef856b3');
  assert.equal(manifest.isStable,false);
@@ -33,9 +33,10 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
   assert.equal(existsSync(privateOutputs),false,'installed package must not carry private QA outputs');
  }
 });
-test('0.12.0-dev.8 advances every 0.11 release and rejects noncanonical leading zero',()=>{
- assert.equal(parseReleaseVersion('0.12.0-dev.8').revision,8n);
+test('0.12.0-dev.9 advances every 0.11 release and rejects noncanonical leading zero',()=>{
+ assert.equal(parseReleaseVersion('0.12.0-dev.9').revision,9n);
  for(const old of ['0.11.0-dev.105','0.11.0-dev.23','0.11.0-dev.19','0.11.0','0.11.1'])
-  assert.equal(compareReleaseVersions('0.12.0-dev.8',old),1,old);
+  assert.equal(compareReleaseVersions('0.12.0-dev.9',old),1,old);
+ assert.equal(compareReleaseVersions('0.12.0-dev.9','0.12.0-dev.8'),1,'dev.9 upgrades installed dev.8');
  assert.throws(()=>parseReleaseVersion('0.12.0-dev.01'),/RC_VERSION_INVALID/);
 });

@@ -1,3 +1,9 @@
+# 0.12.0-dev.9 — unified post-merge NoPromote upgrade candidate (2026-11-22)
+
+- Advance the one Core/GUI/Plugin/Control Center/lockfile/release-train version beyond installed dev.8, preserving the original per-account Tunnel/API-key identifiers and encrypted owner backups.
+- Include merged PRs #492, #493, #494, #495 and #496 in an exact-source one-installer build path. Keep native J01/Worker consent, signed release provenance, per-profile HTTPS/mTLS cutover and fleet rollback as independent unaccepted gates.
+- This is a development QA upgrade candidate, not Stable. No published tag, automatic promotion, live Tunnel replacement, synthetic owner approval or Full Access activation is implied.
+
 # 0.12.0-dev.8 — one universal owner-recovery Preflight (2026-11-21, NoPromote)
 
 - Advance one canonical Core/GUI/lockfile/desktop/Plugin/runtime/train version beyond dev.7; historical QA artifacts are never relabeled as dev.8.
