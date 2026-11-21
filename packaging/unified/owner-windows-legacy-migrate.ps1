@@ -37,7 +37,9 @@ function Save-Receipt($r){
  $temp=Join-Path $state ('receipt-'+[guid]::NewGuid().ToString('N')+'.tmp')
  try{
   [IO.File]::WriteAllText($temp,($r|ConvertTo-Json -Depth 12),[Text.UTF8Encoding]::new($false))
-  if(Test-Path -LiteralPath $receipt){[IO.File]::Replace($temp,$receipt,$null)}
+  # File.Replace rejects a null backup path on hosted Windows PowerShell/.NET.
+  # Same-volume Move(overwrite) updates the single active receipt atomically.
+  if(Test-Path -LiteralPath $receipt){[IO.File]::Move($temp,$receipt,$true)}
   else{[IO.File]::Move($temp,$receipt)}
  }finally{if(Test-Path -LiteralPath $temp){Remove-Item -LiteralPath $temp -Force}}
 }
