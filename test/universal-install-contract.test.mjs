@@ -43,3 +43,16 @@ test('an exact-source installer QA pass cannot authorize v0.12 stable or all-acc
   assert.match(engine,/core\.eol=lf/u);
   assert.doesNotMatch(engine,/systemctl|schtasks|reg\.exe|sudo|winget|npm\s+install/u);
 });
+
+test('native Windows/Linux matrix requires exact-file equality before installer acceptance',()=>{
+  const y=read('.github/workflows/unified-installer-pilot.yml');
+  for(const marker of ['exact-source-parity:', 'needs: [package]',
+    'rc012-native-core-Windows','rc012-native-core-Linux',
+    'verify-native-parity.mjs','--expected-commit',
+    'packaging/unified/.stage/core/source-manifest.json']){
+    assert.ok(y.includes(marker), marker);
+  }
+  assert.match(y,/os: \[ubuntu-latest, windows-latest\]/);
+  const deps=read('package.json');
+  assert.ok(deps.includes('test/universal-native-parity.test.mjs'));
+});

@@ -49,3 +49,14 @@ provenance, not a competing active installer. Next integration milestone:
 both OS launchers must route to the same engine, then exact native
 per-host canary/rollback and matching screen/action inventories must pass
 with real owner approval before deployment.
+
+
+## Exact cross-OS native Core artifact parity (automated)
+
+The same native packaging/unified workflow now uploads its independently
+prepared, source-commit-pinned source-manifest.json from each Windows and
+Linux matrix build. A dependent exact-source-parity job checks every
+embedded Core path and SHA-256 against the exact PR HEAD and Git tree.
+A single mismatch fails the PR gate. It does NOT claim identical rendered
+font pixels, identical native permissions or activated Full Power; these are
+separate acceptance gates. The job does not install or promote on owner hosts.

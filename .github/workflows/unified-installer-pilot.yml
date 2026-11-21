@@ -47,6 +47,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
+      - name: Preserve exact native Core inventory for cross-OS byte comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc012-native-core-${{ runner.os }}
+          path: packaging/unified/.stage/core/source-manifest.json
+          retention-days: 7
+          if-no-files-found: error
       - name: Install pinned packaging tools
         working-directory: packaging/unified
         run: npm ci --no-audit --no-fund
@@ -137,3 +144,32 @@ jobs:
           path: dist/unified/*.exe
           retention-days: 7
           if-no-files-found: error
+
+
+  exact-source-parity:
+    name: Windows + Linux - same Core source, zero live deployment
+    needs: [package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@v4
+        with:
+          name: rc012-native-core-Windows
+          path: ${{ runner.temp }}/windows-source
+      - uses: actions/download-artifact@v4
+        with:
+          name: rc012-native-core-Linux
+          path: ${{ runner.temp }}/linux-source
+      - name: Prove native Core source files are byte-equivalent across OS
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          node tools/universal-install/verify-native-parity.mjs --windows "$RUNNER_TEMP/windows-source/source-manifest.json" --linux "$RUNNER_TEMP/linux-source/source-manifest.json" --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
