@@ -36,11 +36,27 @@ const knownSyntheticFixtureLines = new Set([
   syntheticFixturePrefix + ',',
   syntheticFixturePrefix + '});'
 ]);
+// Only two literal, intentionally invalid PEM strings in this exact historical
+// host test commit are permitted. Neither contains base64 PEM material.
+const knownSyntheticHostFixture = Object.freeze({
+  commit: 'f31392c127e682762988b5bee70164752208b176',
+  path: 'test/v101-linux-v2-candidate-host.test.mjs'
+});
+const literalNewline = String.fromCharCode(92) + 'n';
+const knownSyntheticHostFixtureLines = new Set([
+  "+    privateKeyPem:'" + syntheticPemHeader + literalNewline +
+    "synthetic-host-private-key" + literalNewline + "-----END PRIVATE KEY-----',",
+  "+    privateKeyPem:'" + syntheticPemHeader + literalNewline +
+    "synthetic" + literalNewline + "-----END PRIVATE KEY-----',"
+]);
 function scanSyntheticFixtureException(line, commit, path) {
-  if (commit !== knownSyntheticTlsFixture.commit ||
-      path !== knownSyntheticTlsFixture.path) return { line, excepted: false };
+  const allowed = commit === knownSyntheticTlsFixture.commit &&
+      path === knownSyntheticTlsFixture.path ? knownSyntheticFixtureLines :
+    commit === knownSyntheticHostFixture.commit &&
+      path === knownSyntheticHostFixture.path ? knownSyntheticHostFixtureLines : null;
+  if (!allowed) return { line, excepted: false };
   const trimmed = line.replace(/\r?\n$/, '');
-  if (!knownSyntheticFixtureLines.has(trimmed)) return { line, excepted: false };
+  if (!allowed.has(trimmed)) return { line, excepted: false };
   return { line: line.replace(syntheticPemHeader, '[SYNTHETIC_TLS_FIXTURE]'), excepted: true };
 }
 
@@ -155,6 +171,39 @@ const approvedFixture = safeFixtureProbe.finish();
 if (approvedFixture.hits.has('Private key block') || approvedFixture.exceptions !== 2) {
   throw new Error('SECURITY_AUDIT_KNOWN_FIXTURE_REGRESSION');
 }
+// Audit exemptions must be bound to the immutable host test commit, file and
+// exact invalid test literals. Any changed payload or foreign context still fails.
+const hostFixtureProbe = makeHistoryScanner(patterns);
+hostFixtureProbe.write('commit ' + knownSyntheticHostFixture.commit + '\n');
+hostFixtureProbe.write('diff --git a/' + knownSyntheticHostFixture.path +
+  ' b/' + knownSyntheticHostFixture.path + '\n');
+for (const fixtureLine of knownSyntheticHostFixtureLines) hostFixtureProbe.write(fixtureLine + '\n');
+const approvedHostFixture = hostFixtureProbe.finish();
+if (approvedHostFixture.hits.has('Private key block') ||
+    approvedHostFixture.exceptions !== 2) {
+  throw new Error('SECURITY_AUDIT_KNOWN_HOST_FIXTURE_REGRESSION');
+}
+for (const [commit, file] of [
+  ['0'.repeat(40), knownSyntheticHostFixture.path],
+  [knownSyntheticHostFixture.commit, knownSyntheticTlsFixture.path]
+]) {
+  const mismatched = makeHistoryScanner(patterns);
+  mismatched.write('commit ' + commit + '\n');
+  mismatched.write('diff --git a/' + file + ' b/' + file + '\n');
+  mismatched.write([...knownSyntheticHostFixtureLines][0] + '\n');
+  if (!mismatched.finish().hits.has('Private key block')) {
+    throw new Error('SECURITY_AUDIT_HOST_SCOPE_MUST_FAIL');
+  }
+}
+const forgedHostPayload = makeHistoryScanner(patterns);
+forgedHostPayload.write('commit ' + knownSyntheticHostFixture.commit + '\n');
+forgedHostPayload.write('diff --git a/' + knownSyntheticHostFixture.path +
+  ' b/' + knownSyntheticHostFixture.path + '\n');
+forgedHostPayload.write([...knownSyntheticHostFixtureLines][0].replace('synthetic-host-private-key', 'real-sensitive-key') + '\n');
+if (!forgedHostPayload.finish().hits.has('Private key block')) {
+  throw new Error('SECURITY_AUDIT_HOST_PAYLOAD_MUST_FAIL');
+}
+
 const wrongCommitProbe = makeHistoryScanner(patterns);
 wrongCommitProbe.write('commit ' + '0'.repeat(40) + '\n');
 wrongCommitProbe.write('diff --git a/' + knownSyntheticTlsFixture.path +
