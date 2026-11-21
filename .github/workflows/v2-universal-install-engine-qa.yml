@@ -4,6 +4,7 @@ on:
     branches: [mmz/v2-unified-candidate-20261103]
     paths:
       - '.github/workflows/v2-universal-install-engine-qa.yml'
+      - '.gitattributes'
       - 'tools/v2-universal-install-engine.mjs'
       - 'tools/v2-universal-bundle-build.mjs'
       - 'test/v2-universal-install-engine.test.mjs'
@@ -85,6 +86,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$GITHUB_REPOSITORY" = GOD13emad/ChatGPTRemoteCommander
           test "$RUNNER_OS" = Linux
+          test "$(sha256sum assets/runtime-license/node-v22-LICENSE.txt|awk '{print $1}')" = c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4
           pkg="$RUNNER_TEMP/Commander-V2-v0.12.0-rc1-linux-x64.deb"
           bash tools/v012-native-build-deb-qa.sh "$PWD" "$pkg"
           sudo dpkg -i "$pkg"
@@ -114,6 +116,7 @@ jobs:
             & choco install nsis --version=3.11 -y --no-progress
             if($LASTEXITCODE -ne 0){throw 'NSIS_QA_COMPILER_INSTALL_FAILED'}
           }
+          if((Get-FileHash -LiteralPath 'assets/runtime-license/node-v22-LICENSE.txt' -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c738ae413cf561f174e34f6961f8ca458aae2369a73640dda6234c629b98bcc4'){throw 'NODE_LICENSE_CHECKOUT_BYTES_CHANGED'}
           $output=Join-Path $env:RUNNER_TEMP 'Commander-V2-v0.12.0-rc1-windows-x64.exe'
           & ./tools/v012-native-build-nsis-qa.ps1 -SourceRoot (Get-Location).Path -Output $output
           if($LASTEXITCODE -ne 0){throw 'V012_NSI_BUILD_NONZERO'}
