@@ -89,7 +89,7 @@ try{
   if($LASTEXITCODE -ne 2 -or -not (($localOverride | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
     throw 'V012_WINDOWS_QA_LOCAL_OVERRIDE_NOT_REJECTED'
   }
-  foreach($mode in @('OwnerLocalRouting','OwnerLocalCredentials')) {
+  foreach($mode in @('OwnerLocalRouting','OwnerLocalCredentials','OwnerLocalInstanceConfig')) {
     $rejected=@(& pwsh -NoProfile -File $script -Mode $mode -FixtureRoot $src 2>&1)
     if($LASTEXITCODE -ne 2 -or -not (($rejected | Out-String) -match 'OWNER_PATH_OVERRIDE_DENIED')){
       throw 'V012_WINDOWS_QA_FIXED_SCOPE_OVERRIDE_NOT_REJECTED'
@@ -100,18 +100,22 @@ try{
   $fakeLocal=Join-Path $root 'simulated-localappdata'
   $fakeState=Join-Path $fakeLocal 'ChatGPTRemoteCommander'
   foreach($p in @($fakeLocal,$fakeState,(Join-Path $fakeLocal 'CommanderV2'),
-                 (Join-Path $fakeState 'routing'),(Join-Path $fakeState 'credentials'))){
+                 (Join-Path $fakeState 'routing'),(Join-Path $fakeState 'credentials'),
+                 (Join-Path $fakeState 'instances'))){
     [void](New-Item -ItemType Directory -Path $p -ErrorAction Stop)
   }
   $fakeSources=@(
-    [pscustomobject]@{Mode='OwnerLocalRouting';Name='routing';Component='routing'},
-    [pscustomobject]@{Mode='OwnerLocalCredentials';Name='credentials';Component='credentials'}
+    [pscustomobject]@{Mode='OwnerLocalRouting';Name='routing';Component='routing';File='fixture.dat'},
+    [pscustomobject]@{Mode='OwnerLocalCredentials';Name='credentials';Component='credentials';File='fixture.dat'},
+    [pscustomobject]@{Mode='OwnerLocalInstanceConfig';Name='instances';Component='instances-non-db-config';File='fixture.json'}
   )
   foreach($spec in $fakeSources){
     $dir=Join-Path $fakeState $spec.Name
-    $f=Join-Path $dir 'fixture.dat'
+    $f=Join-Path $dir $spec.File
     [IO.File]::WriteAllText($f,'MODE_TEST')
-    foreach($entry in @($dir,$f)){
+    $db=if($spec.Mode -eq 'OwnerLocalInstanceConfig'){Join-Path $dir 'fixture.sqlite'}else{$null}
+    if($db){[IO.File]::WriteAllText($db,'MUST_SKIP_DB')}
+    foreach($entry in (@($dir,$f)+@($db|Where-Object {$_}))){
       $acl=Get-Acl -LiteralPath $entry
       $acl.SetOwner([Security.Principal.WindowsIdentity]::GetCurrent().User)
       Set-Acl -LiteralPath $entry -AclObject $acl -ErrorAction Stop
@@ -131,14 +135,15 @@ try{
          $receipt.liveConsistencyVerified -ne $false -or
          $receipt.installedCutoverAuthorized -ne $false -or
          @($receipt.localRuntimeComponents).Count -ne 1 -or
-         $receipt.localRuntimeComponents[0] -ne $spec.Component) {
+         $receipt.localRuntimeComponents[0] -ne $spec.Component -or
+         ($spec.Mode -eq 'OwnerLocalInstanceConfig' -and $receipt.skippedDatabaseFiles -ne 1)) {
         throw 'V012_WINDOWS_QA_FIXED_SCOPE_RECEIPT_MISMATCH'
       }
       $expectedSnapshot=Join-Path (Join-Path $fakeLocal 'CommanderV2\migration-private') $receipt.snapshotId
       $m=Get-Content -LiteralPath (Join-Path $expectedSnapshot 'manifest.json') -Raw
       $digest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($m))).ToLowerInvariant()
       if($digest -ne $receipt.manifestSha256){throw 'V012_WINDOWS_QA_FIXED_SCOPE_MANIFEST_MISMATCH'}
-      if([IO.File]::ReadAllText((Join-Path $fakeState ($spec.Name+'\fixture.dat'))) -ne 'MODE_TEST'){
+      if([IO.File]::ReadAllText((Join-Path (Join-Path $fakeState $spec.Name) $spec.File)) -ne 'MODE_TEST'){
         throw 'V012_WINDOWS_QA_FIXED_SCOPE_SOURCE_CHANGED'
       }
     }
