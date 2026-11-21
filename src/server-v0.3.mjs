@@ -21,7 +21,7 @@ import { createDeliveryTools } from './delivery-tools.mjs';
 import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCommandInput } from './retry-guard.mjs';
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
-import { createCoucouBridge } from './coucou-bridge.mjs';
+import { createOptionalEventHook } from './optional-event-hook.mjs';
 import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
@@ -52,7 +52,7 @@ const configSha256 = createHash('sha256').update(configRaw).digest('hex');
 const config = JSON.parse(configRaw);
 assertLocalTransport(config);
 // Optional privacy-safe local display; no new permissions or runtime authority.
-const coucouBridge = createCoucouBridge(config.coucouBridge);
+const extensionEventRelay = createOptionalEventHook(config.extensionEventRelay);
 function expandEnvironment(value) { return expandPathValue(value); }
 config.allowedRoots = config.allowedRoots.map(expandEnvironment);
 const roots = await canonicalizeRoots(config.allowedRoots);
@@ -480,7 +480,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
         : { enabled:false, engineEnabled:false, scheduler:false, automaticContinuation:false };
       return {
         name: 'chatgpt-remote-commander', version: VERSION,
-        coucouBridge: coucouBridge.status(),
+        extensionEventRelay: extensionEventRelay.status(),
         deviceName: config.deviceName || os.hostname(),
         platform: process.platform, arch: process.arch, shell: shellName(),
         protocols: [MODERN_VERSION, ...LEGACY_VERSIONS],
@@ -753,14 +753,14 @@ async function handleMessage(req, message) {
       try {
         const result = await executeTool(name, executionArgs, { requestIdSource });
         // Best-effort display-only telemetry after accepted tool completion.
-        coucouBridge.emitTool(name, { failed: result?.ok === false || result?.isError === true });
+        extensionEventRelay.emitTool(name, { failed: result?.ok === false || result?.isError === true });
         if (modern && name === 'operation_start' && clientSupportsTasks(message) && result?.operationId) {
           const task = await operationTask(result.operationId);
           return { status: 200, body: rpcTaskResult(message.id, task) };
         }
         return { status: 200, body: rpcResult(message.id, toolSuccessPayload(result), modern) };
       } catch (error) {
-        coucouBridge.emitTool(name, { failed: true });
+        extensionEventRelay.emitTool(name, { failed: true });
         await audit(ctx, { action: 'tool_error', tool: name, ok: false, error: error.message });
         return { status: 200, body: rpcResult(message.id, toolErrorPayload(error.message), modern) };
       }
