@@ -7,6 +7,19 @@ import {createHash} from 'node:crypto';
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const repo=path.resolve(dir,'../..');
 const stage=path.join(dir,'.stage');
+// One native installer family (NSIS/DEB), one cross-OS contract and one
+// disposable source-transaction QA helper; never create a second live install.
+const unifiedContract=JSON.parse(fs.readFileSync(
+  path.join(repo,'installer/universal-install-contract.json'),'utf8'));
+if(unifiedContract.schema!=='rc-unified-installer-v1' ||
+   unifiedContract.product!=='ChatGPTRemoteCommander' ||
+   unifiedContract.sourceTrain!=='0.12' ||
+   unifiedContract.nativeCandidateRoot!=='packaging/unified' ||
+   unifiedContract.qaTransactionHelper!=='tools/universal-install/engine.mjs' ||
+   !Array.isArray(unifiedContract.requiredEmbeddedCoreFiles) ||
+   unifiedContract.requiredEmbeddedCoreFiles.length<5 ||
+   unifiedContract.presentation?.crossOsVisualParityAccepted!==false)
+  throw Error('UNIFIED_CANDIDATE_CONTRACT_INVALID');
 const core=path.join(stage,'core');
 const runGit=(args)=>execFileSync('git',args,{
   cwd:repo,encoding:'utf8',env:{...process.env,GIT_NO_LAZY_FETCH:'1'},timeout:20000
@@ -19,7 +32,8 @@ const touched=runGit(['status','--porcelain=v1','--','src','tools','assets','ven
 if(touched)throw Error('UNIFIED_SOURCE_UNCOMMITTED: '+touched.slice(0,300));
 const versionIdentityDirty=runGit(['status','--porcelain=v1','--',
   'docs/release-train-0.12.json','packaging/unified/package.json',
-  'packaging/unified/package-lock.json']);
+  'packaging/unified/package-lock.json',
+  'installer/universal-install-contract.json']);
 if(versionIdentityDirty)throw Error('UNIFIED_VERSION_IDENTITY_UNCOMMITTED');
 if(fs.existsSync(core)){
   const marker=path.join(core,'source-manifest.json');
@@ -50,7 +64,10 @@ function walk(root, rel=''){
 walk(core);
 entries.sort();
 const required=['src/server-v0.3.mjs','package.json','config.json'];
-if(!required.every(p=>entries.includes(p)) || entries.length<10)
+if(!required.every(p=>entries.includes(p)) ||
+   !unifiedContract.requiredEmbeddedCoreFiles.every(p=>entries.includes(p)) ||
+   new Set(unifiedContract.requiredEmbeddedCoreFiles).size!==unifiedContract.requiredEmbeddedCoreFiles.length ||
+   entries.length<10)
   throw Error('UNIFIED_SOURCE_INCOMPLETE');
 const hash=p=>createHash('sha256').update(fs.readFileSync(path.join(core,p))).digest('hex');
 const manifest={schema:2,head,tree,count:entries.length,

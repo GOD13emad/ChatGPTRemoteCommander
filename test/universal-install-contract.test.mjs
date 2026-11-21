@@ -17,6 +17,14 @@ test('one package contract covers both operating systems and all nine accepted c
   for(const c of contract.commonComponents)
     assert.ok(release.components.find(x=>x.id===c && x.required===true),c);
   assert.deepEqual(contract.commonActions,['package','verify','install','upgrade','rollback','status']);
+  assert.equal(contract.nativeCandidateRoot,'packaging/unified');
+  assert.equal(contract.qaTransactionHelper,'tools/universal-install/engine.mjs');
+  for(const f of contract.requiredEmbeddedCoreFiles)
+    assert.ok(contract.requiredSourceFiles.includes(f) || f==='config.json',f);
+  const native=read('packaging/unified/prepare.mjs');
+  assert.match(native,/requiredEmbeddedCoreFiles/u);
+  assert.match(native,/UNIFIED_CANDIDATE_CONTRACT_INVALID/u);
+  assert.match(native,/unifiedContract\.presentation\?\.crossOsVisualParityAccepted/u);
   for(const p of contract.requiredSourceFiles)
     assert.ok(fs.existsSync(path.join(root,p)),p);
 });

@@ -1,10 +1,11 @@
 # v0.12 one-install engine — current QA boundary
 
-This is the unified Windows/Linux source-package and rollback engine in
-tools/universal-install/engine.mjs. Both operating systems execute the same
-Node.js module and installer/universal-install-contract.json. Platform adapters
-are confined to native prerequisites, service management, and GUI rendering;
-technical account profile/Tunnel identities are never rewritten.
+The ONE native installer candidate remains packaging/unified: shared Electron
+frontend, Windows NSIS and Linux composed DEB. The disposable
+tools/universal-install/engine.mjs is its common QA source-transaction verifier,
+not another public installer. The native source-preparation code validates the
+shared installer/universal-install-contract.json before any staging.
+Technical account profile/Tunnel identities are never rewritten.
 
 ## Evidence standard / DoD
 
@@ -16,7 +17,10 @@ technical account profile/Tunnel identities are never rewritten.
 - Common feature declaration: JSON lists Core/Browser/Control Center/Transfer/
   Workflow/Local AI/GUI/Access components and required source files. The suite
   verification proves source-file presence only, not functional parity.
-- Still open: bootstrapped native launcher, native services, full GUI
+- Actual unified native candidate: packaging/unified/prepare.mjs now checks
+  the same contract and required embedded Core inventory; its existing
+  Electron/NSIS/DEB pipeline remains the sole public-install candidate.
+- Still open: accepted native cutover, full GUI
   visual/interaction parity, Browser, J01 owner grant, authenticated ChatGPT
   account tunnel, real installed canary/cutover, exact rollback and provenance.
 

@@ -90,5 +90,18 @@
     "desktop/profile-display-names.ps1",
     "desktop/profile-manager-windows.ps1",
     "installer/RemoteCommander.iss"
+  ],
+  "nativeCandidateRoot": "packaging/unified",
+  "qaTransactionHelper": "tools/universal-install/engine.mjs",
+  "requiredEmbeddedCoreFiles": [
+    "package.json",
+    "config.json",
+    "src/server-v0.3.mjs",
+    "src/stable-router.mjs",
+    "src/browser-tools.mjs",
+    "src/workflow-tools.mjs",
+    "src/transfer-tools.mjs",
+    "src/gui-contract.mjs",
+    "src/profile-identity-registry.mjs"
   ]
 }
