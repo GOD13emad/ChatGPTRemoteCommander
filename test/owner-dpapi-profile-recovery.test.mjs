@@ -130,6 +130,38 @@ test('Windows DPAPI capsules isolate each explicit owner profile and reject cros
    }
    assert.equal(fs.existsSync(path.join(recovery,'rc012-native-pair-dpapi')),false,
      'explicit profile scopes must not create or mutate the legacy capsule');
+   // Prove exact backward compatibility with a legacy schema-1 capsule
+   // lacking profileName metadata. Re-encryption uses only disposable test
+   // fixtures and the same Windows CurrentUser DPAPI account.
+   const legacyPs=String.raw`
+$ErrorActionPreference='Stop'
+$d=$env:RC012_QA_LEGACY_DIR
+$c=Join-Path $d 'owner-capsule.dpapi'
+$r=Join-Path $d 'receipt.json'
+$bytes=[IO.File]::ReadAllBytes($c)
+$plain=[Security.Cryptography.ProtectedData]::Unprotect(
+  $bytes,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+$doc=[Text.Encoding]::UTF8.GetString($plain)|ConvertFrom-Json
+[void]$doc.PSObject.Properties.Remove('profileName')
+$newPlain=[Text.Encoding]::UTF8.GetBytes(($doc|ConvertTo-Json -Depth 7 -Compress))
+$newCipher=[Security.Cryptography.ProtectedData]::Protect(
+  $newPlain,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+[IO.File]::WriteAllBytes($c,$newCipher)
+$meta=Get-Content -LiteralPath $r -Raw | ConvertFrom-Json
+[void]$meta.PSObject.Properties.Remove('profileName')
+$meta.cipherSha256=[Convert]::ToHexString(
+  [Security.Cryptography.SHA256]::HashData($newCipher)).ToLowerInvariant()
+[IO.File]::WriteAllText($r,($meta|ConvertTo-Json -Compress),
+  [Text.UTF8Encoding]::new($false))
+`;
+   const makeLegacy=spawnSync(pwsh,['-NoProfile','-NonInteractive',
+     '-Command',legacyPs],{encoding:'utf8',windowsHide:true,timeout:10000,
+       env:{...process.env,RC012_QA_LEGACY_DIR:capsule(names[1])}});
+   assert.equal(makeLegacy.status,0,makeLegacy.stderr);
+   assert.equal(execute(home,'Verify',names[1]).status,0,
+     'legacy scoped archive must verify by exact owner, files and hashes');
+   assert.equal(execute(home,'TestRestore',names[1]).status,0);
+   assert.match(execute(home,'Stage',names[1]).stdout,/BACKUP_REUSED files=6/);
    const payloadName='owner-capsule.dpapi',receiptName='receipt.json';
    const originalPayload=fs.readFileSync(path.join(capsule(names[1]),payloadName));
    const originalReceipt=fs.readFileSync(path.join(capsule(names[1]),receiptName));

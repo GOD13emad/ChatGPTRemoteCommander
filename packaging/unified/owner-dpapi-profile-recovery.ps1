@@ -114,14 +114,24 @@ function Verify-Capsule([string]$Directory,[bool]$TestRestore=$false){
  $cipher=[IO.File]::ReadAllBytes($blob)
  $meta=Get-Content -LiteralPath $receipt -Raw -Encoding UTF8 | ConvertFrom-Json
  if($meta.schema -ne 1 -or $meta.mode -ne 'DPAPI_CURRENT_USER' -or $meta.cipherSha256 -cne (Hash $cipher) -or $meta.entries -ne $files.Count){throw 'RC012_DPAPI_RECEIPT_INVALID'}
- if($profileExplicit -and $meta.profileName -cne $ProfileName){throw 'RC012_DPAPI_PROFILE_BINDING_INVALID'}
+ # Existing owner-scoped schema-1 capsules predate profileName metadata.
+ # Their signed-by-DPAPI file list and current SID still bind the exact six
+ # sources; a new scoped capsule must agree in BOTH receipt and ciphertext.
+ $receiptScoped=@($meta.PSObject.Properties.Name) -ccontains 'profileName'
+ if($receiptScoped -and $meta.profileName -cne $ProfileName){
+   throw 'RC012_DPAPI_PROFILE_BINDING_INVALID'
+ }
  try{
    $raw=[Security.Cryptography.ProtectedData]::Unprotect(
       $cipher,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
  }catch{throw 'RC012_DPAPI_CURRENT_USER_DECRYPT_FAILED'}
  $obj=[Text.Encoding]::UTF8.GetString($raw)|ConvertFrom-Json
  if($obj.schema -ne 1 -or $obj.ownerSid -ne $sid -or @($obj.files).Count -ne $files.Count){throw 'RC012_DPAPI_CONTENT_INVALID'}
- if($profileExplicit -and $obj.profileName -cne $ProfileName){throw 'RC012_DPAPI_PROFILE_BINDING_INVALID'}
+ $payloadScoped=@($obj.PSObject.Properties.Name) -ccontains 'profileName'
+ if($payloadScoped -ne $receiptScoped -or
+    ($payloadScoped -and $obj.profileName -cne $ProfileName)){
+   throw 'RC012_DPAPI_PROFILE_BINDING_INVALID'
+ }
  $total=0
  $restoreDir=$null
  if($TestRestore){
