@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {spawnSync} from 'node:child_process';
+import {spawn} from 'node:child_process';
 
 const fail=code=>{throw Error('V012_ENTRY_'+code)};
 export function inspectPayload(base=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')){
@@ -23,7 +23,7 @@ export function inspectPayload(base=path.resolve(path.dirname(fileURLToPath(impo
   chatOwnerGrantEstablished:false,liveProfileMigrationVerified:false,
   nativeOsInstallRegistered:false,stableRelease:false};
 }
-export function main(argv=process.argv.slice(2)){
+export async function main(argv=process.argv.slice(2)){
  if(argv.length!==1||!['inspect','desktop','headless'].includes(argv[0]))fail('COMMAND_REQUIRED');
  const base=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
  const status=inspectPayload(base);
@@ -31,9 +31,25 @@ export function main(argv=process.argv.slice(2)){
  // Required for any attempt to run; not a substitute for native profile grants.
  if(process.env.V012_EXPLICIT_OWNER_RUN!=='1')fail('EXPLICIT_OWNER_RUN_REQUIRED');
  const route=status.runtimes[argv[0]];
- const child=spawnSync(process.execPath,[path.join(base,route)],{stdio:'inherit',windowsHide:false});
- if(child.error||child.signal||child.status!==0)fail('COMPONENT_EXIT_FAILURE');
+ const child=spawn(process.execPath,[path.join(base,route)],{stdio:'inherit',windowsHide:false});
+ let requestedSignal=null;
+ const forward=signal=>()=>{
+  requestedSignal=signal;
+  if(child.exitCode===null&&child.signalCode===null)child.kill(signal);
+ };
+ const onTerm=forward('SIGTERM'),onInt=forward('SIGINT');
+ process.on('SIGTERM',onTerm);process.on('SIGINT',onInt);
+ try{
+  const outcome=await new Promise((resolve,reject)=>{
+   child.once('error',reject);
+   child.once('exit',(code,signal)=>resolve({code,signal}));
+  });
+  if(requestedSignal!==null)return;
+  if(outcome.code!==0||outcome.signal)fail('COMPONENT_EXIT_FAILURE');
+ }finally{
+  process.off('SIGTERM',onTerm);process.off('SIGINT',onInt);
+ }
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- try{main();}catch(e){console.error(e.message?.startsWith('V012_ENTRY_')?e.message:'V012_ENTRY_FAILED');process.exitCode=2;}
+ try{await main();}catch(e){console.error(e.message?.startsWith('V012_ENTRY_')?e.message:'V012_ENTRY_FAILED');process.exitCode=2;}
 }
