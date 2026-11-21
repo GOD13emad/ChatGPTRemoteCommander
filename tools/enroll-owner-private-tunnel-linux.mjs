@@ -14,6 +14,8 @@ import {createNativeTunnelAttestor}
   from '../src/native-tunnel-attestor.mjs';
 import {readLinuxOwnerTunnelPin,enrollLinuxOwnerTunnelPin}
   from '../src/linux-private-tunnel-owner-pin.mjs';
+import {resolveLinuxNativeWitnessEnrollmentMode}
+  from '../src/linux-native-witness-enrollment-mode.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -96,7 +98,27 @@ async function main(){
     ||Date.parse(cert.validFrom)>Date.now())
     fail('RC012_OWNER_TUNNEL_CLIENT_CERT_INVALID');
   const expectedClientLeafDerSha256=hash(cert.raw);
-  const owner=createLinuxNativeOwnerSessionProvider();
+  // Reuse the precise identity scheme already authorized for this account
+  // and host. An existing host-uid-v2 PIN must not be silently compared
+  // against a new namespace-v1 witness, or rewritten to make it fit.
+  const trustFile=path.join(directory,'owner-tunnel-trust.json');
+  const enrolledPin=fs.existsSync(trustFile)
+    ?readLinuxOwnerTunnelPin({directory}):null;
+  const v1Owner=createLinuxNativeOwnerSessionProvider({
+    ownerIdentityMode:'namespace-v1'
+  });
+  let owner=v1Owner;
+  if(enrolledPin){
+    const v2Owner=createLinuxNativeOwnerSessionProvider({
+      ownerIdentityMode:'host-uid-v2'
+    });
+    const selection=resolveLinuxNativeWitnessEnrollmentMode({
+      pinnedOwnerSidHash:enrolledPin.ownerSidHash,
+      v1:await v1Owner.getOwnerSessionSnapshot(),
+      v2:await v2Owner.getOwnerSessionSnapshot()
+    });
+    owner=selection.mode==='host-uid-v2'?v2Owner:v1Owner;
+  }
   const ownerSidHash=await owner.resolveOwnerSidHash();
   const observer=createLinuxTunnelClientObserver({
     profileId,expectedExecutablePath:executable.exe,
@@ -118,10 +140,9 @@ async function main(){
     healthPort:profile.port,expectedClientLeafDerSha256,
     enrolledAtMs:Date.now()
   };
-  const trustFile=path.join(directory,'owner-tunnel-trust.json');
   let result;
-  if(fs.existsSync(trustFile)){
-    const enrolled=readLinuxOwnerTunnelPin({directory});
+  if(enrolledPin){
+    const enrolled=enrolledPin;
     for(const key of Object.keys(record).filter(k=>k!=='enrolledAtMs')){
       if(enrolled[key]!==record[key])fail('RC012_OWNER_TUNNEL_ENROLLED_PIN_DRIFT');
     }

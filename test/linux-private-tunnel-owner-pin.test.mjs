@@ -10,6 +10,16 @@ import {
 } from '../src/linux-private-tunnel-owner-pin.mjs';
 
 const now=Date.now();
+test('existing v1/v2 Linux owner PIN is selected by native attested seat, never overwritten',()=>{
+ const source=fs.readFileSync(new URL('../tools/enroll-owner-private-tunnel-linux.mjs',import.meta.url),'utf8');
+ assert.match(source,/resolveLinuxNativeWitnessEnrollmentMode/);
+ assert.match(source,/pinnedOwnerSidHash:enrolledPin\.ownerSidHash/);
+ assert.match(source,/v1:await v1Owner\.getOwnerSessionSnapshot\(\)/);
+ assert.match(source,/v2:await v2Owner\.getOwnerSessionSnapshot\(\)/);
+ assert.match(source,/selection\.mode==='host-uid-v2'\?v2Owner:v1Owner/);
+ assert.match(source,/if\(enrolledPin\)\{\s*const enrolled=enrolledPin/);
+});
+
 const base=()=>({
   schema:1,kind:'linux-owner-private-one-tunnel',
   hostId:'emad-linux',profileId:'Emad',
