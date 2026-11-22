@@ -147,7 +147,10 @@ for p in sorted((gui/'DEBIAN').iterdir()):
         print('RC012_GUI_MAINTAINER_SCRIPT_ADOPTED '+p.name)
     else:
         raise SystemExit('RC012_MERGE_UNEXPECTED_GUI_CONTROL '+p.name)
-if {p.name for p in (native/'DEBIAN').iterdir()}!=allowed_control|required_gui_scripts:
+# md5sums is rebuilt from the final merged payload BELOW this check.
+# The native source DEB may contain control alone at this point.
+if not required_gui_scripts.issubset(
+    {p.name for p in (native/'DEBIAN').iterdir()}):
     raise SystemExit('RC012_MERGE_GUI_MAINTAINER_REQUIRED')
 (native/'DEBIAN/control').write_text(gui_control)
 # Build one truthful inventory of every installed regular file.

@@ -61,6 +61,8 @@ test('real legacy Electron GUI maintainer lifecycle regression is part of source
  assert.match(merge,/required_gui_scripts=\{'postinst','postrm'\}/);
  assert.match(merge,/RC012_GUI_MAINTAINER_SCRIPT_ADOPTED/);
  assert.match(merge,/RC012_MERGE_GUI_MAINTAINER_REQUIRED/);
+ assert.match(merge,/required_gui_scripts\.issubset/);
+ assert.match(merge,/md5sums is rebuilt from the final merged payload/);
  assert.match(smoke,/dpkg-deb --ctrl-tarfile/);
  assert.match(smoke,/sudo dpkg --install "\$RAW"/);
  assert.match(smoke,/sudo dpkg --install "\$OLD"/);
