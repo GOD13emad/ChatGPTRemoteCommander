@@ -140,3 +140,49 @@ test('Windows preflight ignores an untrusted SystemRoot for native fsutil resolu
  assert.equal(spoofed.eligible,true,'redacted OS system directory audit: '+JSON.stringify(spoofed));
  assert.deepEqual(spoofed,baseline);
 });
+
+test('Windows audit never enumerates a junction artifact scope', {skip:!onWindows},t=>{
+ const base=fixture(t),dir=path.join(base,'store'),outside=path.join(base,'external');
+ const store=new DeliveryStore({directory:dir,scope:'qa'});store.close();
+ fs.mkdirSync(outside);fs.writeFileSync(path.join(outside,'sentinel'),'disposable');
+ const artifacts=path.join(dir,'artifacts');fs.mkdirSync(artifacts);
+ const junction=path.join(artifacts,'qa');
+ fs.symlinkSync(outside,junction,'junction');
+ try {
+   const result=audit(dir);
+   assert.equal(result.eligible,false);
+   assert.equal(result.complete,false);
+   assert.ok(result.reparsePoints>0);
+   assert.equal(result.artifactFilesChecked,0,'junction target must never be enumerated');
+ } finally {fs.unlinkSync(junction);}
+});
+test('Windows audit never enumerates a junction artifact root', {skip:!onWindows},t=>{
+ const base=fixture(t),dir=path.join(base,'store'),outside=path.join(base,'external');
+ const store=new DeliveryStore({directory:dir,scope:'qa'});store.close();
+ fs.mkdirSync(path.join(outside,'qa'),{recursive:true});
+ fs.writeFileSync(path.join(outside,'qa','sentinel'),'disposable');
+ const junction=path.join(dir,'artifacts');
+ fs.symlinkSync(outside,junction,'junction');
+ try {
+   const result=audit(dir);
+   assert.equal(result.eligible,false);
+   assert.equal(result.complete,false);
+   assert.ok(result.reparsePoints>0);
+   assert.equal(result.artifactFilesChecked,0,'junction root target must never be enumerated');
+ } finally {fs.unlinkSync(junction);}
+});
+test('Windows audit never descends into a junction state root', {skip:!onWindows},t=>{
+ const base=fixture(t),dir=path.join(base,'store');
+ const store=new DeliveryStore({directory:dir,scope:'qa'});
+ store.writeArtifact({status:'COMPLETED',value:'disposable'});store.close();
+ const junction=path.join(base,'state-alias');
+ fs.symlinkSync(dir,junction,'junction');
+ try {
+   const result=audit(junction);
+   assert.equal(result.eligible,false);
+   assert.equal(result.complete,false);
+   assert.ok(result.reparsePoints>0);
+   assert.equal(result.checked,0,'junction state root must not be inspected');
+   assert.equal(result.artifactFilesChecked,0);
+ } finally {fs.unlinkSync(junction);}
+});
