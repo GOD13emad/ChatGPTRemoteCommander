@@ -18,15 +18,16 @@ class SafeMonitorTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="rc-center-r1-")
         self.root = Path(self.tmp.name)
-        self.old = (m.MONITOR,m.ROUTING,m.WORKFLOWS,m.OWNER_GUI_CONFIG,m.SAEED_UNIT)
+        self.old = (m.MONITOR,m.ROUTING,m.WORKFLOWS,m.OWNER_GUI_CONFIG,m.SAEED_UNIT,m.DISPLAY_NAMES)
         m.MONITOR = self.root/"monitor.json"
         m.ROUTING = self.root/"routing"
         m.WORKFLOWS = self.root/"workflows.sqlite"
         m.OWNER_GUI_CONFIG = self.root/"missing-owner-gui.json"
         m.SAEED_UNIT = self.root/"missing-saeed.service"
+        m.DISPLAY_NAMES = self.root/"profile-display-names.json"
         m.ROUTING.mkdir(mode=0o700)
     def tearDown(self):
-        m.MONITOR,m.ROUTING,m.WORKFLOWS,m.OWNER_GUI_CONFIG,m.SAEED_UNIT = self.old
+        m.MONITOR,m.ROUTING,m.WORKFLOWS,m.OWNER_GUI_CONFIG,m.SAEED_UNIT,m.DISPLAY_NAMES = self.old
         self.tmp.cleanup()
     def dump(self,p,obj):
         p.write_text(json.dumps(obj),encoding="utf8")
@@ -122,6 +123,40 @@ class SafeMonitorTests(unittest.TestCase):
         self.assertEqual(m.profiles()[0]["id"],"default")
         self.dump(q,{"stateFile":"/tmp/wrong.json"})
         self.assertEqual(m.profiles(),[])
+    def test_owner_local_display_name_saved_without_routing_mutation(self):
+        route = m.ROUTING/"default.json"
+        runtime = m.ROUTING/"default.runtime.json"
+        self.dump(route, {"profile":"default", "active":{"version":"0.10.20","port":48832},
+                          "generation":5})
+        self.dump(runtime, {"stateFile":str(route.resolve())})
+        before = route.read_bytes(), runtime.read_bytes()
+        self.assertEqual(m.profiles()[0]["displayName"], "default")
+        self.assertEqual(m.save_profile_display_name("default", "My Workstation"),
+                         "PROFILE_DISPLAY_NAME_SAVED")
+        self.assertEqual(m.profiles()[0]["displayName"], "My Workstation")
+        self.assertEqual(m.read_display_labels(), {"default":"My Workstation"})
+        self.assertEqual(m.DISPLAY_NAMES.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((route.read_bytes(), runtime.read_bytes()), before)
+        receipt = m.DISPLAY_NAMES.read_bytes()
+        for name, label in [("wrong","Unknown"), ("default","Invalid" + chr(10) + "Name"),
+                            ("default",chr(0x202e) + "Spoof"), ("../default","Unknown")]:
+            with self.assertRaises(ValueError):
+                m.save_profile_display_name(name, label)
+            self.assertEqual(m.DISPLAY_NAMES.read_bytes(), receipt)
+
+    def test_display_name_rejects_symlink_or_corrupted_store(self):
+        route = m.ROUTING/"default.json"
+        runtime = m.ROUTING/"default.runtime.json"
+        self.dump(route, {"profile":"default", "active":{"port":48832}})
+        self.dump(runtime, {"stateFile":str(route.resolve())})
+        bad = self.root / "bad.json"
+        bad.write_text("not json",encoding="utf8")
+        bad.chmod(0o600)
+        m.DISPLAY_NAMES.symlink_to(bad)
+        with self.assertRaises(ValueError):
+            m.save_profile_display_name("default","Safe Label")
+        self.assertEqual(bad.read_text(encoding="utf8"),"not json")
+
     def test_owner_gui_and_saeed_tunnel_are_separate_local_roles(self):
         owner = self.root / "owner-config.json"
         saeed = self.root / "saeed-emad-laptop-tunnel.service"

@@ -29,13 +29,16 @@ if (!windowsUploadParts || windowsUploadParts.length !== 2 ||
       "        if: github.event_name != 'pull_request'\n        with:\n" +
       '          name: remote-commander-windows-setup\n') ||
     !windowsUploadParts[1].includes('          retention-days: 7\n') ||
-    !releaseWorkflowLF.includes("  publish:\n    if: github.event_name != 'pull_request'\n") ||
+    !releaseWorkflowLF.includes("  publish:\n    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')\n") ||
     !releaseWorkflowLF.includes('          name: remote-commander-windows-setup\n          path: dist/windows-setup')) {
   throw new Error('RELEASE_SYNC_PR_MUST_NOT_STORE_WINDOWS_SETUP_OR_BREAK_PUBLICATION');
 }
 
 const browserFetcher = readFileSync('scripts/fetch-browser-setup.ps1','utf8');
 const innoFetcher = readFileSync('scripts/install-inno-setup.ps1','utf8');
+const ownerBroker = readFileSync('tools/workspace-owner-broker.mjs','utf8');
+const ownerLauncher = readFileSync('tools/launch-owner-workspace.ps1','utf8');
+const ownerPreparer = readFileSync('tools/prepare-owner-workspace-candidate.ps1','utf8');
 const browserVersion = '0.8.1';
 const browserSha256 = 'dcf4c5bc5d0ca8788f803e469246512af3745c81f578411dbabf6ce2a97feca2';
 if (!/^[0-9a-f]{64}$/.test(browserSha256)) throw new Error('Browser release SHA pin must be concrete');
@@ -55,6 +58,8 @@ for (const required of [
   'tools/generate-device-plugin.mjs',
   'server-install-windows.ps1',
   'server-install-linux.sh',
+  'tools/workspace-owner-broker.mjs',
+  'tools/launch-owner-workspace.ps1',
   'SHA256SUMS.txt',
   'SHA256SUMS-INSTALLER.txt',
   'zip_tree',
@@ -65,6 +70,28 @@ for (const required of [
 }
 if (!builder.includes('[[ "$count" -eq 19 ]]')) throw new Error('release asset count guard missing');
 if (!builder.includes('Release commit: $COMMIT')) throw new Error('installer bundle provenance missing');
+for (const marker of [
+  'tools/workspace-owner-broker.mjs',
+  'tools/launch-owner-workspace.ps1',
+  'tools/prepare-owner-workspace-candidate.ps1',
+  'cp "$ROOT/$f" "$installer_stage/$f"'
+]) if (!builder.includes(marker)) throw new Error('OWNER_BROKER_RELEASE_INPUT_MISSING ' + marker);
+if (!ownerLauncher.includes('OWNER_WORKSPACE_OWNER_SID_MISMATCH') ||
+    !ownerLauncher.includes('OWNER_WORKSPACE_CUA_PIPE_ORPHAN_REQUIRES_RECONCILIATION') ||
+    ownerLauncher.includes('Stop-Process -Id $existing')) {
+  throw new Error('OWNER_LAUNCHER_MUST_BIND_SID_AND_NEVER_KILL_PREEXISTING_CUA');
+}
+if (!ownerLauncher.includes('OWNER_WORKSPACE_LAUNCHER_HASH_MISMATCH') ||
+    !ownerLauncher.includes('OWNER_WORKSPACE_NODE_HASH_MISMATCH') ||
+    !ownerLauncher.includes('OWNER_WORKSPACE_PORT_IN_USE')) {
+  throw new Error('OWNER_LAUNCHER_RUNTIME_PIN_GUARD_MISSING');
+}
+if (!ownerPreparer.includes("ownerSid = $ownerSid") ||
+    !ownerPreparer.includes('scheduledTaskChanged = $false') ||
+    !ownerPreparer.includes('activeConfigChanged = $false')) {
+  throw new Error('OWNER_CANDIDATE_MUST_REMAIN_TASK_NEUTRAL');
+}
+
 
 if (!builder.includes('PIN_WIZARDS') ||
     !builder.includes('"$installer_stage/setup-wizard.ps1" "$windows_stage/setup-wizard.ps1"') ||
@@ -82,7 +109,7 @@ for (const required of [
   '.\\installer\\build-setup.ps1',
   'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
   'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
-  "if: github.event_name != 'pull_request'",
+  "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
   'Remote-Commander-Setup-v${version}.exe',
   'bash tools/build-release-assets.sh dist/release',
   'sha256sum -c SHA256SUMS.txt',
@@ -111,13 +138,14 @@ if (!innoFetcher.includes('9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c05
 if (!workflow.includes(browserVersion) || !workflow.includes(browserSha256)) throw new Error('Browser release pin missing from workflow');
 if (!workflow.includes('docs/RELEASE_${version}.md')) throw new Error('release notes must follow package version');
 if (pkg.version !== '0.10.26') {
-  const dev = /^0\.11\.0-(?:dev|rc)\.[1-9][0-9]*$/.test(pkg.version);
+  const dev = /^(0\.11\.0-dev\.[1-9]\d*|0\.12\.0-dev\.[1-9]\d*)$/.test(pkg.version);
   if (!dev) throw new Error(`unexpected package version ${pkg.version}`);
-  const train = JSON.parse(readFileSync('docs/release-train-0.11.json','utf8'));
+  const trainPath = pkg.version.startsWith('0.12.') ? 'docs/release-train-0.12.json' : 'docs/release-train-0.11.json';
+  const train = JSON.parse(readFileSync(trainPath,'utf8'));
   if (train.sourceVersion !== pkg.version || train.isStable !== false ||
       train.publishApproved !== false || train.autoupdateApproved !== false ||
       train.installedPromotionApproved !== false || train.releaseTag !== null)
-    throw new Error('0.11 prerelease source cannot satisfy a stable publication gate');
+    throw new Error('development source cannot satisfy a stable publication gate');
 }
 
 // R171: Provenance must fail closed before an immutable release can be published.
@@ -137,12 +165,35 @@ const c=workflow.indexOf('name: Publish matching qualified tag with assets');
 if (!(a>0 && b>a && c>b)) throw new Error('R171_ATTESTATION_ORDER_REJECT');
 const releaseOnly=workflow.slice(workflow.indexOf('  publish:'),c);
 if (!releaseOnly.includes('contents: write') || !releaseOnly.includes('id-token: write') || !releaseOnly.includes('attestations: write')) throw new Error('R171_PUBLISH_PERMISSIONS_REJECT');
-const buildSection=workflow.slice(workflow.indexOf('  build-windows-setup:'),workflow.indexOf('  publish:'));
+const qaJobStart=workflow.indexOf('  qa-provenance:');
+if(qaJobStart<0)throw new Error('R171_QA_PROVENANCE_SCOPE_MISSING');
+const buildSection=workflow.slice(workflow.indexOf('  build-windows-setup:'),qaJobStart);
+const qaJob=workflow.slice(qaJobStart,workflow.indexOf('  publish:'));
+if(!qaJob.includes("if: github.event_name == 'push' && github.ref == 'refs/heads/integration/v012-unsigned-approval-20261110'")||!qaJob.includes('id-token: write')||!qaJob.includes('attestations: write'))throw new Error('R171_QA_ATTEST_SCOPE_INVALID');
 if (buildSection.includes('id-token: write') || buildSection.includes('attestations: write')) throw new Error('R171_BUILD_PERMISSIONS_WIDENED');
 if (!workflow.includes("if: ${{ steps.release_identity.outputs.accepted == 'true' }}")) throw new Error('R171_TAG_GUARD_MISSING');
 console.log('R171_ATTESTATION_CONTRACT_PASS');
 
 console.log('RELEASE_ASSET_CONTRACT_PASS');
+
+// K308: keep the packaged owner endpoint restricted to exact-session workspace operations.
+for (const forbidden of ['owner_session_shell','workspace_driver_diagnostic','execFileAsync','EncodedCommand','powershell.exe','SendInput','SendKeys']) {
+  if (ownerBroker.includes(forbidden)) throw new Error('OWNER_BROKER_PRIVILEGED_TOOL_EXPOSED ' + forbidden);
+}
+for (const required of ['timingSafeEqual','127.0.0.1','SESSION0_FORBIDDEN','INTERACTIVE_OWNER_REQUIRED','allowMouse:false,allowKeyboard:false,allowWindowFocus:false','browserControl:{enabled:false,allowInput:false']) {
+  if (!ownerBroker.includes(required)) throw new Error('OWNER_BROKER_SECURITY_GUARD_MISSING ' + required);
+}
+
+for (const required of ['OWNER_WORKSPACE_OWNER_SID_MISMATCH','OWNER_WORKSPACE_NODE_HASH_MISMATCH','OWNER_WORKSPACE_NODE_VERSION_MISMATCH','OWNER_WORKSPACE_PORT_IN_USE','OWNER_WORKSPACE_LAUNCHER_HASH_MISMATCH']) {
+  if (!ownerLauncher.includes(required)) throw new Error('OWNER_LAUNCHER_IDENTITY_GUARD_MISSING ' + required);
+}
+for (const required of ['OWNER_WORKSPACE_CANDIDATE_NOT_NOPROMOTE','OWNER_WORKSPACE_CANDIDATE_BROKER_HASH_MISMATCH','OWNER_WORKSPACE_CANDIDATE_LAUNCHER_HASH_MISMATCH','OWNER_WORKSPACE_CANDIDATE_NODE_VERSION_INVALID','OWNER_WORKSPACE_CANDIDATE_PORT_IN_USE','[IO.FileMode]::CreateNew','OWNER_WORKSPACE_CANDIDATE_SELFTEST_RECEIPT_MISMATCH','scheduledTaskChanged = $false','activeConfigChanged = $false']) {
+  if (!ownerPreparer.includes(required)) throw new Error('OWNER_CANDIDATE_PREPARER_GUARD_MISSING ' + required);
+}
+for (const required of ['OWNER_WORKSPACE_RELEASE_PATH_ESCAPE','OWNER_WORKSPACE_BROKER_HASH_MISMATCH','OWNER_WORKSPACE_CUA_HASH_MISMATCH','OWNER_WORKSPACE_OWNER_MISMATCH','if ($SelfTest)']) {
+  if (!ownerLauncher.includes(required)) throw new Error('OWNER_LAUNCHER_GUARD_MISSING ' + required);
+}
+
 
 // R11: unsigned Windows distribution requires exact version opt-in, source provenance
 // and release notes. Authenticode status remains visible; no false signing claims.

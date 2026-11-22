@@ -146,3 +146,50 @@ Do not expose a personal Power Mode computer directly to the public internet to 
 ### Native Computer Use fallback
 
 Native Computer Use remains a fallback for graphical tasks when the Remote Commander GUI backend is unavailable, unsupported, or intentionally disabled. It is not a substitute for proving that the selected Remote Commander app reaches the intended computer.
+
+
+### Explicit account–host naming (v0.12, opt-in)
+
+Live identifiers such as default, MMZ, saeid-secondary and chatgpt-remote-commander
+are routing/transport names, not proof of an account's human-readable name.
+A single independently authenticated ChatGPT account+host pair retains its
+own Tunnel, Runtime key, private certificate and technical Core profile.
+
+The optional version-1 **local identity map** maps explicit technical
+(account, host, profile) identifiers to a distinct display label without
+renaming, copying, or re-enrolling any installed credentials. Never infer
+account membership from spelling similarity. Example **synthetic** map:
+
+    {
+      "schema": 1,
+      "hosts": [{
+        "hostId": "example-host",
+        "hostLabel": "Example Workstation",
+        "profiles": [{
+          "accountId": "account-one",
+          "profileId": "default",
+          "tunnelProfile": "chatgpt-remote-commander",
+          "displayName": "Remote Commander · Account One · Example Workstation",
+          "aliases": ["legacy-default"]
+        }]
+      }]
+    }
+
+Once owner/ChatGPT account bindings are independently verified, save the
+map in an owner-private local file. On Linux, use build-device-plugin.sh
+with --identity-map FILE --host-id example-host --account-id account-one
+--profile chatgpt-remote-commander --app-id YOUR_OWN_APP_ID. Windows uses
+build-device-plugin.ps1 with -IdentityMap FILE -HostId example-host
+-AccountId account-one -Profile chatgpt-remote-commander -AppId YOUR_OWN_APP_ID.
+
+With a map, the displayed name comes from its explicit displayName; the
+technical profile, existing Plugin App ID, Tunnel, and credential are not
+renamed. DeviceName is optional (defaults to the mapped hostLabel) or must
+equal hostLabel exactly. All hosts, accounts, aliases, and display labels
+must be collision-free; wrong account/profile/host combinations fail closed.
+The map is **owner-provided metadata, not authenticated conversation proof**.
+Generated Plugin ZIPs must still be imported or refreshed in the correct
+account separately, with authorized consent. For mapped builds, the per-host Plugin fingerprint is derived from the stable
+accountId rather than the legacy filename, so historical profile aliases do not
+create extra Plugin identities. Older builds without a map retain legacy
+behavior for compatibility; they are not implicitly renamed.

@@ -1,7 +1,8 @@
 """Native GTK4/libadwaita presentation only. Never acquires Commander input or shell authority.
 
-All state is supplied by the existing bounded owner-private read-only functions
-in control_center.py. UI refresh never executes workflows or parses code from JSON.
+All Core state is supplied by bounded owner-private monitoring readers.
+Only explicit profile display-label edits are passed to a validated owner-local
+metadata callback; UI refresh never executes Core workflows or credentials.
 """
 from __future__ import annotations
 
@@ -88,6 +89,9 @@ def profile_rows(rows: list[dict]) -> tuple[tuple[str, str, str], ...]:
         if not isinstance(row, dict):
             continue
         name = str(row.get("id", "UNKNOWN"))[:64]
+        display = row.get("displayName")
+        if not isinstance(display, str) or not display.strip() or len(display) > 80:
+            display = name
         version = str(row.get("version", "UNVERIFIED"))[:30]
         port = checked_count(row.get("port"))
         generation = checked_count(row.get("generation"))
@@ -99,7 +103,7 @@ def profile_rows(rows: list[dict]) -> tuple[tuple[str, str, str], ...]:
         else:
             detail = f"Core {version}  ·  port {port}  ·  generation {generation}"
         root = str(row.get("root") or "")[:160]
-        result.append((name, detail, root))
+        result.append((display, "Profile ID: " + name + " · " + detail, root))
     return tuple(result)
 
 
@@ -117,6 +121,27 @@ def workflow_rows(rows: list[dict]) -> tuple[tuple[str, str, str], ...]:
     return tuple(result)
 
 
+def addon_rows(items):
+    """One-way, nonactionable presentation model for optional products."""
+    if not isinstance(items, list):
+        return ()
+    result = []
+    for item in items[:64]:
+        if (not isinstance(item, dict) or item.get("state") != "PLANNED"
+                or item.get("installable") is not False):
+            continue
+        name = item.get("name")
+        ident = item.get("id")
+        if not isinstance(name, str) or not isinstance(ident, str):
+            continue
+        compatible = item.get("platformSupported") is True
+        result.append((name[:100],
+                       "PLANNED · install disabled · " +
+                       ("Linux candidate" if compatible else "not supported on Linux"),
+                       ident[:60]))
+    return tuple(result)
+
+
 def run_dashboard(app_id: str,
                   monitor_source: Callable,
                   profile_source: Callable,
@@ -124,7 +149,9 @@ def run_dashboard(app_id: str,
                   followup_source: Callable,
                   dark_preference: Callable,
                   argv=None,
-                  native_test_observer=None):
+                  native_test_observer=None,
+                  addons_source=None,
+                  display_name_updater=None):
     import gi
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
@@ -156,7 +183,10 @@ def run_dashboard(app_id: str,
             self._card_labels = {}
             self.nav_buttons = {}
             self._profile_rows = ()
+            self._profile_choices = ()
+            self._profile_labels = {}
             self._workflow_rows = ()
+            self._addon_rows = ()
             self._task_widgets = []
             self._style_installed = False
             self._timer = 0
@@ -327,6 +357,24 @@ def run_dashboard(app_id: str,
                 "rc-page-subhead"))
             self.profile_count = label("0 verified profiles", "rc-section-caption")
             self.profiles_page.append(self.profile_count)
+            editor = boxed(gap=8)
+            editor.add_css_class("rc-rule")
+            editor.append(label("Profile display name (owner-local metadata only)", "rc-section-title"))
+            editor.append(label("Technical profile ID, Tunnel and permissions never change.", "rc-section-caption"))
+            self.profile_picker = Gtk.DropDown(model=Gtk.StringList.new([]))
+            self.profile_picker.connect("notify::selected", self._picked_profile)
+            editor.append(self.profile_picker)
+            self.profile_label_entry = Gtk.Entry()
+            self.profile_label_entry.set_max_length(80)
+            self.profile_label_entry.set_placeholder_text("Type a display name for selected profile")
+            editor.append(self.profile_label_entry)
+            self.profile_save_button = Gtk.Button(label="Save display name")
+            self.profile_save_button.set_sensitive(callable(display_name_updater))
+            self.profile_save_button.connect("clicked", self._save_profile_display)
+            editor.append(self.profile_save_button)
+            self.profile_label_status = label("", "rc-section-caption")
+            editor.append(self.profile_label_status)
+            self.profiles_page.append(editor)
             self.profile_list = self._list_box()
             self.profiles_page.append(self.profile_list)
 
@@ -354,6 +402,17 @@ def run_dashboard(app_id: str,
             box.append(self.ai_state)
             box.append(self.ai_info)
             self.tasks_page.append(box)
+
+        def _build_addons(self):
+            self.addons_page.append(label("Optional add-ons", "rc-page-head"))
+            self.addons_page.append(label(
+                "Read-only candidates from the signed-preview catalog. No downloads, "
+                "install actions or permission changes are available.",
+                "rc-page-subhead"))
+            self.addon_count = label("Catalog unavailable", "rc-section-caption")
+            self.addons_page.append(self.addon_count)
+            self.addon_list = self._list_box()
+            self.addons_page.append(self.addon_list)
 
         def _build_notion(self):
             from notion_panel import attach_notion_panel
@@ -421,6 +480,7 @@ def run_dashboard(app_id: str,
                 ("overview", "Overview"),
                 ("profiles", "Profiles"),
                 ("tasks", "Workflows"),
+                ("addons", "Add-ons"),
                 ("security", "Security"),
                 ("notion", "Notion"),
             ):
@@ -445,12 +505,14 @@ def run_dashboard(app_id: str,
             self.overview_scroll, self.overview = self._make_page()
             self.profiles_scroll, self.profiles_page = self._make_page()
             self.tasks_scroll, self.tasks_page = self._make_page()
+            self.addons_scroll, self.addons_page = self._make_page()
             self.security_scroll, self.security_page = self._make_page()
             self.notion_scroll, self.notion_page = self._make_page()
             for key, title, page in (
                 ("overview", "Overview", self.overview_scroll),
                 ("profiles", "Profiles", self.profiles_scroll),
                 ("tasks", "Workflows", self.tasks_scroll),
+                ("addons", "Add-ons", self.addons_scroll),
                 ("security", "Security", self.security_scroll),
                 ("notion", "Notion", self.notion_scroll),
             ):
@@ -463,6 +525,7 @@ def run_dashboard(app_id: str,
             self._build_overview()
             self._build_profiles()
             self._build_tasks()
+            self._build_addons()
             self._build_security()
             self._build_notion()
             workspace.append(self.stack)
@@ -509,10 +572,49 @@ def run_dashboard(app_id: str,
             for row, keywords in self._task_widgets:
                 row.set_visible(not query or query in keywords)
 
-        def _render_profiles(self, rows):
-            if rows == self._profile_rows:
+        def _picked_profile(self, *_args):
+            selected = self.profile_picker.get_selected_item()
+            name = selected.get_string() if selected is not None else ""
+            self.profile_label_entry.set_text(self._profile_labels.get(name, name))
+            self.profile_save_button.set_sensitive(
+                bool(name) and callable(display_name_updater))
+
+        def _save_profile_display(self, *_args):
+            selected = self.profile_picker.get_selected_item()
+            name = selected.get_string() if selected is not None else ""
+            if name not in self._profile_choices or not callable(display_name_updater):
+                self.profile_label_status.set_text("No verified editable profile selected.")
                 return
+            try:
+                result = display_name_updater(name, self.profile_label_entry.get_text())
+                if result != "PROFILE_DISPLAY_NAME_SAVED":
+                    raise ValueError("PROFILE_DISPLAY_READBACK_FAILED")
+                self.profile_label_status.set_text("Display name saved; Core and Tunnel unchanged.")
+                self.refresh()
+            except (OSError, ValueError) as exc:
+                self.profile_label_status.set_text("Display name not saved: " + str(exc)[:140])
+
+        def _render_profiles(self, rows, raw_profiles):
+            choices = tuple(
+                item["id"] for item in raw_profiles
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+                and item.get("type") != "GUI_WORKER"
+            )
+            if rows == self._profile_rows and choices == self._profile_choices:
+                return
+            selected = self.profile_picker.get_selected_item()
+            prior = selected.get_string() if selected is not None else ""
             self._profile_rows = rows
+            self._profile_choices = choices
+            self._profile_labels = {
+                item["id"]: item.get("displayName", item["id"])
+                for item in raw_profiles
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            }
+            self.profile_picker.set_model(Gtk.StringList.new(list(choices)))
+            if choices:
+                self.profile_picker.set_selected(choices.index(prior) if prior in choices else 0)
+            self._picked_profile()
             self._clear(self.profile_list)
             self.profile_count.set_text(f"{len(rows)} verified routing profile(s)")
             if not rows:
@@ -539,12 +641,27 @@ def run_dashboard(app_id: str,
                 self._task_widgets.append((row, (ident + " " + detail).casefold()))
             self._filter_tasks()
 
+        def _render_addons(self, rows):
+            if rows == self._addon_rows:
+                return
+            self._addon_rows = rows
+            self._clear(self.addon_list)
+            self.addon_count.set_text(f"{len(rows)} planned candidate(s) · none installable")
+            if not rows:
+                self.addon_list.append(self._list_row(
+                    "Catalog unavailable", "No verified local add-on manifest; install disabled"))
+                return
+            for name, detail, ident in rows:
+                self.addon_list.append(self._list_row(name, detail, ident, "rc-caution"))
+
         def refresh(self):
             try:
                 snapshot = monitor_source()
-                profile_data = profile_rows(profile_source())
+                raw_profiles = profile_source()
+                profile_data = profile_rows(raw_profiles)
                 task_data = workflow_rows(workflow_source())
                 ai = followup_source()
+                addon_data = addon_rows(addons_source() if callable(addons_source) else ())
                 if not isinstance(snapshot, dict):
                     snapshot = {"state": "UNVERIFIED"}
                 if not isinstance(ai, dict):
@@ -552,8 +669,10 @@ def run_dashboard(app_id: str,
             except (ValueError, TypeError, OSError):
                 snapshot = {"state": "UNVERIFIED"}
                 profile_data = ()
+                raw_profiles = []
                 task_data = ()
                 ai = {"state": "UNVERIFIED"}
+                addon_data = ()
 
             connection = snapshot.get("state", "UNVERIFIED")
             self._set_status(self._card_labels["Connection"][0], connection)
@@ -575,8 +694,9 @@ def run_dashboard(app_id: str,
                 value.remove_css_class(css)
             if active == "UNVERIFIED":
                 value.add_css_class("rc-caution")
-            self._render_profiles(profile_data)
+            self._render_profiles(profile_data, raw_profiles)
             self._render_workflows(task_data)
+            self._render_addons(addon_data)
             self.summary_line.set_text(
                 f"{len(profile_data)} verified profile(s)   ·   {len(task_data)} workflow record(s)")
             self.summary_detail.set_text(
