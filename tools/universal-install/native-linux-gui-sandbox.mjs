@@ -156,6 +156,35 @@ export function inspectLinuxGuiSandbox({
 }
 
 
+const POLICY_IDENTITY_PATHS=Object.freeze([
+  ...TRUSTED_PARENT_DIRS,GUI,PROFILE,ACTIVE
+]);
+function policyStateFingerprint(stat,expectedSha256,status,effect){
+  const identities=[];
+  for(const item of POLICY_IDENTITY_PATHS){
+    let n;
+    try{n=stat(item);}catch(error){
+      if(item===ACTIVE&&error?.code==='ENOENT'){
+        identities.push([item,'ABSENT']);
+        continue;
+      }
+      return null;
+    }
+    if(!n||!Number.isSafeInteger(n.dev)||!Number.isSafeInteger(n.ino)
+      ||!Number.isSafeInteger(n.uid)||!Number.isSafeInteger(n.mode)
+      ||!Number.isSafeInteger(n.nlink)||!Number.isSafeInteger(n.size)
+      ||!Number.isFinite(n.ctimeMs)||!Number.isFinite(n.mtimeMs)
+      ||typeof n.isSymbolicLink!=='function'
+      ||typeof n.isFile!=='function'||typeof n.isDirectory!=='function'
+      ||n.isSymbolicLink()||(!n.isFile()&&!n.isDirectory()))return null;
+    identities.push([item,n.dev,n.ino,n.uid,n.mode,n.nlink,n.size,
+      n.ctimeMs,n.mtimeMs,n.isDirectory()?'DIR':'FILE']);
+  }
+  return createHash('sha256').update(JSON.stringify([
+    'rc-gui-policy-pre-effect-v1',expectedSha256,status,effect,identities
+  ])).digest('hex');
+}
+
 // A data-only intent for the existing native installer transaction.
 // No method in this module executes a privileged command or grants owner
 // approval. A caller-supplied SHA is not publisher provenance by itself.
@@ -204,11 +233,50 @@ export function planLinuxGuiSandboxPolicy(options={}){
       // preflight may produce a native operation intention.
       break;
   }
+  const preEffectStateFingerprint=requestedEffect==='NONE'
+    ?null:policyStateFingerprint(options.stat??fs.lstatSync,
+      options.expectedProfileSha256,observed.status,requestedEffect);
+  if(requestedEffect!=='NONE'&&!preEffectStateFingerprint){
+    status='BLOCKED_UNVERIFIED_POLICY_STATE';
+    requestedEffect='NONE';
+  }
   return Object.freeze({
     ...common,status,requestedEffect,priorPolicyFile,
+    preEffectStateFingerprint,
     nativeOwnerApprovalRequired:requestedEffect!=='NONE',
     exactPriorStateSnapshotRequired:requestedEffect!=='NONE',
     rollbackReceiptRequired:requestedEffect!=='NONE',
     ownerPolicyEffectPerformed:false
+  });
+}
+
+
+// Must run immediately before native privilege transfer, under the existing
+// installer transaction's journal/owner lock. A true result is a state
+// comparison only, NOT native authorization, stable release or GUI success.
+export function revalidateLinuxGuiPolicyPlan(approvedPlan,options={}){
+  if(!approvedPlan||approvedPlan.schema!=='rc-native-linux-gui-policy-plan-v1'
+    ||!SHA.test(approvedPlan.expectedProfileSha256??'')
+    ||!SHA.test(approvedPlan.preEffectStateFingerprint??'')
+    ||approvedPlan.status!=='OWNER_APPROVAL_AND_NATIVE_SNAPSHOT_REQUIRED'
+    ||!['REGISTER_AND_LOAD_PINNED_PROFILE',
+      'LOAD_EXISTING_PINNED_PROFILE'].includes(approvedPlan.requestedEffect)
+    ||options.expectedProfileSha256!==approvedPlan.expectedProfileSha256)
+    fail('RC_GUI_POLICY_PRE_EFFECT_PLAN_INVALID');
+  const latest=planLinuxGuiSandboxPolicy(options);
+  const stable=latest.status===approvedPlan.status
+    &&latest.sourceState===approvedPlan.sourceState
+    &&latest.priorPolicyFile===approvedPlan.priorPolicyFile
+    &&latest.requestedEffect===approvedPlan.requestedEffect
+    &&latest.preEffectStateFingerprint===approvedPlan.preEffectStateFingerprint;
+  return Object.freeze({
+    schema:'rc-native-linux-gui-policy-pre-effect-v1',
+    status:stable?'PRE_EFFECT_STATE_STABLE':'BLOCKED_PRE_EFFECT_STATE_DRIFT',
+    originalStateFingerprint:approvedPlan.preEffectStateFingerprint,
+    latestStateFingerprint:latest.preEffectStateFingerprint??null,
+    nativeEffectAuthorized:false,
+    ownerApprovalIssued:false,
+    publisherProvenanceVerified:false,
+    kernelProfileContentVerified:false,stablePromotionAccepted:false
   });
 }
