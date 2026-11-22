@@ -2,6 +2,30 @@
 
 Builds **one native installer per OS** from a single pinned Git commit: electron-builder NSIS (Windows, per-user) or DEB (Linux). Electron embeds its own Node.js, while `extraResources/core` carries the unchanged Commander source. A compact per-user preview copy is the only mutable runtime tree; no system-wide Node/.NET SDK is required to launch this package.
 
+## One cross-OS native lifecycle command (hosted proof)
+
+The accepted product has **one contract and a single source-pinned builder**,
+not a per-host installer. The installed artifact is a Windows NSIS `.exe` or
+a Debian `.deb`, as required by each operating system. Both use the same Core
+Git SHA, release train and `packaging/unified` source. Native package installation
+is delegated to the OS mechanisms, not replaced with a custom package manager.
+
+From an exact source checkout, use the same read-only command on Windows or Linux:
+
+```text
+node tools/universal-install/native-smoke.mjs --plan --expected-commit EXACT_40_CHAR_GIT_SHA
+```
+
+The GitHub-hosted Windows/Linux installer matrix uses **the same entrypoint**
+with `--run` after building its OS-specific artifact. That dispatches the
+already existing, separately tested native lifecycle: legacy baseline → one
+installed candidate → health/GUI/source checks → verified rollback. Source
+version and installer filename must match the single canonical v0.12 release
+train. The CLI refuses mutation on ordinary owner hosts; even in hosted CI,
+successful disposable installation is **not** J01 consent, signed Worker/Full
+Access, owner-host cutover or Stable approval. Live owner installation requires
+the separately authorized native installer and cutover admission checks.
+
 ## Build (not a Stable promotion)
 
 From the repository root: `node packaging/unified/prepare.mjs`. From this directory: `npm ci` and `npm run build:linux` on Linux, or `npm run build:win` on Windows. Build manifests pin the exact `git HEAD` and tree. Uncommitted changes to the embedded Core/tool paths cause failure. Artifacts go to `dist/unified/`.
