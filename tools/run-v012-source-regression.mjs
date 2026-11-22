@@ -49,7 +49,8 @@ const batches = [
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
   files.slice(18, 20), // NoPromote and owner-pinned provenance
-  files.slice(20, 22), // Protected Core and Windows encrypted recovery
+  files.slice(20, 21), // Protected Core: separate cold 30s process
+  files.slice(21, 22), // Windows encrypted recovery: separate cold 30s process
   files.slice(22, 23), // Linux encrypted recovery: two expensive fixtures
   files.slice(23, 29) // Native owner, dialogs, Tunnel, signed Worker and sealed key
 ];
@@ -88,7 +89,7 @@ for (let index = range.first-1; index < range.last; index++) {
   const partitions = index === 5 ? [
     ...slowWorkflowTests.map(name => ['--test-name-pattern=^' + name + '$']),
     ['--test-skip-pattern=' + slowPattern]
-  ] : index === 13 ? linuxOwnerRecoveryTests.map(name =>
+  ] : index === 14 ? linuxOwnerRecoveryTests.map(name =>
     ['--test-name-pattern=^' + name + '$']) : [[]];
   for (let part = 0; part < partitions.length; part++) {
     process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length +
@@ -100,7 +101,7 @@ for (let index = range.first-1; index < range.last; index++) {
       windowsHide: true,
       // Native owner recovery declares 50s/60s test timeouts and must not
       // share one 30s wall-time budget with unrelated test files.
-      timeout: index === 13 ? (part === 0 ? 55000 : 65000) : 30000
+      timeout: index === 14 ? (part === 0 ? 55000 : 65000) : 30000
     });
     if (result.error) {
       process.stderr.write('V012_SOURCE_REGRESSION_RUNNER_FAILED batch=' + (index + 1) +
