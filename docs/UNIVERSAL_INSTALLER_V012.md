@@ -144,6 +144,20 @@ Denial or timeout does not pass. Even an approved binding is rechecked by a
 denied Core tool call. No live Tunnel, service, OS privilege, credential or
 installed Core is replaced by this diagnostic.
 
+**Real three-profile owner-native admission evidence (2026-11-22):** On the
+existing Emad Laptop, the SAME source-pinned no-grant canary invoked the
+native J01 owner-visible consent separately for (Core profile, owner Tunnel):
+(`default`, `chatgpt-remote-commander`, 48965), (`MMZ`,
+`mmz-emad-laptop`, 48966) and (`saeed-emad`, `saeed-emad-laptop`,
+48967). All three signed owner-pair admissions returned HTTP 200 over
+client-authenticated TLS 1.3; anonymous clients were denied, and
+`tools/call` without a Worker grant continued to fail 503
+`PRIVATE_OWNER_ADMISSION_UNAVAILABLE`. Each source QA script confirmed
+the preexisting service MainPID unchanged, and all temporary broker/Core
+units were collected. The installed 0.11 Core and all active Tunnels were
+not replaced. These are three actual, **ephemeral J01 consent
+events for isolated canaries**, not three persistent production grants.
+
 This proves only the native owner-pair binding seam, not a signed Worker,
 live privileged tool effect, full Core restoration, or production cutover.
 

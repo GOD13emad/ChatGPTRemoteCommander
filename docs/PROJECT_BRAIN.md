@@ -1534,7 +1534,23 @@ read-only package versions: Emad Linux and Windows dev.9, MMZ Linux and the
 two Windows servers dev.8. Windows NSIS registrations are one Core per host;
 other Browser Commander uninstall entries belong to a separate product.
 Windows a982 preflight was stale; the dba0 branch correctly detects NSIS.
-Both real platform preflights still NO_PROMOTE due to protected route,
-native owner J01/Signed Worker admission, provenance, actual reversible
-Core cutover and fleet/reboot unaccepted. These unaccepted gates are not
-closed by CI, documentation or user request; retain live Core/Tunnels.
+Real ephemeral J01 owner-pair admission was also verified on three
+source-pinned, no-grant Emad Laptop canaries on 2026-11-22:
+(default/chatgpt-remote-commander:48965),
+(MMZ/mmz-emad-laptop:48966), and
+(saeed-emad/saeed-emad-laptop:48967). All three native owner
+approvals gave mTLS TLSv1.3/HTTP 200 for the isolated owner binding,
+but ungranted tool calls remained HTTP 503 and anonymous TLS was
+rejected. Active 0.11 service PIDs and all production Tunnel state
+were unchanged; temporary broker/Core QA units were collected.
+Previously provisioned real Ed25519 encrypted credentials for these
+three profiles independently passed systemd LoadCredentialEncrypted
+sign-and-verify without owner grant or Core effect. On Emad PC, native
+Windows DPAPI owner/Tunnel --preflight PASS, but real enrollment was
+blocked by the remote safety boundary; no key or approval request
+was generated. This evidence closes ONLY ephemeral no-grant owner-pair
+canary verification, not a persistent signed Worker grant.
+Production NO_PROMOTE continues because live protected Worker/Plugin
+ingress, exact-action grant+revocation, immutable release provenance,
+actual reversible Core cutover, boot/recovery and fleet acceptance
+are unaccepted. Keep all installed 0.11 Core/Tunnels alive.
