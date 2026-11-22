@@ -15,12 +15,21 @@ const sha=createHash('sha256').update(profile).digest('hex');
 const fileInfo=(bytes,{uid=0,mode=0o100644,nlink=1,size=bytes?.length??150,dev=1,ino=9}={})=>({
  uid,mode,nlink,size,dev,ino,mtimeMs:1,ctimeMs:1,isFile:()=>true,isSymbolicLink:()=>false
 });
+const dirInfo=({uid=0,mode=0o40755,link=false}={})=>({
+  uid,mode,nlink:2,size:4096,dev:1,ino:5,mtimeMs:1,ctimeMs:1,
+  isFile:()=>false,isDirectory:()=>!link,isSymbolicLink:()=>link
+});
 function fixture({overrides={},data={},stats={}}={}){
   const bytes=new Map([
     [flags.enabled,Buffer.from('Y\n')],[flags.restricted,Buffer.from('1\n')],
     [flags.clone,Buffer.from('1\n')],[p,Buffer.from(profile)],...Object.entries(data).map(([k,v])=>[k,Buffer.from(v)])
   ]);
-  const files=new Map([[p,fileInfo(bytes.get(p))],[gui,fileInfo(Buffer.alloc(200),{ino:3})],...Object.entries(stats)]);
+  const dirs=['/opt',ROOT,ROOT+'/resources','/etc','/etc/apparmor.d'];
+  const files=new Map([
+    ...dirs.map(d=>[d,dirInfo()]),
+    [p,fileInfo(bytes.get(p))],[gui,fileInfo(Buffer.alloc(200),{ino:3})],
+    ...Object.entries(stats)
+  ]);
   for(const [k,v] of Object.entries(overrides)) bytes.set(k,Buffer.from(v));
   return {
     platform:'linux',expectedProfileSha256:sha,
@@ -80,4 +89,26 @@ test('shared native OS adapter exposes read-only Linux preflight, not on Windows
  assert.equal(q.osPolicyModified,false);
  const win=createNativeOsAdapter({platform:'windows',architecture:'x64',run:()=>{throw Error('unexpected OS effect');}});
  assert.equal(Object.hasOwn(win,'inspectGuiSandbox'),false);
+});
+
+test('symlinked GUI parent fails closed before trusting regular leaf',()=>{
+ const q=check({stats:{[ROOT]:dirInfo({link:true})}});
+ assert.equal(q.status,'OWNER_POLICY_PATH_UNTRUSTED');
+});
+test('group-writable package ancestor refuses admission even when hash matches',()=>{
+ const q=check({stats:{[ROOT+'/resources']:dirInfo({mode:0o40775})}});
+ assert.equal(q.status,'OWNER_POLICY_PATH_UNTRUSTED');
+});
+test('symlinked system AppArmor directory refuses policy admission',()=>{
+ const q=check({stats:{'/etc/apparmor.d':dirInfo({link:true})}});
+ assert.equal(q.status,'OWNER_POLICY_PATH_UNTRUSTED');
+});
+test('missing system policy parent fails closed',()=>{
+ const f=fixture(),old=f.stat;
+ f.stat=q=>q==='/etc/apparmor.d'?(()=>{throw Object.assign(new Error('not found'),{code:'ENOENT'});})():old(q);
+ assert.equal(inspectLinuxGuiSandbox(f).status,'OWNER_POLICY_PATH_UNTRUSTED');
+});
+test('non-root ancestor refuses admission',()=>{
+ const q=check({stats:{[ROOT]:dirInfo({uid:1000})}});
+ assert.equal(q.status,'OWNER_POLICY_PATH_UNTRUSTED');
 });
