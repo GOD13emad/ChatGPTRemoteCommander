@@ -1,5 +1,5 @@
 import os from 'node:os';
-import {boundedPowerShellTimeout} from './shell-timeout-limits.mjs';
+import {boundedCommandTimeout} from './command-timeout-limits.mjs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
@@ -250,7 +250,7 @@ export async function runShell(ctx, input) {
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const cfg = power(ctx);
-  const timeoutMs = boundedPowerShellTimeout(input.timeoutMs, cfg.maxCommandMs ?? 300000);
+  const timeoutMs = boundedCommandTimeout(input.timeoutMs, cfg.maxCommandMs ?? 300000);
   const outputLimit = Math.max(4096, Math.min(Number(cfg.maxOutputBytes ?? 1048576), 8388608));
   const result = await capture(command, cwd, timeoutMs, outputLimit);
   return { command, cwd, timeoutMs, ...result };
