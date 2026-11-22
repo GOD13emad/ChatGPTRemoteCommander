@@ -132,11 +132,15 @@ export function inspectLinuxGuiSandbox({
     if(createHash('sha256').update(live).digest('hex')!==found)
       return result('OWNER_POLICY_EXISTING_REQUIRES_RECONCILIATION');
     const loaded=observedKernelPolicy(readKernelProfiles);
-    return result(loaded===true?'OWNER_POLICY_LOADED_PENDING_GUI_SMOKE':
+    // A kernel listing proves ONLY that a profile name is registered. It
+    // cannot attest the policy bytes currently loaded by the kernel; stale
+    // earlier rules might still be active even when the on-disk SHA matches.
+    return result(loaded===true?'OWNER_POLICY_NAME_LOADED_CONTENT_UNVERIFIED':
       loaded===false?'OWNER_POLICY_FILE_PRESENT_KERNEL_NOT_LOADED':
       'OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION',{
       installedProfileSha256:found,activeProfileMatchesPinnedRelease:true,
-      installedGuiIdentityObserved:true,loadedProfileVerified:loaded===true
+      installedGuiIdentityObserved:true,kernelProfileNameObserved:loaded===true,
+      kernelProfileContentVerified:false,loadedProfileVerified:false
     });
   }
   return result('OWNER_POLICY_REQUIRED',{
