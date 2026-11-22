@@ -237,3 +237,52 @@ test('multiword project trigger matches when its words are separated and layers 
     assert.ok(routed.items[1].route.matchedTriggers.includes('continue project'));
   } finally { fs.rmSync(base,{recursive:true,force:true}); }
 });
+
+
+test('opt-in project intent guard filters dictionary translation but preserves actual execution',()=>{
+  const base=tempRoot();
+  try {
+    const brain=manifest('project-execution-brain');
+    brain.triggers=['ادامه بده','ادامه پروژه','continue project','audit project'];
+    brain.description='Project execution and evidence-based continuation.';
+    brain.metadata={contextGateRequired:true};
+    writeExtension(base,'project-execution-brain',brain);
+    const writing=manifest('universal-writing');
+    writing.triggers=['ترجمه','translate','meaning'];
+    writing.description='Translation and plain writing.';
+    writeExtension(base,'universal-writing',writing);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    for (const task of [
+      'فقط ترجمه کن: «ادامه بده» به انگلیسی چه می‌شود؟',
+      'ترجمه جمله ادامه بده چیست؟',
+      'What does "continue project" mean?',
+      'How do you say "audit project" in Persian?'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(!routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+    for (const task of [
+      'ادامه بده پروژه شبیه‌سازی COMSOL را',
+      'پروژه ترجمه متون را ادامه بده',
+      'Translate the status memo, then continue project',
+      'ترجمه کن و سپس پروژه را ادامه بده'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+    assert.equal(registry.execute('agent_extension_list',{}).diagnostics.length,0);
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});
+
+test('non-opt-in extensions retain their declared literal triggers',()=>{
+  const base=tempRoot();
+  try {
+    const literal=manifest('literal-phrase-tool');
+    literal.triggers=['continue project'];
+    literal.metadata={contextGateRequired:false};
+    writeExtension(base,'literal-phrase-tool',literal);
+    const items=createAgentExtensionRegistry({directories:[base]})
+      .execute('agent_extension_route',{task:'Translate "continue project" to Persian'}).items;
+    assert.deepEqual(items.map(x=>x.id),['literal-phrase-tool']);
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});

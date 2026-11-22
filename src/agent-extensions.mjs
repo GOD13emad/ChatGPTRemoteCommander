@@ -133,9 +133,23 @@ const ROUTE_STOPWORDS=new Set(['and','the','this','that','with','from','into','f
 function taskTokens(value) {
   return [...new Set(String(value ?? '').toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}._:+-]{1,63}/gu) ?? [])];
 }
+// A declarative trigger is not a user intent grant. Some project Skills explicitly
+// require context-sensitive activation; do not suggest them for word/phrase translation.
+// Keep this scoped to opt-in extensions and preserve unrelated language agents.
+function translationOnlyContext(task) {
+  const outside=String(task??'').trim().toLowerCase().replace(
+    /«[^»]{0,512}»|“[^”]{0,512}”|"[^"]{0,512}"|'[^']{0,512}'/gu, ' ');
+  const languageCue=/(?:\b(?:translate|translation|meaning|mean|define)\b|\bwhat does\b|\bhow do you say\b|ترجمه|معنی|معنا|تعریف|تلفظ)/iu;
+  if(!languageCue.test(outside)) return false;
+  const projectAction=/(?:\b(?:resume|continue|audit|execute|finish|run|fix|deploy)\b[\s\S]{0,100}\b(?:project|workflow|task)\b|\b(?:project|workflow|task)\b[\s\S]{0,100}\b(?:resume|continue|audit|execute|finish|run|fix|deploy)\b|(?:پروژه|کار|رساله|شبیه‌سازی)[\s\S]{0,100}(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|تحلیل کن|بررسی کن|تحقیق کن|انجام بده|شروع کن)|(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|انجام بده)[\s\S]{0,100}(?:پروژه|کار|رساله|شبیه‌سازی))/iu;
+  return !projectAction.test(outside);
+}
+
 function routeScore(ext, task) {
   const text=String(task??'').trim().toLowerCase();
   if(!text)return {score:0,matchedTriggers:[],matchedTokens:[]};
+  if(ext.metadata?.contextGateRequired===true && translationOnlyContext(task))
+    return {score:0,matchedTriggers:[],matchedTokens:[]};
   const tokens=taskTokens(text);
   const tokenSet=new Set(tokens);
   const matchedTriggers=(ext.triggers??[]).filter(value=>{
