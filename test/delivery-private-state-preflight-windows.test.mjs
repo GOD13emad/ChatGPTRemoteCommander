@@ -26,7 +26,7 @@ function audit(dir,scope='qa',max=10,executable=ps){
   assert.deepEqual(Object.keys(result).sort(),[
     'schema','kind','platform','complete','eligible','checked','artifactFilesChecked',
     'artifactScanLimit','limitReached','missingRequired','reparsePoints',
-    'ownerMismatch','inheritedDirectoryAcl','broadAllow','inspectionErrors'
+    'ownerMismatch','inheritedDirectoryAcl','broadAllow','inspectionErrors','hardlinkAliases'
   ].sort());
   return result;
 }
@@ -95,4 +95,27 @@ test('relative, UNC and explicit parent traversal fail closed',{skip:!onWindows}
     assert.equal(result.checked,0);
     assert.ok(result.inspectionErrors>0,'redacted invalid-path report: '+JSON.stringify(result));
   }
+});
+
+test('Windows hardlinked delivery SQLite is ineligible without touching link targets', {skip:!onWindows},t=>{
+ const dir=path.join(fixture(t),'database-links');const s=new DeliveryStore({directory:dir,scope:'qa'});
+ s.close();const database=path.join(dir,'delivery.sqlite');
+ fs.linkSync(database,path.join(dir,'database-link-alias'));
+ assert.equal(fs.statSync(database).nlink,2);
+ const result=audit(dir);
+ assert.equal(result.complete,true,'redacted SQLite hardlink report: '+JSON.stringify(result));
+ assert.equal(result.eligible,false);
+ assert.equal(result.hardlinkAliases,1);
+ assert.equal(fs.statSync(database).nlink,2);
+});
+test('Windows hardlinked content-addressed artifact is ineligible', {skip:!onWindows},t=>{
+ const dir=path.join(fixture(t),'artifact-links');const s=new DeliveryStore({directory:dir,scope:'qa'});
+ const ref=s.writeArtifact({status:'COMPLETED',value:'hardlink'});const artifact=s.artifactPath(ref.id);s.close();
+ fs.linkSync(artifact,path.join(dir,'artifact-link-alias'));
+ assert.equal(fs.statSync(artifact).nlink,2);
+ const result=audit(dir);
+ assert.equal(result.complete,true,'redacted artifact hardlink report: '+JSON.stringify(result));
+ assert.equal(result.eligible,false);
+ assert.equal(result.hardlinkAliases,1);
+ assert.equal(fs.statSync(artifact).nlink,2);
 });
