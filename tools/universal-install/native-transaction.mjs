@@ -101,7 +101,12 @@ function identity(spec,before){
     TRANSACTION_SCHEMA,spec.product,spec.platform,spec.architecture,
     spec.installationKind,spec.expectedCommit,spec.candidate.version,spec.candidate.sha256,
     spec.previous?.version??'NATIVE_ABSENCE',
-    spec.previous?.sha256??'NO_ROLLBACK_ARTIFACT',before.runtime.fingerprint
+    spec.previous?.sha256??'NO_ROLLBACK_ARTIFACT',
+    // Distinct pre-effect package states must never share an approval ID.
+    // Planning at baseline retains exactly the APPLY ID; at candidate, the
+    // same manifest plans a distinct ROLLBACK ID.
+    before.version??'NATIVE_ABSENCE',before.registeredInstallCount,
+    before.runtime.fingerprint
   ];
   return sha(values.join('\0'));
 }
