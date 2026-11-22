@@ -151,7 +151,9 @@
     "provenanceModule": "packaging/unified/owner-pinned-provenance.mjs",
     "initialInstallNeedsHistoricalPackage": false,
     "initialInstallManifestSchema": 2,
-    "initialInstallRollbackTarget": "NATIVE_ABSENCE_AFTER_OS_UNINSTALL_AND_VERIFY"
+    "initialInstallRollbackTarget": "NATIVE_ABSENCE_AFTER_OS_UNINSTALL_AND_VERIFY",
+    "hostedNativeEffectProof": "test/universal-native-coordinator-hosted.mjs",
+    "hostedNativeEffectScope": "disposable GitHub runners only; no owner J01/Worker or production Core cutover"
   },
   "nativeInstallAuthority": "tools/universal-install/native-cli.mjs"
 }

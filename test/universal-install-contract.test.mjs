@@ -29,6 +29,8 @@ test('one package contract covers both operating systems and all nine accepted c
   assert.equal(auth.provenanceModule,'packaging/unified/owner-pinned-provenance.mjs');
   assert.equal(auth.initialInstallNeedsHistoricalPackage,false);
   assert.equal(auth.initialInstallManifestSchema,2);
+  assert.equal(auth.hostedNativeEffectProof,'test/universal-native-coordinator-hosted.mjs');
+  assert.ok(fs.existsSync(path.join(root,auth.hostedNativeEffectProof)));
   assert.equal(auth.ownerIndependentProvenanceRequired,true);
   assert.equal(auth.coreCutoverAllowed,false);
   assert.equal(auth.initialInstallIsLiveOwnerHostAccepted,false);

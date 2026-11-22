@@ -101,6 +101,21 @@ private pair ingress, real native J01 signed Worker grant/revocation,
 full operational rollback and fleet cutover are unaccepted. No other
 chat's active migration branch is modified by this design adoption.
 
+## Disposable native effect acceptance through the shared coordinator
+
+The hosted source-pinned Windows/Linux installer matrix now has a separate,
+runner-only native-effects step BEFORE the older OS-specific lifecycle
+smoke. It executes the exact native-transaction coordinator using a
+single fresh native package, verifies registered installation, invokes the
+native OS uninstaller and checks absence with the same shared policy and
+journal. On the temporary Linux runner alone, polkit is substituted by
+the runner's existing noninteractive sudo dpkg permission; no live user
+sudo/polkit bypass or new production adapter permission is added. The test
+refuses non-hosted owner machines. It proves OS package effects only after
+the matching exact SHA GitHub workflow completes successfully, not owner
+J01 consent, signed Worker admission, boot persistence or operational
+fleet rollback.
+
 ## Exact cross-OS native Core artifact parity (automated)
 
 The same native packaging/unified workflow now uploads its independently
