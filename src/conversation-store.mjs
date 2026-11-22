@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import {windowsPrivateAcl,isPosixOwnerPrivate} from './owner-private-storage.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -29,8 +30,16 @@ function privateDirectory(directory){
     cursor=path.join(cursor,part);
     if(fs.existsSync(cursor)&&fs.lstatSync(cursor).isSymbolicLink())fail('CONVERSATION_STATE_ALIAS');
   }
+  const existed=fs.existsSync(directory);
   fs.mkdirSync(directory,{recursive:true,mode:0o700});
-  return fs.realpathSync.native(directory);
+  const real=fs.realpathSync.native(directory);
+  if(process.platform==='win32'){
+    try{windowsPrivateAcl(real,{directory:true,initializeNew:!existed});}
+    catch{fail('CONVERSATION_PRIVATE_DIRECTORY_UNSAFE');}
+  }else if(!isPosixOwnerPrivate(real,{directory:true})){
+    fail('CONVERSATION_PRIVATE_DIRECTORY_UNSAFE');
+  }
+  return real;
 }
 function safeId(value,code='CONVERSATION_INVALID_ID'){
   if(typeof value!=='string'||!ID.test(value))fail(code);
@@ -79,13 +88,41 @@ export class ConversationStore{
     this.scope=scope;
     this.directory=privateDirectory(directory);
     this.location=path.join(this.directory,'conversation.sqlite');
+    // Claim only an absent file with O_EXCL; a new Windows file may inherit
+    // the token's default owner group and needs a protected user DACL BEFORE
+    // SQLite opens it. Never rewrite the ACL of an existing file.
+    let createdNew=false;
+    if(!fs.existsSync(this.location)){
+      try{
+        const fd=fs.openSync(this.location,
+          fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR,0o600);
+        fs.closeSync(fd);
+        createdNew=true;
+      }catch(error){
+        if(error?.code!=='EEXIST')fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');
+      }
+    }
     for(const suffix of ['','-journal','-wal','-shm']){
-      if(!fs.existsSync(this.location+suffix))continue;
-      const stat=fs.lstatSync(this.location+suffix);
-      if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)fail('CONVERSATION_STATE_ALIAS');
+      const storageFile=this.location+suffix;
+      if(!fs.existsSync(storageFile))continue;
+      const stat=fs.lstatSync(storageFile);
+      if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)
+        fail('CONVERSATION_STATE_ALIAS');
+      if(process.platform==='win32'){
+        try{windowsPrivateAcl(storageFile,{initializeNew:createdNew&&suffix===''});}
+        catch{fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');}
+      }else if(!isPosixOwnerPrivate(storageFile)){
+        fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');
+      }
     }
     this.db=new DatabaseSync(this.location,{allowExtension:false});
-    try{fs.chmodSync(this.location,0o600);}catch{}
+    if(process.platform==='win32'){
+      try{windowsPrivateAcl(this.location);}
+      catch{this.db.close();fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');}
+    }else if(!isPosixOwnerPrivate(this.location)){
+      this.db.close();
+      fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');
+    }
     this.db.exec('PRAGMA busy_timeout=3000; PRAGMA trusted_schema=OFF; PRAGMA synchronous=EXTRA;');
     if(this.db.prepare('PRAGMA journal_mode').get().journal_mode!=='delete'){this.db.close();fail('CONVERSATION_JOURNAL_MODE');}
     const version=this.db.prepare('PRAGMA user_version').get().user_version;
@@ -126,29 +163,61 @@ export class ConversationStore{
     for(const [items,code] of [[composerNames,'COMPOSER'],[sendNames,'SEND'],[stopNames,'STOP']]){
       if(!Array.isArray(items)||items.length<1||items.length>10||items.some(x=>typeof x!=='string'||!x.trim()||x.length>120))fail('CONVERSATION_'+code+'_NAMES_INVALID');
     }
-    const existing=this.binding(pid),stamp=now();
-    this.db.prepare(`INSERT INTO bindings(scope,project_id,project_root,browser,tab_title,composer_names,send_names,stop_names,state,created_at,updated_at,last_seen_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)
-      ON CONFLICT(scope,project_id) DO UPDATE SET project_root=excluded.project_root,browser=excluded.browser,
-      tab_title=excluded.tab_title,composer_names=excluded.composer_names,send_names=excluded.send_names,
-      stop_names=excluded.stop_names,state='BOUND',updated_at=excluded.updated_at`)
-      .run(this.scope,pid,root,browser,tabTitle,stable(composerNames),stable(sendNames),stable(stopNames),'BOUND',existing?.createdAt??stamp,stamp);
-    return this.binding(pid);
+    return this.transaction(()=>{
+      // Pin destination changes behind the same writer lock as claimNext.
+      // An active or uncertain UI send cannot be redirected or silently
+      // resurrected by a concurrent browser/tab rebind.
+      const inFlight=this.db.prepare(
+        "SELECT 1 AS n FROM handoffs WHERE scope=? AND project_id=? AND state IN ('CLAIMED','UNCERTAIN') LIMIT 1"
+      ).get(this.scope,pid);
+      if(inFlight)fail('CONVERSATION_DELIVERY_IN_FLIGHT');
+      const existing=this.binding(pid),stamp=now();
+      // A queued/deferred envelope was accepted for a specific destination.
+      // Rebinding it to another chat after an explicit retry can leak data.
+      // Allow an exact same-destination refresh; require explicit queue
+      // cancellation before choosing a different browser/tab/root or controls.
+      if(existing){
+        const changed=existing.root!==root||existing.browser!==browser
+          ||existing.tabTitle!==tabTitle
+          ||stable(existing.composerNames)!==stable(composerNames)
+          ||stable(existing.sendNames)!==stable(sendNames)
+          ||stable(existing.stopNames)!==stable(stopNames);
+        if(changed){
+          const pending=this.db.prepare(
+            "SELECT 1 FROM handoffs WHERE scope=? AND project_id=? AND state IN ('QUEUED','DEFERRED') LIMIT 1"
+          ).get(this.scope,pid);
+          if(pending)fail('CONVERSATION_PENDING_DESTINATION_CHANGE');
+        }
+      }
+      this.db.prepare(`INSERT INTO bindings(scope,project_id,project_root,browser,tab_title,composer_names,send_names,stop_names,state,created_at,updated_at,last_seen_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)
+        ON CONFLICT(scope,project_id) DO UPDATE SET project_root=excluded.project_root,browser=excluded.browser,
+        tab_title=excluded.tab_title,composer_names=excluded.composer_names,send_names=excluded.send_names,
+        stop_names=excluded.stop_names,state='BOUND',updated_at=excluded.updated_at`)
+        .run(this.scope,pid,root,browser,tabTitle,stable(composerNames),stable(sendNames),stable(stopNames),'BOUND',existing?.createdAt??stamp,stamp);
+      return this.binding(pid);
+    });
   }
   unbind(pid){
     pid=projectId(pid);
-    if(!this.binding(pid))return {projectId:pid,unbound:false};
-    this.transaction(()=>{
-      this.db.prepare("UPDATE bindings SET state='UNBOUND',updated_at=? WHERE scope=? AND project_id=?").run(now(),this.scope,pid);
-      this.db.prepare("UPDATE handoffs SET state='CANCELLED',updated_at=?,last_code='CONVERSATION_UNBOUND' WHERE scope=? AND project_id=? AND state IN ('QUEUED','CLAIMED','DEFERRED')")
-        .run(now(),this.scope,pid);
+    return this.transaction(()=>{
+      if(!this.binding(pid))return {projectId:pid,unbound:false};
+      const stamp=now();
+      this.db.prepare("UPDATE bindings SET state='UNBOUND',updated_at=? WHERE scope=? AND project_id=?").run(stamp,this.scope,pid);
+      // A claimed send may already have reached the external chat.
+      // Never assert cancellation or blindly retry an in-flight effect.
+      this.db.prepare("UPDATE handoffs SET state='UNCERTAIN',attempt_id=NULL,lease_until=NULL,next_attempt_at=NULL,updated_at=?,last_code='CONVERSATION_UNBOUND_IN_FLIGHT_OUTCOME_UNCERTAIN' WHERE scope=? AND project_id=? AND state='CLAIMED'")
+        .run(stamp,this.scope,pid);
+      this.db.prepare("UPDATE handoffs SET state='CANCELLED',attempt_id=NULL,lease_until=NULL,next_attempt_at=NULL,updated_at=?,last_code='CONVERSATION_UNBOUND' WHERE scope=? AND project_id=? AND state IN ('QUEUED','DEFERRED')")
+        .run(stamp,this.scope,pid);
+      return {projectId:pid,unbound:true};
     });
-    return {projectId:pid,unbound:true};
   }
   markBinding(pid,state,{seen=false}={}){
     pid=projectId(pid);boundedText(state,64,'CONVERSATION_BINDING_STATE_INVALID');
     const stamp=now();
-    this.db.prepare('UPDATE bindings SET state=?,updated_at=?,last_seen_at=CASE WHEN ?=1 THEN ? ELSE last_seen_at END WHERE scope=? AND project_id=?')
+    // Late UI observations may not re-enable an explicitly unbound chat.
+    this.db.prepare("UPDATE bindings SET state=?,updated_at=?,last_seen_at=CASE WHEN ?=1 THEN ? ELSE last_seen_at END WHERE scope=? AND project_id=? AND state!='UNBOUND'")
       .run(state,stamp,seen?1:0,stamp,this.scope,pid);
     return this.binding(pid);
   }
@@ -190,8 +259,11 @@ export class ConversationStore{
     if(!Number.isSafeInteger(leaseMs)||leaseMs<5000||leaseMs>120000)fail('CONVERSATION_LEASE_INVALID');
     return this.transaction(()=>{
       const stamp=Date.now(),iso=now();
-      this.db.prepare("UPDATE handoffs SET state='DEFERRED',attempt_id=NULL,lease_until=NULL,last_code='LEASE_EXPIRED',next_attempt_at=?,updated_at=? WHERE scope=? AND state='CLAIMED' AND lease_until<?")
-        .run(stamp,iso,this.scope,stamp);
+      // Expiry is not proof that the external UI send did not occur.
+      // Never automatically reclaim a potentially delivered message.
+      // Explicit resolveUncertain(retry|confirm_sent|cancel) is required.
+      this.db.prepare("UPDATE handoffs SET state='UNCERTAIN',attempt_id=NULL,lease_until=NULL,last_code='LEASE_EXPIRED_OUTCOME_UNCERTAIN',next_attempt_at=NULL,updated_at=? WHERE scope=? AND state='CLAIMED' AND lease_until<?")
+        .run(iso,this.scope,stamp);
       const row=this.db.prepare(`SELECT * FROM handoffs WHERE scope=? AND state IN ('QUEUED','DEFERRED')
         AND COALESCE(next_attempt_at,0)<=? ORDER BY seq LIMIT 1`).get(this.scope,stamp);
       if(!row)return null;
@@ -270,7 +342,13 @@ export class ConversationStore{
     });
   }
   nextDue(){
-    const row=this.db.prepare("SELECT MIN(COALESCE(next_attempt_at,0)) AS due FROM handoffs WHERE scope=? AND state IN ('QUEUED','DEFERRED')").get(this.scope);
+    // Wake for both ready queues AND an in-flight lease whose sender may
+    // have crashed. claimNext quarantines expired claims as UNCERTAIN.
+    const row=this.db.prepare(
+      "SELECT MIN(due) AS due FROM ("+
+      "SELECT COALESCE(next_attempt_at,0) AS due FROM handoffs WHERE scope=? AND state IN ('QUEUED','DEFERRED') "+
+      "UNION ALL SELECT lease_until+1 AS due FROM handoffs WHERE scope=? AND state='CLAIMED' AND lease_until IS NOT NULL)"
+    ).get(this.scope,this.scope);
     return typeof row?.due==='number'?row.due:null;
   }
   stats(){

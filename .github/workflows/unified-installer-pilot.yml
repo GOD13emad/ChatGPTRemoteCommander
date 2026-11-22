@@ -2,6 +2,16 @@ name: Unified Installer Pilot (NoPromote)
 on:
   pull_request:
     paths:
+      # Follow the complete native Core source inventory and packaging identity,
+      # not a brittle per-module list: git archive includes these shipped roots.
+      - "src/**"
+      - "tools/**"
+      - "vendor/**"
+      - "assets/**"
+      - "config.json"
+      - "package.json"
+      - "docs/release-train-0.12.json"
+      - "installer/universal-install-contract.json"
       - "packaging/unified/**"
       - "test/unified-*"
       - "test/verify-compiled-core.test.mjs"
