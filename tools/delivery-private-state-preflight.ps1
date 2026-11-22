@@ -95,28 +95,39 @@ try {
     $next = [IO.Directory]::GetParent($cursor)
     $cursor = if ($null -eq $next) { $null } else { $next.FullName }
   }
-  [void](Test-Item $root $true $true)
-  $db = [IO.Path]::Combine($root,'delivery.sqlite')
-  [void](Test-Item $db $false $true)
-  foreach ($suffix in @('-journal','-wal','-shm')) { [void](Test-Item ($db+$suffix) $false $false) }
-  $artifacts = [IO.Path]::Combine($root,'artifacts')
-  if (Test-Path -LiteralPath $artifacts) {
-    [void](Test-Item $artifacts $true $true)
-    $scoped = [IO.Path]::Combine($artifacts,$Scope)
-    if (Test-Path -LiteralPath $scoped) {
-      [void](Test-Item $scoped $true $true)
-      try {
-        $items = @(Get-ChildItem -LiteralPath $scoped -Force | Select-Object -First ($MaxArtifactFiles+1))
-        if ($items.Count -gt $MaxArtifactFiles) { $summary.limitReached = $true }
-        foreach ($entry in ($items | Select-Object -First $MaxArtifactFiles)) {
-          if ($entry.PSIsContainer) { $summary.inspectionErrors++; continue }
-          $summary.artifactFilesChecked++
-          [void](Test-Item $entry.FullName $false $true)
+  # Never inspect descendants through a reparse point, even when the
+  # final eligibility would be false. This protects adjacent private roots
+  # from being enumerated via a user-supplied directory/junction.
+  $rootSafe = $false
+  if ($summary.reparsePoints -eq 0) {
+    $rootSafe = Test-Item $root $true $true
+  }
+  if ($rootSafe) {
+    $db = [IO.Path]::Combine($root,'delivery.sqlite')
+    [void](Test-Item $db $false $true)
+    foreach ($suffix in @('-journal','-wal','-shm')) { [void](Test-Item ($db+$suffix) $false $false) }
+    $artifacts = [IO.Path]::Combine($root,'artifacts')
+    if (Test-Path -LiteralPath $artifacts) {
+      if (Test-Item $artifacts $true $true) {
+        $scoped = [IO.Path]::Combine($artifacts,$Scope)
+        if (Test-Path -LiteralPath $scoped) {
+          if (Test-Item $scoped $true $true) {
+            try {
+              $items = @(Get-ChildItem -LiteralPath $scoped -Force | Select-Object -First ($MaxArtifactFiles+1))
+              if ($items.Count -gt $MaxArtifactFiles) { $summary.limitReached = $true }
+              foreach ($entry in ($items | Select-Object -First $MaxArtifactFiles)) {
+                if ($entry.PSIsContainer) { $summary.inspectionErrors++; continue }
+                $summary.artifactFilesChecked++
+                [void](Test-Item $entry.FullName $false $true)
+              }
+            } catch { $summary.inspectionErrors++ }
+          }
         }
-      } catch { $summary.inspectionErrors++ }
+      }
     }
   }
-  $summary.complete = -not $summary.limitReached -and $summary.inspectionErrors -eq 0
+  $summary.complete = -not $summary.limitReached -and $summary.inspectionErrors -eq 0 -and
+    $summary.reparsePoints -eq 0 -and $summary.missingRequired -eq 0
   $summary.eligible = $summary.complete -and $summary.missingRequired -eq 0 -and $summary.reparsePoints -eq 0 -and
     $summary.ownerMismatch -eq 0 -and $summary.inheritedDirectoryAcl -eq 0 -and $summary.broadAllow -eq 0 -and
     $summary.hardlinkAliases -eq 0
