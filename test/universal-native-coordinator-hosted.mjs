@@ -88,6 +88,16 @@ export async function hostedNativeCoordinatorProof(args=process.argv.slice(2)){
   // Constrain any injected native sudo effect to this exact, hashed
   // artifact and package ID; never use runtime-supplied arbitrary commands.
   permittedArtifactPath=candidatePath;
+  // A hosted runner's HOME can be populated by earlier independent QA steps.
+  // Never weaken the real fresh-install owner-state guard or delete its files:
+  // use an explicitly disposable, empty owner HOME for this CI-only lifecycle.
+  const originalHome=process.env.HOME;
+  const qaHome=fs.mkdtempSync(path.join(process.env.RUNNER_TEMP,
+    'rc012-native-hosted-owner-'));
+  check(fs.lstatSync(qaHome).isDirectory()
+    &&fs.readdirSync(qaHome).length===0,
+    'RC012_HOSTED_FRESH_OWNER_HOME_UNTRUSTED');
+  process.env.HOME=qaHome;
   const adapter=createNativeOsAdapter({platform,
     architecture:'x64',run:nativeCommand});
   const journal=createNativeFileJournal();
@@ -121,6 +131,11 @@ export async function hostedNativeCoordinatorProof(args=process.argv.slice(2)){
   check(final.status==='READY_TO_FIRST_INSTALL'
     &&final.beforeVersion===null,
     'RC012_HOSTED_NATIVE_FINAL_ABSENCE_NOT_VERIFIED');
+  // Only this newly created CI fixture can be deleted, and only after the
+  // package was uninstalled and the shared coordinator verified native absence.
+  if(originalHome===undefined)delete process.env.HOME;
+  else process.env.HOME=originalHome;
+  fs.rmSync(qaHome,{recursive:true,force:true});
   return Object.freeze({
     schema:'rc012-hosted-native-coordinator-v1',
     status:'DISPOSABLE_FIRST_INSTALL_AND_NATIVE_UNINSTALL_PASS',
