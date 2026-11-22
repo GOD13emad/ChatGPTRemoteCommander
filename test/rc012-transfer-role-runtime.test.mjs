@@ -34,8 +34,8 @@ const initial=String.raw`
 # Synthetic OS facts; native watcher code below remains the production source.
 $ErrorActionPreference='Stop'
 $script:syntheticSid='S-1-5-21-RC012-OWNER'
-$script:transfer='/tmp/CommanderTransferPilot/bin/syncthing.exe'
-$script:core='/tmp/ChatGPTRemoteCommander/node-current/bin/node'
+$script:transfer=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'CommanderTransferPilot/bin/syncthing.exe'))
+$script:core=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander/node-current/bin/node'))
 $script:syntheticTask=[pscustomobject]@{
  TaskName='CommanderTransferMeshPilot';TaskPath='\\';State='Running'
  Principal=[pscustomobject]@{UserId=$script:syntheticSid;LogonType='Interactive'}
