@@ -1,0 +1,29 @@
+name: RC013 Worker to SQL Sink Composition (NoPromote)
+on:
+  pull_request:
+    paths:
+      - 'src/v2-routing-contract.mjs'
+      - 'src/v2-private-pair-operation-gate.mjs'
+      - 'src/v2-private-signed-worker-grant-adapter.mjs'
+      - 'src/rc013-sqlite-effect-sink.mjs'
+      - 'src/mutation-idempotency.mjs'
+      - 'test/v2-signed-worker-sql-sink.integration.test.mjs'
+      - '.github/workflows/rc013-signed-worker-sql-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  signed-sql-composition:
+    name: signed worker -> SQL sink (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - run: node --check test/v2-signed-worker-sql-sink.integration.test.mjs
+      - run: node --test test/v2-signed-worker-sql-sink.integration.test.mjs
