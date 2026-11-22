@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import {windowsPrivateAcl,isPosixOwnerPrivate} from './owner-private-storage.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -16,6 +17,11 @@ function id(value,label,re=ID){
   if(typeof value!=='string'||!re.test(value))fail('PROJECT_HUB_'+label+'_INVALID');
   return value;
 }
+
+// Reuse the native Windows worker-key provider's protected-DACL/owner-SID
+// policy; no chmod-based assumption about NTFS security. Operates only on
+// exact local paths, and initializes the ACL ONLY for newly made directories.
+
 function privateDir(d){
   if(typeof d!=='string'||!path.isAbsolute(d))fail('PROJECT_HUB_DIRECTORY_INVALID');
   let next=path.parse(d).root;
@@ -24,8 +30,21 @@ function privateDir(d){
     if(fs.existsSync(next)&&fs.lstatSync(next).isSymbolicLink())
       fail('PROJECT_HUB_SYMLINK_FORBIDDEN');
   }
+  const existed=fs.existsSync(d);
   fs.mkdirSync(d,{recursive:true,mode:0o700});
-  return fs.realpathSync.native(d);
+  const real=fs.realpathSync.native(d);
+  if(process.platform==='win32'){
+    try{windowsPrivateAcl(real,{directory:true,initializeNew:!existed});}
+    catch{fail('PROJECT_HUB_DIRECTORY_UNSAFE');}
+  }
+  // Existing directories do not inherit mkdir's requested mode.
+  // Match the owner-only POSIX verification used by native Tunnel pins;
+  // a Windows native ACL witness remains a separate release gate.
+  if(process.platform!=='win32'){
+    if(!isPosixOwnerPrivate(real,{directory:true}))
+      fail('PROJECT_HUB_DIRECTORY_UNSAFE');
+  }
+  return real;
 }
 function rootPath(root){
   if(typeof root!=='string'||!path.isAbsolute(root))
@@ -71,14 +90,45 @@ export class ProjectCoordinationDirectory{
     this.authorizeProject=authorizeProject;
     this.directory=privateDir(directory);
     this.location=path.join(this.directory,'project-conversations.sqlite');
+    // Only a newly created O_EXCL file may receive native Windows
+    // initial owner-private ACL. Never silently repair an existing DB.
+    let createdNew=false;
+    if(!fs.existsSync(this.location)){
+      try{
+        const fd=fs.openSync(this.location,
+          fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR,0o600);
+        fs.closeSync(fd);
+        createdNew=true;
+      }catch(error){
+        if(error?.code!=='EEXIST')fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');
+      }
+    }
     for(const suffix of ['','-journal','-wal','-shm']){
       if(!fs.existsSync(this.location+suffix))continue;
       const s=fs.lstatSync(this.location+suffix);
       if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1)
         fail('PROJECT_HUB_DATABASE_ALIAS');
+      if(process.platform!=='win32'&&!isPosixOwnerPrivate(this.location+suffix))
+        fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');
+    }
+    if(process.platform==='win32'){
+      for(const suffix of ['','-journal','-wal','-shm']){
+        const p=this.location+suffix;
+        if(fs.existsSync(p)){
+          try{windowsPrivateAcl(p,{initializeNew:createdNew&&suffix===''});}
+          catch{fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');}
+        }
+      }
     }
     this.db=new DatabaseSync(this.location,{allowExtension:false});
-    try{fs.chmodSync(this.location,0o600);}catch{}
+    if(process.platform==='win32'){
+      try{windowsPrivateAcl(this.location);}
+      catch{this.db.close();fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');}
+    }
+    if(process.platform!=='win32'&&!isPosixOwnerPrivate(this.location)){
+      this.db.close();
+      fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');
+    }
     this.db.exec('PRAGMA busy_timeout=2500; PRAGMA trusted_schema=OFF; PRAGMA synchronous=EXTRA; PRAGMA foreign_keys=ON;');
     const version=this.db.prepare('PRAGMA user_version').get().user_version;
     if(version>1){this.db.close();fail('PROJECT_HUB_SCHEMA_TOO_NEW');}
@@ -112,12 +162,35 @@ export class ProjectCoordinationDirectory{
     // is trusted. A production adapter MUST resolve an attested current caller.
     return trustedRoute(await this.resolveAttestedRoute());
   }
+  async assertRouteUnchanged(before){
+    // Native project approval may pause for user input while the authenticated
+    // conversation, host or private Tunnel binding changes underneath it.
+    // No route from MCP arguments is accepted; re-resolve trusted ingress.
+    const current=await this.route();
+    for(const key of ['hostId','principalId','profileId','conversationId',
+      'bindingHash','tunnelBindingHash']){
+      if(before[key]!==current[key])
+        fail('PROJECT_HUB_ROUTE_CHANGED_DURING_APPROVAL');
+    }
+  }
   async enroll({projectId,root,ownerProof}){
     id(projectId,'PROJECT_ID',PROJECT);
     const att=await this.route();
     const actionRoot=rootPath(root);
+    const rootStat=fs.statSync(actionRoot,{bigint:true});
     if(await this.authorizeProject({action:'enroll',projectId,att,ownerProof})!==true)
       fail('PROJECT_HUB_OWNER_APPROVAL_REQUIRED');
+    await this.assertRouteUnchanged(att);
+    // A native approval is for one concrete root, not another directory
+    // swapped into the same pathname while the user was approving.
+    let sameRoot=false;
+    try{
+      const checkedRoot=rootPath(root);
+      const after=fs.statSync(checkedRoot,{bigint:true});
+      sameRoot=checkedRoot===actionRoot
+        &&after.dev===rootStat.dev&&after.ino===rootStat.ino;
+    }catch{}
+    if(!sameRoot)fail('PROJECT_HUB_ROOT_CHANGED_DURING_APPROVAL');
     return this.tx(()=>{
       const existing=this.db.prepare('SELECT root FROM projects WHERE id=?').get(projectId);
       if(existing&&existing.root!==actionRoot)fail('PROJECT_HUB_ROOT_CONFLICT');
@@ -132,11 +205,40 @@ export class ProjectCoordinationDirectory{
     const att=await this.route();
     if(await this.authorizeProject({action:'join',projectId,att,ownerProof})!==true)
       fail('PROJECT_HUB_OWNER_APPROVAL_REQUIRED');
+    await this.assertRouteUnchanged(att);
     return this.tx(()=>{
       if(!this.db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId))
         fail('PROJECT_HUB_PROJECT_UNKNOWN');
       this.#join(projectId,att);
       return this.#snapshot(projectId);
+    });
+  }
+  async withdrawCurrentMembership({projectId,ownerProof}){
+    // Current-chat metadata withdrawal only. Neither this directory nor
+    // owner membership consent revokes a separate signed Worker grant,
+    // cancels an existing outbound handoff or permits local tool execution.
+    id(projectId,'PROJECT_ID',PROJECT);
+    const att=await this.route();
+    this.#requireMember(projectId,att);
+    if(await this.authorizeProject({
+      action:'withdrawCurrentMembership',projectId,att,ownerProof
+    })!==true)fail('PROJECT_HUB_OWNER_APPROVAL_REQUIRED');
+    await this.assertRouteUnchanged(att);
+    return this.tx(()=>{
+      this.#requireMember(projectId,att);
+      const result=this.db.prepare(
+        'DELETE FROM contexts WHERE project_id=? AND host=? AND principal=? '+
+        'AND profile=? AND conversation=? AND binding_hash=? AND tunnel_hash=?'
+      ).run(projectId,att.hostId,att.principalId,att.profileId,
+        att.conversationId,att.bindingHash,att.tunnelBindingHash);
+      if(result.changes!==1)fail('PROJECT_HUB_CURRENT_CHAT_NOT_MEMBER');
+      const remaining=this.db.prepare(
+        'SELECT COUNT(*) AS n FROM contexts WHERE project_id=?'
+      ).get(projectId).n;
+      return Object.freeze({
+        projectId,withdrawn:true,registeredChats:Number(remaining),
+        executionAllowed:false
+      });
     });
   }
   #join(projectId,att){
