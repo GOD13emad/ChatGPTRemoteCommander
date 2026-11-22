@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {verifyTrustedNativeRelease,discoverTrustedStableRelease,REPO,SIGNER}
+import {verifyTrustedNativeRelease,discoverTrustedStableRelease,requirePatchedGhCliVersion,REPO,SIGNER}
   from '../tools/universal-install/trusted-native-release.mjs';
 
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -125,3 +125,18 @@ test('attestation verifier failure never becomes a trusted receipt',()=>fixture(
   assert.throws(()=>verifyTrustedNativeRelease(f.manifestPath,{run}),
     /SIGNATURE_INVALID/);
 }));
+
+test('security floor for official GitHub CLI (GHSA-4mq3 and GHSA-wjmr)',()=>{
+  assert.deepEqual(requirePatchedGhCliVersion('gh version 2.103.2 (2026-10-23)'),
+    {major:2,minor:103,patch:2});
+  assert.deepEqual(requirePatchedGhCliVersion('gh version 2.102.0 (2026-09-30)'),
+    {major:2,minor:102,patch:0});
+  for(const old of [
+    'gh version 2.101.0 (2026-09-01)',
+    'gh version 2.70.0','gh version 1.999.1'
+  ])assert.throws(()=>requirePatchedGhCliVersion(old),
+    {code:'RC012_AUTO_GITHUB_CLI_SECURITY_UPDATE_REQUIRED'});
+  for(const invalid of ['gh version latest','unknown',''])
+    assert.throws(()=>requirePatchedGhCliVersion(invalid),
+      {code:'RC012_AUTO_GITHUB_CLI_VERSION_INVALID'});
+});
