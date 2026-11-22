@@ -56,7 +56,7 @@ jobs:
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
       - name: Verify identical native transaction and OS adapter contracts
-        run: node --test test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs
+        run: node --test test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs test/universal-native-trusted-release.test.mjs
       - name: Verify native owner/Worker denial and DPAPI custody on both OSes
         run: npm run test:v012-owner-worker-admission
       - name: Preserve exact native Core inventory for cross-OS byte comparison
