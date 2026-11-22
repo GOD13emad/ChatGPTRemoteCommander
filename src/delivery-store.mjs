@@ -6,6 +6,7 @@ import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { expandPathValue } from './platform.mjs';
+import {isPosixOwnerPrivate,windowsPrivateAcl} from './owner-private-storage.mjs';
 
 export const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 export const DELIVERY_STATES = Object.freeze(['COMPLETED_UNDELIVERED', 'DELIVERY_PENDING', 'DELIVERED', 'TRANSPORT_RECEIPT', 'DEAD_LETTER']);
@@ -126,6 +127,16 @@ export function deliveryLocation(config, configPath) {
   return { directory: base, scope, legacyScope, forbiddenRoots: config.allowedRoots ?? [] };
 }
 
+// Fail closed on existing state. Never silently chmod or repair another owner's
+// SQLite directory/files; a migration needs separate owner-approved evidence.
+function requireOwnerPrivate(target,{directory=false,newlyCreated=false}={}) {
+  if(process.platform==='win32') {
+    windowsPrivateAcl(target,{directory,initializeNew:newlyCreated});
+  } else if(!isPosixOwnerPrivate(target,{directory})) {
+    fail(directory?'DELIVERY_PRIVATE_DIRECTORY_UNSAFE':'DELIVERY_PRIVATE_FILE_UNSAFE');
+  }
+}
+
 export class DeliveryStore {
   constructor({ directory, scope = 'default', forbiddenRoots = [] }) {
     opaqueId(scope);
@@ -136,16 +147,30 @@ export class DeliveryStore {
     for (const root of forbiddenRoots) {
       if (within(path.resolve(root), path.resolve(directory))) fail('DELIVERY_STORE_INSIDE_PROJECT');
     }
+    const directoryExisted=fs.existsSync(directory);
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+    requireOwnerPrivate(directory,{directory:true,newlyCreated:!directoryExisted});
     this.directory = fs.realpathSync.native(directory);
     this.scope = scope;
     this.closed = false;
     const location = path.join(this.directory, 'delivery.sqlite');
+    const databaseExisted=fs.existsSync(location);
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
-      if (fs.existsSync(location + suffix)) regular(location + suffix);
+      if (!fs.existsSync(location + suffix)) continue;
+      regular(location + suffix);
+      requireOwnerPrivate(location + suffix);
     }
+    // Exclusive precreation allows Windows default-token owner correction only
+    // for a proven NEW file inside an already private directory.
+    if (!databaseExisted) {
+      let fd;
+      try { fd=fs.openSync(location,'wx',0o600); }
+      catch (e) { if (e.code !== 'EEXIST') throw e; }
+      finally { if (fd !== undefined) fs.closeSync(fd); }
+      if (fd === undefined) fail('DELIVERY_DATABASE_CREATION_RACE');
+    }
+    requireOwnerPrivate(location,{newlyCreated:!databaseExisted});
     this.db = new DatabaseSync(location, { allowExtension: false });
-    fs.chmodSync(location, 0o600);
     this.db.exec('PRAGMA busy_timeout=3000; PRAGMA trusted_schema=OFF; PRAGMA synchronous=EXTRA;');
     if (this.db.prepare('PRAGMA journal_mode').get().journal_mode !== 'delete') {
       this.db.close();
