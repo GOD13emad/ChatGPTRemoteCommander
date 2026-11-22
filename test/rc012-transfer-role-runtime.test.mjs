@@ -58,6 +58,18 @@ if($env:RC012_FIXTURE -eq 'transfer-flap'){
  $script:syntheticTcp+= [pscustomobject]@{OwningProcess=101;LocalAddress='::';LocalPort=22000}
 }
 if($env:RC012_FIXTURE -eq 'core-drift'){$script:syntheticTcp[1].LocalPort=47832}
+if($env:RC012_FIXTURE -eq 'transfer-gui-exposed'){
+ $script:syntheticTcp[0].LocalAddress='0.0.0.0'
+}
+if($env:RC012_FIXTURE -eq 'transfer-gui-removed'){
+ $script:syntheticTcp=@($script:syntheticTcp|Where-Object LocalPort -ne 18384)
+}
+if($env:RC012_FIXTURE -eq 'transfer-unknown-listener'){
+ $script:syntheticTcp+= [pscustomobject]@{OwningProcess=101;LocalAddress='::';LocalPort=29999}
+}
+if($env:RC012_FIXTURE -eq 'transfer-sync-changed-binding'){
+ $script:syntheticTcp+= [pscustomobject]@{OwningProcess=101;LocalAddress='0.0.0.0';LocalPort=22000}
+}
 if($env:RC012_FIXTURE -eq 'task-drift'){$script:syntheticTask.State='Disabled'}
 if($env:RC012_FIXTURE -eq 'dormant-transfer'){
  $script:syntheticTask.State='Disabled'
@@ -125,6 +137,18 @@ test('owner-specific transfer listener flap does not change install approval ID'
 });
 test('Core/Tunnel listener drift changes approval ID',()=>{
   assert.notEqual(evaluate('core-drift'),evaluate('baseline'));
+});
+test('Syncthing GUI/REST listener exposure remains approval-critical',()=>{
+  assert.notEqual(evaluate('transfer-gui-exposed'),evaluate('baseline'));
+});
+test('Syncthing GUI/REST listener disappearance remains approval-critical',()=>{
+  assert.notEqual(evaluate('transfer-gui-removed'),evaluate('baseline'));
+});
+test('Syncthing unknown extra listener remains approval-critical',()=>{
+  assert.notEqual(evaluate('transfer-unknown-listener'),evaluate('baseline'));
+});
+test('sync protocol unexpected binding stays fail-closed via fingerprint drift',()=>{
+  assert.notEqual(evaluate('transfer-sync-changed-binding'),evaluate('baseline'));
 });
 test('Core/Tunnel process restart changes approval ID',()=>{
   assert.notEqual(evaluate('process-restart'),evaluate('baseline'));

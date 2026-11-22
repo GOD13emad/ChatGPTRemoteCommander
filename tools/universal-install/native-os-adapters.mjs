@@ -176,8 +176,10 @@ $tasks=@(Get-ScheduledTask -ErrorAction Stop|Where-Object {
   })
  }
 }|Sort-Object key)
-# An enrolled transfer task is owner state; its auxiliary listening sockets
-# must not rebind package approval when process/task/core identities are stable.
+# An enrolled transfer task is owner state. ONLY the observed Syncthing
+# sync-protocol 22000/IPv6 wildcard listener is transient; GUI/REST and
+# unrecognized/exposed ports remain approval-critical, fail closed.
+# The listener exception cannot replace owner/task/process attestation.
 $ignoredTransferPids=@{}
 $transferTasks=@(Get-ScheduledTask -TaskName 'CommanderTransferMeshPilot' -ErrorAction SilentlyContinue)
 $transferCandidates=@($records|Where-Object {
@@ -231,7 +233,10 @@ if($transferCandidates.Count -ne 0 -or @($transferTasks|Where-Object {$_.State -
  }
 }
 $approvalListeners=@($listeners|Where-Object {
- !$ignoredTransferPids.ContainsKey([string]$_.pid)
+ # Preserve GUI/REST (e.g. 18384) and any additional/changed endpoint.
+ # An unrecognized sync port or bind address changes the runtime witness.
+ !($ignoredTransferPids.ContainsKey([string]$_.pid) -and
+   [int]$_.port -eq 22000 -and [string]$_.addr -ceq '::')
 })
 # The native installed artifact is INTENTIONALLY not a runtime witness:
 # the same authorized native package transaction changes its bytes/version.
