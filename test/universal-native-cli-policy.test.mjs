@@ -65,7 +65,8 @@ test('native --apply and --rollback refuse absent independent owner provenance e
 
 test('GUI native approval rejects an absent owner seat before displaying a dialog',async()=>{
   if(process.platform!=='linux')return;
-  const {nativeApproval}=await import('../tools/universal-install/native-cli.mjs');
+  const {nativeApproval,resolveLinuxOwnerGuiSession}=await import(
+    '../tools/universal-install/native-cli.mjs');
   const oldDisplay=process.env.DISPLAY;
   const oldWayland=process.env.WAYLAND_DISPLAY;
   const oldRuntime=process.env.XDG_RUNTIME_DIR;
@@ -76,7 +77,15 @@ test('GUI native approval rejects an absent owner seat before displaying a dialo
     await assert.rejects(nativeApproval({
       platform:'linux',installedVersion:'0.12.0-dev.9',
       candidate:{version:'0.12.0-dev.10'},transactionId:'fixture-only'
-    },{guiApproval:true}),/UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED/);
+    },{
+      guiApproval:true,
+      ownerSeatResolver:()=>{
+        throw new Error('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+      }
+    }),/UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED/);
+    assert.throws(()=>resolveLinuxOwnerGuiSession({
+      env:{},run:()=>({status:1})
+    }),/UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED/);
   }finally{
     for(const [k,v] of [['DISPLAY',oldDisplay],
       ['WAYLAND_DISPLAY',oldWayland],['XDG_RUNTIME_DIR',oldRuntime]]){
@@ -104,4 +113,19 @@ test('GUI approval cannot bypass independently established provenance',()=>{
     assert.equal(r.status,2);
     assert.equal(JSON.parse(r.stderr).code,'UNIVERSAL_NATIVE_INDEPENDENT_PROVENANCE_REQUIRED');
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('Linux shared CLI rejects foreign/missing owner GUI authority without prompt',async()=>{
+  if(process.platform!=='linux')return;
+  const {resolveLinuxOwnerGuiSession}=await import('../tools/universal-install/native-cli.mjs');
+  const uid=process.getuid();
+  assert.throws(()=>resolveLinuxOwnerGuiSession({
+    env:{DISPLAY:'localhost:10.0',XDG_RUNTIME_DIR:'/run/user/'+uid},
+    ownerUid:uid,run:()=>({status:0,stdout:''})
+  }),/UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED/);
+  assert.throws(()=>resolveLinuxOwnerGuiSession({
+    env:{DISPLAY:':0',XAUTHORITY:'/tmp/absent-commander-owner-auth',
+      XDG_RUNTIME_DIR:'/run/user/'+uid},
+    ownerUid:uid
+  }),/UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED/);
 });

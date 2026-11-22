@@ -78,7 +78,64 @@ export function windowsGuiApprovalScript(plan){
     "if($answer -eq [System.Windows.Forms.DialogResult]::Yes) {exit 0} else {exit 10}"
   ].join('\n');
 }
-export async function nativeApproval(plan,{guiApproval=false}={}){
+export function resolveLinuxOwnerGuiSession({
+  env=process.env,run=spawnSync,
+  ownerUid=typeof process.getuid==='function'?process.getuid():null
+}={}){
+  if(process.platform!=='linux'||!Number.isInteger(ownerUid)||ownerUid===0)
+    fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+  // Read the *current user's* systemd session environment; do not borrow
+  // another account's Xauthority, remote display, or GUI input permission.
+  let vars={...env};
+  if(!vars.DISPLAY&&!vars.WAYLAND_DISPLAY){
+    const r=run('/usr/bin/systemctl',['--user','show-environment'],{
+      encoding:'utf8',timeout:5000,maxBuffer:65536,windowsHide:true});
+    if(r.error||r.status!==0||typeof r.stdout!=='string')
+      fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+    const found=new Map();
+    for(const line of r.stdout.split(/\r?\n/)){
+      const i=line.indexOf('=');
+      if(i<1)continue;
+      const key=line.slice(0,i),value=line.slice(i+1);
+      if(['DISPLAY','XAUTHORITY','WAYLAND_DISPLAY','XDG_RUNTIME_DIR'].includes(key)){
+        if(found.has(key))fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+        found.set(key,value);
+      }
+    }
+    for(const [k,v] of found)if(!vars[k])vars[k]=v;
+  }
+  const runtime='/run/user/'+ownerUid;
+  if(vars.XDG_RUNTIME_DIR&&vars.XDG_RUNTIME_DIR!==runtime)
+    fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+  const rt=fs.lstatSync(runtime,{throwIfNoEntry:false});
+  if(!rt?.isDirectory()||rt.isSymbolicLink()
+    ||rt.uid!==ownerUid||(rt.mode&0o077)!==0)
+    fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+  vars.XDG_RUNTIME_DIR=runtime;
+  if(typeof vars.DISPLAY==='string'&&/^:[0-9]+(?:\.[0-9]+)?$/.test(vars.DISPLAY)){
+    const authority=vars.XAUTHORITY;
+    if(typeof authority!=='string'||!path.isAbsolute(authority))
+      fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+    const st=fs.lstatSync(authority,{throwIfNoEntry:false});
+    if(!st?.isFile()||st.isSymbolicLink()||st.nlink!==1
+      ||st.uid!==ownerUid||(st.mode&0o077)!==0)
+      fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+    return {DISPLAY:vars.DISPLAY,XAUTHORITY:authority,
+      XDG_RUNTIME_DIR:runtime};
+  }
+  if(typeof vars.WAYLAND_DISPLAY==='string'
+    &&/^wayland-[0-9]+$/.test(vars.WAYLAND_DISPLAY)){
+    const socket=fs.lstatSync(path.join(runtime,vars.WAYLAND_DISPLAY),
+      {throwIfNoEntry:false});
+    if(socket?.isSocket()&&socket.uid===ownerUid)
+      return {WAYLAND_DISPLAY:vars.WAYLAND_DISPLAY,
+        XDG_RUNTIME_DIR:runtime};
+  }
+  fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+}
+export async function nativeApproval(plan,{
+  guiApproval=false,ownerSeatResolver=resolveLinuxOwnerGuiSession
+}={}){
   if(guiApproval&&process.platform==='win32'){
     const source=windowsGuiApprovalScript(plan);
     const encoded=Buffer.from(source,'utf16le').toString('base64');
@@ -93,10 +150,7 @@ export async function nativeApproval(plan,{guiApproval=false}={}){
       transactionId:plan.transactionId,approved:true};
   }
   if(guiApproval){
-    if(process.platform!=='linux'||typeof process.getuid!=='function'
-      ||process.getuid()===0||!(process.env.DISPLAY||process.env.WAYLAND_DISPLAY)
-      ||!process.env.XDG_RUNTIME_DIR)
-      fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+    const seat=ownerSeatResolver();
     // Show the exact package scope. Never obtain consent from a redirected
     // stdin, an environment boolean, a fake pin, or an external IPC message.
     const prompt='Commander native package only\n'+plan.installedVersion+
@@ -106,7 +160,8 @@ export async function nativeApproval(plan,{guiApproval=false}={}){
       '--question','--title=ChatGPT Commander - Owner approval',
       '--text='+prompt,'--ok-label=Approve package',
       '--cancel-label=Cancel','--width=430'],{
-      stdio:'ignore',timeout:120000,windowsHide:true});
+      stdio:'ignore',timeout:120000,windowsHide:true,
+      env:{...process.env,...seat}});
     if(result.error||result.status!==0)
       fail('UNIVERSAL_NATIVE_OWNER_DECLINED');
     return {kind:'native-owner-install-approval',

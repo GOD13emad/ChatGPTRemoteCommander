@@ -221,8 +221,12 @@ implemented by this staging scheduler.
 on Emad Linux is now a compatibility shim to the shared signed GUI command.
 For any staged owner manifest the canonical operation is:
 `node tools/universal-install/native-cli.mjs --apply --manifest ABS_NATIVE_MANIFEST.json --attested-gui-approval`.
-Linux GUI needs a genuine owner DISPLAY/XAUTHORITY in the same logged-in seat;
-system package installation then has a separate polkit decision. Other chats
+Linux GUI automatically discovers the *same owner's* KDE/X11 or Wayland
+seat from the user systemd manager if the remote command lacks DISPLAY;
+strict checks require a local display, owner-private Xauthority (or owner
+Wayland socket), and exact `/run/user/UID`. Missing, foreign or permissive
+credentials fail closed. No per-host DISPLAY patch or password input is needed.
+System package installation still requires separate polkit authorization. Other chats
 must reuse the GitHub source/PR and this one contract, not create divergent
 per-host verification prompts.
 

@@ -18,7 +18,14 @@ if(process.env.RC012_PRIVATE_XVFB_CHILD==='1'){
     console.error('PRIVATE_XVFB_REQUIRED');process.exitCode=15;
   }else{
     try{
-      const receipt=await nativeApproval(plan,{guiApproval:true});
+      const receipt=await nativeApproval(plan,{
+        guiApproval:true,
+        // Xvfb is an isolated fake seat: the real same-owner systemd/Xauth
+        // resolver is tested separately and must not be weakened for CI.
+        ownerSeatResolver:()=>({DISPLAY:process.env.DISPLAY,
+          XAUTHORITY:process.env.XAUTHORITY,
+          XDG_RUNTIME_DIR:process.env.XDG_RUNTIME_DIR})
+      });
       if(receipt.approved!==true||receipt.transactionId!==plan.transactionId)
         throw new Error('INCOMPLETE_RECEIPT');
       console.log('PRIVATE_GUI_APPROVED');
