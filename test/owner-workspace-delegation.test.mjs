@@ -26,7 +26,7 @@ test('off by default and Windows only, with strict explicit loopback endpoint co
  assert.throws(()=>createOwnerWorkspaceReadOnlyProxy({config:cfg(),platform:'linux'}),/WINDOWS_ONLY/);
  const c=cfg();c.ownerWorkspaceDelegation.port=0;
  assert.throws(()=>createOwnerWorkspaceReadOnlyProxy({config:c,platform:'win32'}),/PORT_INVALID/);
- for(const port of [48837,48839,65535,'48838']){
+ for(const port of [48837,48840,65535,'48838']){
   const incompatible=cfg();incompatible.ownerWorkspaceDelegation.port=port;
   assert.throws(()=>createOwnerWorkspaceReadOnlyProxy({config:incompatible,platform:'win32',primaryStatus:healthyDenied}),/PORT_INVALID/);
  }
@@ -73,4 +73,12 @@ test('transport, credential, RPC and response errors fail closed',async()=>{
  await assert.rejects(fixture({status:403}).broker.execute('workspace_target_list',{}),/TRANSPORT_REJECTED/);
  await assert.rejects(fixture({extra:{error:{code:-32601,message:'denied'}}}).broker.execute('workspace_target_list',{}),/RPC_REJECTED/);
  await assert.rejects(fixture({rows:[{pid:3,window_id:9,app_name:undefined}]}).broker.execute('workspace_target_list',{}),/WINDOW_ID_INVALID/);
+});
+
+test('candidate read-only proxy uses only reviewed literal port 48839',async()=>{
+ const {broker,calls}=fixture({port:48839});
+ const result=await broker.execute('workspace_target_list',{application:'firefox'});
+ assert.equal(result.handled,true);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].url,'http://127.0.0.1:48839/mcp');
 });
