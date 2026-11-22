@@ -165,3 +165,62 @@ test('single-host mode without opt-in keeps existing private pair behavior',asyn
   assert.equal(h.state.effects,1);
   assert.equal(h.state.sinkCalls,0);
 });
+
+test('actual owner-local SQLite effect rejects stale epoch after protected private grant and durable receipt',async t=>{
+  const fs=await import('node:fs');
+  const os=await import('node:os');
+  const path=await import('node:path');
+  const {createHash}=await import('node:crypto');
+  const {MutationIdempotencyStore}=await import('../src/mutation-idempotency.mjs');
+  const {Rc013SqliteEffectSink}=await import('../src/rc013-sqlite-effect-sink.mjs');
+  const {v2OperationKey}=await import('../src/v2-routing-contract.mjs');
+
+  const root=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'rc013-primary-real-sql-'));
+  let receipts,sink;
+  t.after(()=>{
+    receipts?.close();sink?.close();
+    fs.rmSync(root,{recursive:true,force:true});
+  });
+  sink=new Rc013SqliteEffectSink({
+    databasePath:path.join(root,'owner.sqlite'),
+    verifyOwner:()=>true // simulated OS-owner trust; never production
+  });
+  sink.enroll({
+    projectId:'project-a',hostId:'host-a',
+    rootFingerprint:ROOT,epoch:1
+  });
+  receipts=new MutationIdempotencyStore({
+    directory:path.join(root,'receipts'),scope:'rc013-private-primary-sql'
+  });
+
+  const h=fixture();
+  h.trusted.receiptStore=receipts;
+  h.trusted.execute=async(r,args,tool)=>{
+    h.state.effects++;
+    const payloadHash=createHash('sha256')
+      .update(JSON.stringify([tool,args])).digest('hex');
+    return sink.increment({
+      projectId:'project-a',hostId:r.hostId,
+      rootFingerprint:ROOT,epoch:h.state.pin.authorityEpoch,
+      operationKey:v2OperationKey(r),payloadHash,counterKey:'accepted'
+    });
+  };
+  assert.deepEqual(await h.run(),{status:'APPLIED',epoch:1});
+  assert.deepEqual(await h.run(),{status:'APPLIED',epoch:1});
+  assert.equal(sink.inspect('project-a','accepted'),1);
+  assert.equal(h.state.effects,1);
+  assert.deepEqual(receipts.status().states,{SUCCEEDED:1});
+
+  // Change SQL sink's current owner, leaving the originally issued synthetic
+  // authority pin and signed-grant simulation stale. New operation ID must
+  // be denied AT THE SQL effect and leave its counter unchanged.
+  sink.rotate({
+    projectId:'project-a',expectedEpoch:1,
+    nextHostId:'host-b',nextRootFingerprint:ROOT
+  });
+  await assert.rejects(h.run({...route(),operationId:'op-after-revoke'}),
+    denied('RC013_SINK_AUTHORITY_FENCE_REJECTED'));
+  assert.equal(sink.inspect('project-a','accepted'),1);
+  assert.equal(h.state.effects,2);
+  assert.equal(receipts.status().states.UNCERTAIN,1);
+});
