@@ -905,7 +905,7 @@ test('real full-catalog 0.12 owner-local protected boot stays fail-closed withou
     assert.equal(result.status,0,(result.stderr||'').slice(-1024));
     const proof=JSON.parse((result.stdout||'').trim());
     assert.equal(proof.result,'RC012_OWNER_LOCAL_PROTECTED_SOURCE_CANARY_PASS');
-    assert.equal(proof.version,'0.12.0-dev.9');
+    assert.equal(proof.version,'0.12.0-dev.10');
     assert.equal(proof.protectedIngressWired,true);
     assert.equal(proof.protectedIngressReady,false);
     assert.equal(proof.tlsClientAuthenticated,true);
