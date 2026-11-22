@@ -1,5 +1,64 @@
+## 0.11.0-dev.105 — dev23-based V1-05 source-integration preview (2026-11-07; NoPromote)
+
+- Exact base: `40256873627780cc7b62359935e43bac5ef856b3`, recovered from `/home/aliemad/.local/state/chatgpt-remote-commander/releases/v0.11.0-dev.23-402568736277`. Its package/Core/manifest identify `0.11.0-dev.23`; its `.git` HEAD is detached at this exact commit.
+- V1-05 accepted commit ported in isolated worktree: `110f25ceef30c2058a886c04dc2d0d699c549ec0`; 9 files / 580 insertions / 30 deletions, no cherry-pick conflict. This is the committed V1-05 delta only; its later uncommitted working-tree edits are not silently included.
+- Release identity synchronized to `0.11.0-dev.105`. The train's `sourceBaseSha` remains historical baseline `c057494329490257e3d79046ea7599c60dde1e89`; it is shared by the dev23 base, main and dev19 branch and is not the current source commit.
+- Commander 2 / `mmz/v2-unified-candidate-20261103` (`0.11.0-dev.19`) was inspected but deliberately not merged. V1-00 explicitly selects exact dev23 as the V1-08 base and forbids substituting dev19 RemoteCommanderV2 or artifact-heavy Main. The V2 branch remains unchanged.
+- The dev23 release root has uncommitted V1-03 GUI changes in `src/gui-tools-windows.mjs`, `src/workspace-tools.mjs`, plus untracked `tools/gui-control-x11.py`. They remain preserved in the original root and are excluded from this clean preview pending V1-03 acceptance; this preview therefore does not claim parity with those live GUI overlay changes.
+- Windows updater cleanup now binds both pre-registration candidate objects to `$stage.Version` and checks `$Candidate.Version` during the native owner-attestation fallback, avoiding the previous hard-coded dev23 mismatch.
+- Qualification: `npm run check` PASS; candidate-scoped `npm run audit` PASS after removing only temporary local Commander2 audit refs; `npm test` exit 0 with no failures (main TAP group 637 PASS / 17 platform skips; auxiliary suites also exit 0); workflow 314/314; Release Train 4/4; SemVer 4/4; updater contract 39 PASS / 4 skips; browser monitor 4 PASS / 2 Windows-only skips; Windows PowerShell Parser PASS for updater SHA256 `3ed00e806a17f4852aa8ad6390e8b707ddf8cc5aedcc535708112acf33ffa91b`; staged and unstaged `git diff --check` PASS.
+- No immutable full-product commit, Builder artifact, install, route switch, service restart, public release, autoupdate enablement or Stable promotion is performed. Cross-owner source freeze, current V1-03/V1-01/V1-06/V1-07/V1-09/V1-10 integration, V2 package provenance and real G1/J01/ACK/boot-login/canary/rollback remain open.
+
+## 0.11.0-dev.23 — isolate owner-session CUA channels (2026-11-01; development / NoPromote)
+
+- Bind each owner broker channel to a separate named CUA pipe: rc-workspace-cua-v038-active versus rc-workspace-cua-v038-candidate. The workspace CUA adapter accepts only those exact channel names and rejects a shared legacy/foreign endpoint.
+- The versioned launcher resolves the pipe from its authenticated manifest channel, validates the exact same-session CUA process identity and refuses ambiguous or unowned ready pipes. It may start only its own exact-channel CUA child for an actual broker run.
+- Launcher SelfTest performs no CUA pipe probe, driver start, GUI observation or desktop input; it validates the channel-bound runtime/config/manifest and reports cuaPipeReady=false. Candidate preparation therefore cannot share or disturb the active v0.11.0-dev.18 CUA pipe.
+- Add deterministic active/candidate/invalid-pipe regression tests. No scheduled-task change, broker start, browser interaction or live model call. NoPromote.
+
+## 0.11.0-dev.22 — owner-session candidate handoff and runtime pinning (2026-11-01; development / NoPromote)
+
+- Add a Windows owner-session candidate preparer for a distinct sidecar profile/port. It requires the owner interactive SID, a verified dev/NoPromote source release, exact broker/launcher hashes, pinned Node version/SHA, pinned CUA driver SHA, and a free candidate port. It creates candidate config/manifest using CreateNew and refuses conflicting pre-existing candidates.
+- Extend the versioned owner launcher and broker to verify owner SID, launcher hash, Node runtime hash/version and release-package version. Fail closed when the candidate port is occupied. Self-test returns safe identity/evidence only.
+- Candidate prep/launcher never changes the active owner config, existing Scheduled Task, active broker or live desktop. The preparer starts no candidate broker; separate owner-session staging and tool-catalog verification remain open.
+- PowerShell 7.6.8 AST checks pass for launcher and preparer. Full npm check, isolated npm test and security audit pass on the source candidate; all release/promotion flags remain false. NoPromote.
+
+## 0.11.0-dev.21 — versioned owner-session broker packaging (2026-11-01; development / NoPromote)
+
+- Bring the owner-workspace broker adapter into canonical source and the deterministic installer payload, alongside a versioned hash-verifying owner launcher. The launcher binds owner SID/name, interactive session, config/profile/loopback port, release-root containment and exact broker/CUA SHA-256 values; it can self-test without starting/replacing a broker.
+- Restrict the packaged broker to the existing workspace-only tool catalog. Remove the inherited generic owner_session_shell PowerShell execution tool and ad-hoc driver diagnostic. Set mouse, keyboard, window focus and browser input/fallback permissions false in the broker context; keep loopback-only, timing-safe bearer verification, Origin rejection, bounded request size/concurrency, exact owner/session checks and existing native UIA policy.
+- The launcher binds the interactive Windows owner SID as well as account name/session, validates Node/CUA/broker/launcher hashes and version, and reserves a channel-specific candidate named pipe and loopback port. Candidate self-test performs no CUA start or window discovery. At runtime it refuses any pre-existing matching CUA process (including an orphan) rather than killing/adopting it; it stops only the exact child it launched. It does not create, modify, stop or retarget Scheduled Tasks.
+- New owner-broker release contract tests verify the reduced API and installer inclusion. Candidate-only; no task switch, sidecar install or live GUI operation yet. NoPromote; publish/autoupdate/install flags remain false.
+
+## 0.11.0-dev.20 — align owner-proxy deadlines with native UIA effect bounds (2026-10-31; development / NoPromote)
+
+- Correct an owner-broker response timeout mismatch: native UIA Observe has an 11s child-process bound and SetValue/Invoke have 16s bounds. The prior 6.5s generic owner-proxy deadline could return before the owner-session operation produced its durable result.
+- Use 14s for native Observe and 22s for native SetValue/Invoke, leaving bounded response headroom while preserving all native process limits, owner-session authorization, request IDs and uncertain-effect journal behavior. Browser-specific deadlines and unrelated tools remain unchanged.
+- Add deterministic owner-proxy regression assertions for the three native deadlines. No extension of native effect timeouts, authority, GUI focus, keyboard, or retry policy.
+- Development candidate only. NoPromote, no installation, publication, or live Personalization browser test.
+
+## 0.11.0-dev.19 — exact-window Windows UIA text entry (2026-10-31; development / NoPromote)
+
+- Add a distinct owner-session Native Windows UIA SetValue path for enabled, non-password Edit/Document controls bound to one exact PID/HWND/application and a fresh single-use fingerprint. Text travels over redirected UTF-8 stdin only; result exposes length, SHA-256 and exact native readback status, never field contents.
+- Keep InvokePattern separate from text entry, require a fresh observation, explicit per-effect consent and durable at-most-once/uncertain-effect journal. No SendInput, SendKeys, clipboard or blind retry.
+- Delegate UIA only through the authenticated interactive owner-session broker; reject Session 0/SYSTEM. Respect the existing allowKeyboard=false and allowWindowFocus=false policy. Invoke without focus permission requires the exact target already foreground; a focus transition requires a separate explicit authorization plus the native policy gate and exact HWND/PID postcheck.
+- Candidate commit 28710406d8206d171e4d26fc90b01c81e25d3dec is local-only and based on PR #434 head. Native PowerShell 7.6.8 parser PASS; complete npm run check exit 0 (final aggregate 39/39), npm run audit PASS, focused UIA/owner-proxy tests PASS. Session 0 guard was exercised and rejected before GUI inspection.
+- NoPromote: no GitHub push/PR, release tag, installer, owner-broker deployment, live Brave input, model evaluation or fleet acceptance. Installed 0.11.0-dev.18 remains active. Exact Personalization Brave target must be re-identified before live tests; independent security review and explicit release/install approval remain open. All nine release-train acceptance flags stay false.
+
+## 0.11.0-dev.18 — GNOME Firefox semantic input, development / NoPromote
+
+AT-SPI is a distinct owner accessibility route requiring exact PID/HWND, focused window, current explicit takeover authorization and fresh one-shot accessibility element receipt. The original multi-monitor native pointer guard is unchanged. The browser's existing profile and institutional authentication are not copied or inspected. Pilot owner GTK control QA is PASS; real Firefox mutation and 52 P12 searches need independent authorization-scoped verification.
+
+## 0.11.0-dev.17 — owner GNOME per-window monitor binding, development / NoPromote
+
+Targeted Firefox dual-monitor correction after real Emad host observation: prior `workspace_target_snapshot` produced display 0 even though an owner Firefox window was reported on another display. Add verified `Meta.Window.get_monitor()` and `get_frame_rect()` to native inventory, persist monitor/window geometry per lease, require matching target and reject off-window coordinates; candidate-source acceptance and exact native readback are separate mandatory gates. Existing dev.16 pilot remains active until accepted promotion. No credentials, browser profiles or cookies are read.
+
 # Remote Commander suite — 0.11 release train
 **Opened:** 2026-10-27 · **Status:** INTEGRATION CANDIDATE / NO PUBLIC RELEASE / NO HOST PROMOTION
+
+## 0.11.0-dev.16 — Workspace Target and local Runner QA, development / NoPromote
+
+New `workspace_target_*` tools route exact existing owner-window identity through the native GUI contract; this does not copy Firefox profiles or use WebDriver for the live user's browser. CUA/GUI authorization, fresh frame, owner consent and negative cross-session tests remain required. Local Ollama `qwen3:4b-instruct` on Emad Linux independently completed one read-only enrolled Runner E2E with `PROJECT_ACCEPTANCE_VERIFIED` after increasing bounded provider timeout to 24 seconds. No cross-host unattended execution or Stable promotion is inferred. All release acceptance flags remain false.
 
 ## 0.11.0-dev.15 — retain accepted fifth transfer peer without second engine
 

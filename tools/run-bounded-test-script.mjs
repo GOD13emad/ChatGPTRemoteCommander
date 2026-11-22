@@ -151,14 +151,14 @@ export function isolateWindowsTransferMeshHttpRegression(command) {
 }
 
 /**
- * Keep unchanged Windows browser-owned-process, workflow HTTP and transport correlation startup
- * fixtures in dedicated early test processes. Both have failed only under
- * loaded full-host qualification and passed unchanged when run in isolation.
+ * Keep unchanged Windows conversation, browser-owned-process, workflow HTTP and transport
+ * correlation startup fixtures in dedicated early test processes. These have failed only
+ * under loaded full-host qualification and passed unchanged when run in isolation.
  * Preserve exact assertions, timeouts, and one execution of every test file.
  */
 export function isolateWindowsStartupReadinessRegressions(command) {
   if(typeof command!=='string'||!command)throw new Error('CI_STARTUP_READINESS_COMMAND_INVALID');
-  const files=['test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
+  const files=['test/conversation-http.test.mjs','test/workflow-http.test.mjs','test/browser-process.test.mjs','test/transport-correlation-http.test.mjs'];
   const parts=command.split(' && ');
   const isolated=[];
   for(const file of files) {
@@ -185,13 +185,23 @@ export function isolateWindowsStartupReadinessRegressions(command) {
 export function markIsolatedQualificationPhases(command) {
   if(typeof command!=='string'||!command)throw new Error('R157_PHASE_COMMAND_INVALID');
   const parts=command.split(' && ');
-  if(parts.length<2||parts.length>90||parts.some(p=>!p.startsWith('node ')))
+  // These exact package-script delegations are part of the checked-in
+  // qualification chains; mark them as one phase without allowing arbitrary shell.
+  const approvedNestedScripts=new Set([
+    'npm run test:v1-01-worker-grants',
+    'npm run check:v1-01-hybrid-oauth',
+    'npm run test:v1-01-hybrid-oauth'
+  ]);
+  if(parts.length<2||parts.length>90
+    ||parts.some(part=>!part.startsWith('node ')&&!approvedNestedScripts.has(part)))
     throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
   const marked=parts.map((part,index)=>{
     const number=String(index).padStart(2,'0');
-    return 'echo RC_QUAL_PHASE_START_'+number+' && '+part+' && echo RC_QUAL_PHASE_PASS_'+number;
-  }).join(' && ');
-  if(marked.length>7500)throw new Error('R157_PHASE_WINDOWS_CMD_LENGTH');
+    return 'echo RC_QUAL_PHASE_START_'+number+'&&'+part+'&&echo RC_QUAL_PHASE_PASS_'+number;
+  }).join('&&');
+  // Keep the command below cmd.exe's 8191-character limit with headroom for
+  // the ComSpec wrapper and its quoted /c argument.
+  if(marked.length>7550)throw new Error('R157_PHASE_WINDOWS_CMD_LENGTH');
   return marked;
 }
 
@@ -281,7 +291,7 @@ export function isolateWindowsAsyncHttpRegression(command) {
 }
 
 /**
- * Hosted Windows: the strict 6-second team-reservation regression must run
+ * Hosted Windows: the bounded team-reservation regression must run
  * before the long check/test process fixture sequence in the test phase.
  * The file has already been isolated by isolateWindowsTimingSensitiveRegressions.
  * Move that exact standalone command only; retain all tests, assertions,
@@ -308,8 +318,16 @@ export function prioritizeWindowsAdaptiveCold(command) {
 export function splitWindowsQualificationCommands(command) {
   if(typeof command!=='string'||!command)throw new Error('R157_PHASE_COMMAND_INVALID');
   const parts=command.split(' && ');
-  if(parts.length<2||parts.length>90||parts.some(part=>
-    !part.startsWith('node ')||part.includes('\n')||part.includes('\r')||part.length>7000))
+  // The source-controlled check/test chains contain only Node commands plus
+  // these exact nested npm scripts. Reject every other shell form.
+  const approvedNestedScripts=new Set([
+    'npm run test:v1-01-worker-grants',
+    'npm run check:v1-01-hybrid-oauth',
+    'npm run test:v1-01-hybrid-oauth'
+  ]);
+  if(parts.length<2||parts.length>160||parts.some(part=>
+    (!part.startsWith('node ')&&!approvedNestedScripts.has(part))
+      ||part.includes('\n')||part.includes('\r')||part.length>7000))
     throw new Error('R157_PHASE_COMMAND_SHAPE_INVALID');
   return parts;
 }
@@ -349,7 +367,7 @@ function run(){
   }
   if(process.platform==='win32') command=isolateWindowsAsyncHttpRegression(command);
   if(args.script==='test'&&process.platform==='win32'){
-    // This original strict 6s SQLite/team regression must execute in a cold
+    // The bounded 20s SQLite/team regression must execute in a cold
     // isolated process before other process-heavy Windows fixture groups.
     // Keep timeout, test body, full coverage and cardinality unchanged.
     command=isolateWindowsTimingSensitiveRegressions(command);
@@ -360,24 +378,28 @@ function run(){
     command=prioritizeWindowsAdaptiveCold(command);
     command=isolateWindowsAutotickRegression(command);
   }
-  const phases=process.platform==='win32'&&args.script==='test'&&process.env.RC_QUALIFICATION_RUN_ID
-    ?splitWindowsQualificationCommands(command):null;
+  // Windows cmd.exe cannot accept the complete check/test chain as one /c
+  // command. Split both scripts at their source-controlled && boundaries;
+  // numeric receipts remain opt-in to the isolated qualification runner.
+  const phases=process.platform==='win32'?splitWindowsQualificationCommands(command):null;
   console.log('CI_TEST_CONCURRENCY script='+args.script+' requestedConcurrency='+requestedConcurrency+' effectiveConcurrency='+effectiveConcurrency+' replacements='+bounded.replacements+' prioritizeSensitive='+prioritizeSensitive);
   if(phases){
     for(const [index,part] of phases.entries()){
       const marker=String(index).padStart(2,'0');
-      console.log('RC_QUAL_PHASE_START_'+marker);
+      if(process.env.RC_QUALIFICATION_RUN_ID)console.log('RC_QUAL_PHASE_START_'+marker);
       const phase=spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',part],{cwd:root,env:process.env,stdio:'inherit'});
       if(phase.error)throw phase.error;
       if(phase.signal)throw new Error('CI_TEST_SIGNAL_'+phase.signal);
       if(phase.status!==0){process.exitCode=Number.isInteger(phase.status)?phase.status:1;return;}
-      console.log('RC_QUAL_PHASE_PASS_'+marker);
+      if(process.env.RC_QUALIFICATION_RUN_ID)console.log('RC_QUAL_PHASE_PASS_'+marker);
     }
     return;
   }
   const child=process.platform==='win32'
     ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
-    : spawnSync('/bin/sh',['-lc',command],{cwd:root,env:process.env,stdio:'inherit'});
+    // Use a non-login shell: -l resets the caller's tested user-local
+    // Node PATH to a stale system runtime and makes exact-source QA fail.
+    : spawnSync('/bin/sh',['-c',command],{cwd:root,env:process.env,stdio:'inherit'});
   if(child.error)throw child.error;
   if(child.signal)throw new Error(`CI_TEST_SIGNAL_${child.signal}`);
   process.exitCode=Number.isInteger(child.status)?child.status:1;

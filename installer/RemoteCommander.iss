@@ -1,11 +1,14 @@
 #ifndef MyVersion
-  #define MyVersion "0.10.18-dev"
+  #error V108_EXPLICIT_PACKAGE_VERSION_REQUIRED
 #endif
 #ifndef MyCommit
-  #define MyCommit "0000000000000000000000000000000000000000"
+  #error V108_EXACT_SOURCE_COMMIT_REQUIRED
 #endif
 #ifndef MySourceRef
-  #define MySourceRef "v0.10.18"
+  #error V108_EXPLICIT_SOURCE_REF_REQUIRED
+#endif
+#ifndef WindowsJobRunner
+  #error V102_PINNED_WINDOWS_JOB_RUNNER_REQUIRED
 #endif
 #ifndef DesktopPayload
   #define DesktopPayload "..\dist\desktop\remote-commander-windows-x64"
@@ -57,15 +60,21 @@ Name: "browser"; Description: "Remote Commander Browser"; Types: complete
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
-Source: "{#DesktopPayload}\RemoteCommander.exe"; DestDir: "{app}"; Components: core; Flags: ignoreversion
-Source: "{#DesktopPayload}\profile-manager-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion
-Source: "{#DesktopPayload}\profile-enrollment-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion
-Source: "{#DesktopPayload}\operations-monitor-windows.ps1"; DestDir: "{app}"; Components: controlmonitor; Flags: ignoreversion
-Source: "{#DesktopPayload}\admin-runtime-windows.ps1"; DestDir: "{app}"; Components: controlmonitor; Flags: ignoreversion
-Source: "..\server-install-windows.ps1"; Flags: dontcopy noencryption
-Source: "..\install.ps1"; Flags: dontcopy noencryption
+#ifdef CoreSourceBundle
+  #define CoreBundleName ExtractFileName(CoreSourceBundle)
+Source: "{#CoreSourceBundle}"; DestName: "{#CoreBundleName}"; Flags: dontcopy noencryption notimestamp
+#endif
+Source: "{#DesktopPayload}\RemoteCommander.exe"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
+Source: "{#DesktopPayload}\profile-manager-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
+Source: "{#DesktopPayload}\profile-enrollment-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
+Source: "{#DesktopPayload}\profile-display-names.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
+Source: "{#DesktopPayload}\operations-monitor-windows.ps1"; DestDir: "{app}"; Components: controlmonitor; Flags: ignoreversion notimestamp
+Source: "{#DesktopPayload}\admin-runtime-windows.ps1"; DestDir: "{app}"; Components: controlmonitor; Flags: ignoreversion notimestamp
+Source: "..\server-install-windows.ps1"; Flags: dontcopy noencryption notimestamp
+Source: "..\install.ps1"; Flags: dontcopy noencryption notimestamp
+Source: "{#WindowsJobRunner}"; DestName: "CommanderWindowsJobRunner.exe"; Flags: dontcopy noencryption notimestamp
 #ifdef BrowserSetup
-Source: "{#BrowserSetup}"; DestName: "{#BrowserSetupName}"; Flags: dontcopy noencryption
+Source: "{#BrowserSetup}"; DestName: "{#BrowserSetupName}"; Flags: dontcopy noencryption notimestamp
 #endif
 
 [Icons]
@@ -79,7 +88,7 @@ Type: files; Name: "{group}\Remote Commander Admin Runtime.lnk"
 
 [Run]
 #ifdef BrowserSetup
-Filename: "{tmp}\{#BrowserSetupName}"; Parameters: "/VERYSILENT /NORESTART"; Components: browser; StatusMsg: "Installing Remote Commander Browser..."; Flags: waituntilterminated
+Filename: "{tmp}\{#BrowserSetupName}"; Parameters: "/VERYSILENT /NORESTART"; Components: browser; StatusMsg: "Installing Remote Commander Browser..."; Flags: waituntilterminated; Check: ShouldInstallBundledBrowser
 #endif
 Filename: "{app}\RemoteCommander.exe"; Description: "Open Remote Commander"; Flags: nowait postinstall skipifsilent
 
@@ -88,6 +97,18 @@ var
   ProfilePage: TInputQueryWizardPage;
   PwshPath: String;
 
+#ifdef BrowserSetup
+function ShouldInstallBundledBrowser(): Boolean;
+var
+  InstalledVersion: String;
+begin
+  { Never silently replace any existing owner Browser with the bundled version. }
+  Result := not RegQueryStringValue(HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommanderBrowser',
+    'DisplayVersion', InstalledVersion) and
+    not FileExists(ExpandConstant('{localappdata}\Programs\Remote Commander Browser\current\product-install.json'));
+end;
+#endif
 function JsonBool(Value: Boolean): String;
 begin
   if Value then Result := 'true'
@@ -217,7 +238,7 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  PrereqScript, CoreScript, Params, ExistingCoreGit: String;
+  PrereqScript, CoreScript, Params, ExistingCoreGit, CoreBundle, WindowsJobRunnerPath: String;
   ExistingCore: Boolean;
   ResultCode: Integer;
 begin
@@ -230,22 +251,48 @@ begin
     ExistingCore := DirExists(ExistingCoreGit) or FileExists(ExistingCoreGit);
     EnsurePowerShell7;
 
+    ExtractTemporaryFile('CommanderWindowsJobRunner.exe');
+    WindowsJobRunnerPath := ExpandConstant('{tmp}\CommanderWindowsJobRunner.exe');
     ExtractTemporaryFile('server-install-windows.ps1');
     PrereqScript := ExpandConstant('{tmp}\server-install-windows.ps1');
     Params :=
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + PrereqScript + '"' +
       ' -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}" -PrerequisitesOnly';
-    WizardForm.StatusLabel.Caption := 'Verifying machine prerequisites...';
-    if not ShellExec('runas', PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-      RaiseException('Could not elevate prerequisite installation.');
-    if ResultCode <> 0 then
-      RaiseException('Remote Commander prerequisite installer failed with exit code ' + IntToStr(ResultCode) + '.');
+    // Previously verified machine prerequisites need no new UAC. A fresh
+    // installation or a missing protected receipt still takes the native UAC path.
+    WizardForm.StatusLabel.Caption := 'Checking existing machine prerequisites...';
+    Params :=
+      '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + PrereqScript + '"' +
+      ' -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}" -PrerequisitesProbe';
+    if not Exec(PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('Could not inspect existing prerequisites.');
+    if ResultCode = 42 then
+    begin
+      Params :=
+        '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + PrereqScript + '"' +
+        ' -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}" -PrerequisitesOnly';
+      WizardForm.StatusLabel.Caption := 'Installing missing machine prerequisites with Windows approval...';
+      if not ShellExec('runas', PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+        RaiseException('Could not elevate prerequisite installation.');
+      if ResultCode <> 0 then
+        RaiseException('Remote Commander prerequisite installer failed with exit code ' + IntToStr(ResultCode) + '.');
+    end
+    else if ResultCode <> 0 then
+      RaiseException('Remote Commander prerequisite inspection failed with exit code ' + IntToStr(ResultCode) + '.');
 
+#ifdef CoreSourceBundle
+    ExtractTemporaryFile('{#CoreBundleName}');
+    CoreBundle := ExpandConstant('{tmp}\{#CoreBundleName}');
+#endif
     ExtractTemporaryFile('install.ps1');
     CoreScript := ExpandConstant('{tmp}\install.ps1');
     Params :=
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + CoreScript + '"' +
-      ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"';
+      ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"' +
+      ' -WindowsJobRunnerPath "' + WindowsJobRunnerPath + '"';
+#ifdef CoreSourceBundle
+    Params := Params + ' -SourceBundle "' + CoreBundle + '" -SourceBundleSha256 "{#CoreSourceBundleSHA256}"';
+#endif
     if not ExistingCore then Params := Params + ' -StandardMode';
     WizardForm.StatusLabel.Caption := 'Installing and verifying Remote Commander core for this user...';
     if not Exec(PwshPath, Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
