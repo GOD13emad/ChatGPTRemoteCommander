@@ -23,6 +23,7 @@ $summary = [ordered]@{
   inheritedDirectoryAcl = 0
   broadAllow = 0
   inspectionErrors = 0
+  hardlinkAliases = 0
 }
 try {
   if ($Scope -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') { throw 'INVALID_SCOPE' }
@@ -36,6 +37,7 @@ try {
   if ($root -cnotmatch '^[A-Za-z]:\\') { throw 'INVALID_DIRECTORY' }
   $user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
   $allowed = @($user, 'S-1-5-18', 'S-1-5-32-544')
+  $fsutil = [IO.Path]::Combine($env:SystemRoot, 'System32', 'fsutil.exe')
   function Test-Item([string]$Item, [bool]$IsDirectory, [bool]$Required) {
     $isPresent = if ($IsDirectory) { [IO.Directory]::Exists($Item) } else { [IO.File]::Exists($Item) }
     if (-not $isPresent) {
@@ -63,6 +65,19 @@ try {
         if ($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and $allowed -notcontains $rule.IdentityReference.Value) {
           $summary.broadAllow++
           break
+        }
+      }
+      # Reuse native Windows hardlink enumeration rather than attempting
+      # privileged ownership changes or importing compiler/runtime packages.
+      # fsutil's returned names stay in this process; only numeric counters
+      # may leave the audit. A denied/unsupported query fails closed.
+      if (-not $IsDirectory) {
+        $links = @(& $fsutil hardlink list $Item 2>&1)
+        if ($LASTEXITCODE -ne 0 -or $links.Count -lt 1 -or
+            -not $links[0].ToString().StartsWith('\')) {
+          $summary.inspectionErrors++
+        } elseif ($links.Count -ne 1) {
+          $summary.hardlinkAliases++
         }
       }
     } catch { $summary.inspectionErrors++ }
@@ -101,7 +116,8 @@ try {
   }
   $summary.complete = -not $summary.limitReached -and $summary.inspectionErrors -eq 0
   $summary.eligible = $summary.complete -and $summary.missingRequired -eq 0 -and $summary.reparsePoints -eq 0 -and
-    $summary.ownerMismatch -eq 0 -and $summary.inheritedDirectoryAcl -eq 0 -and $summary.broadAllow -eq 0
+    $summary.ownerMismatch -eq 0 -and $summary.inheritedDirectoryAcl -eq 0 -and $summary.broadAllow -eq 0 -and
+    $summary.hardlinkAliases -eq 0
 } catch {
   $summary.inspectionErrors++
 }
