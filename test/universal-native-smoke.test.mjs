@@ -8,9 +8,9 @@ import {nativeLifecycleSpec,admittedDisposableHost,inspectUnifiedNativeSource}
   from '../tools/universal-install/native-smoke.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const call=(args)=>spawnSync(process.execPath,[
+const call=(args,{env=process.env}={})=>spawnSync(process.execPath,[
   path.join(root,'tools/universal-install/native-smoke.mjs'),...args],{
-  cwd:root,encoding:'utf8',timeout:12000,windowsHide:true});
+  cwd:root,env,encoding:'utf8',timeout:12000,windowsHide:true});
 const sha=spawnSync('git',['-C',root,'rev-parse','HEAD'],{
   encoding:'utf8',windowsHide:true}).stdout.trim();
 test('one exact source version maps to NSIS and DEB native install/upgrade/rollback scripts',()=>{
@@ -32,7 +32,11 @@ test('one cross-platform CLI plans but refuses native changes on any real owner 
   assert.equal(v.liveInstallApproved,false);
   assert.equal(v.ownerGrantIssued,false);
   assert.equal(v.qaOnly,true);
-  const denied=call(['--run','--expected-commit',sha]);
+  // This is a NEGATIVE *owner-host* fixture. Hosted CI itself must be able
+  // to run the native smoke, so do not inherit its approval environment.
+  const ownerEnv={...process.env,CI:'false',GITHUB_ACTIONS:'false',
+    RUNNER_ENVIRONMENT:'local'};
+  const denied=call(['--run','--expected-commit',sha],{env:ownerEnv});
   assert.equal(denied.status,2,denied.stdout);
   assert.equal(JSON.parse(denied.stderr).reason,'RC012_NATIVE_HOSTED_RUNNER_ONLY');
 });
