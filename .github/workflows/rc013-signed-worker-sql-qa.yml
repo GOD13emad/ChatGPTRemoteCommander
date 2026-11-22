@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'src/v2-routing-contract.mjs'
+      - 'src/v2-authorized-operation.mjs'
+      - 'src/worker-identity-authority.mjs'
       - 'src/v2-private-pair-operation-gate.mjs'
       - 'src/v2-private-signed-worker-grant-adapter.mjs'
       - 'src/rc013-sqlite-effect-sink.mjs'
