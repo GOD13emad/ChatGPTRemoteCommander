@@ -382,7 +382,9 @@ export function assessMigration(facts){
     throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
   const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
-  const oldPresent=facts.platform==='win32'?facts.legacyInnoPresent===true:facts.nativePackageInstalled===true;
+  const oldPresent=facts.platform==='win32'
+    ?facts.legacyInnoPresent===true||facts.nativeUnifiedNsisPresent===true
+    :facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
   if(facts.platform==='win32'&&facts.routerDetected===true
@@ -418,7 +420,11 @@ export function assessMigration(facts){
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
   if(facts.platform==='win32' && oldPresent){
-    if(facts.ownerRegisteredInstallerFamily==='owner-managed-powershell')
+    if(facts.nativeUnifiedNsisPresent===true&&facts.legacyInnoPresent!==true){
+      if(facts.ownerRegisteredInstallerFamily==='unified-nsis')
+        blocked.push('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED');
+      else blocked.push('OWNER_INSTALLER_IDENTITY_UNVERIFIED');
+    }else if(facts.ownerRegisteredInstallerFamily==='owner-managed-powershell')
       blocked.push('OWNER_MANAGED_TO_UNIFIED_NSIS_TRANSACTION_MISSING');
     else {
       blocked.push('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING');
@@ -492,6 +498,10 @@ export function assessMigration(facts){
     connectionMode:facts.connectionMode??'managed-oauth',
     ownerRegisteredInstallerFamily:facts.platform==='win32'
       ?facts.ownerRegisteredInstallerFamily??'unknown':null,
+    nativeUnifiedNsisDetected:facts.platform==='win32'
+      ?facts.nativeUnifiedNsisPresent===true:null,
+    nativeUnifiedNsisIdentityVerified:facts.platform==='win32'
+      ?facts.nativeUnifiedNsisIdentityVerified===true:null,
     ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
     ownerTunnelTargetPort:facts.tunnelProfileValid===true?facts.tunnelTargetPort??null:null,
     ownerTunnelHttpsConfigured:facts.tunnelProfileValid===true&&facts.tunnelTargetTls===true,
@@ -718,6 +728,30 @@ export function classifyWindowsUninstallRegistryResponse(raw){
     return 'inno-unverified';
   return 'unverified';
 }
+// electron-builder appId io.tandemvector.commander has one product-wide NSIS
+// uninstall registration (not a device-specific key). An owner-registry entry
+// is inventory evidence only, NEVER publisher trust or upgrade authorization.
+export function classifyWindowsUnifiedNsisRegistryResponse(raw){
+  if(typeof raw!=='string'||Buffer.byteLength(raw,'utf8')>32768)return 'unverified';
+  const attrs=new Map();
+  for(const line of raw.split(/\r?\n/)){
+    const m=/^\s*(DisplayName|DisplayVersion|UninstallString)\s+REG_(?:SZ|EXPAND_SZ)\s+(.+?)\s*$/i.exec(line);
+    if(!m)continue;
+    const key=m[1].toLowerCase();
+    if(attrs.has(key))return 'unverified';
+    attrs.set(key,m[2]);
+  }
+  const version=attrs.get('displayversion');
+  const title=attrs.get('displayname');
+  const command=attrs.get('uninstallstring');
+  if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(version??'')
+    ||title!=='Remote Commander '+version
+    ||typeof command!=='string'||command.length>8192
+    ||/[\u0000-\u001f]/.test(command)
+    ||!/(?:^|[\\/])Uninstall Remote Commander\.exe(?:["\s]|$)/i.test(command))
+    return 'unverified';
+  return 'unified-nsis';
+}
 export function windowsOwnerDpapiVerifyOutputAccepted(status,stdout){
   return status===0 && typeof stdout==='string'
     && stdout.trim()==='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
@@ -757,12 +791,26 @@ function windowsFacts({profileName=null}={}){
     'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander'
   ];
   const checks=paths.map(p=>exec('reg.exe',['query',p,'/v','UninstallString']));
-  // reg.exe exit 1 means precisely that a fixed key/value is absent.
-  const bad=checks.some(c=>c.stdout.length>50000);
+  // Fixed product identity from the unified electron-builder appId, the SAME
+  // identifier on every Windows owner host. No registry-wide fuzzy scan.
+  const nativeNsisId='e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
+  const nativePaths=[
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+nativeNsisId,
+    'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+nativeNsisId,
+    'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+nativeNsisId
+  ];
+  const native= nativePaths.map(p=>exec('reg.exe',['query',p]));
+  // reg.exe exit 1 is an absent fixed key, not evidence about other apps.
+  const bad=[...checks,...native].some(c=>c.stdout.length>50000);
   const present=checks.filter(c=>c.ok);
-  const installerFamily=present.length===1
-    ?classifyWindowsUninstallRegistryResponse(present[0].stdout)
-    :present.length===0?'none':'multiple-or-unverified';
+  const nativePresent=native.filter(c=>c.ok);
+  const installerFamily=present.length&&nativePresent.length
+    ?'multiple-or-unverified'
+    :nativePresent.length===1
+      ?classifyWindowsUnifiedNsisRegistryResponse(nativePresent[0].stdout)
+      :nativePresent.length>1?'multiple-or-unverified'
+      :present.length===1?classifyWindowsUninstallRegistryResponse(present[0].stdout)
+      :present.length===0?'none':'multiple-or-unverified';
   const tunnel=readWindowsOwnerTunnelBinding({profileName:selectedProfile});
   const targetVersion=tunnel.valid?probeLoopbackCoreVersion(tunnel.port):null;
   const routerReport=tunnel.valid?probeLoopbackRouterStatus(tunnel.port):null;
@@ -771,8 +819,10 @@ function windowsFacts({profileName=null}={}){
   const route=classifyObservedRouterStatus(routerReport,tunnel.port,backendVersion);
   return {platform:'win32',connectionMode:'private-tunnel',
     legacyInnoPresent:checks.some(c=>c.ok),
+    nativeUnifiedNsisPresent:nativePresent.length>0,
+    nativeUnifiedNsisIdentityVerified:installerFamily==='unified-nsis',
     ownerRegisteredInstallerFamily:installerFamily,
-    inventoryReliable:!bad&&checks.length===3,
+    inventoryReliable:!bad&&checks.length===3&&native.length===3,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
     tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
     tunnelTargetVersion:targetVersion,
