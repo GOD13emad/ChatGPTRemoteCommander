@@ -7,6 +7,16 @@ import { createWorkflowTools, PROJECT_ENGINE_TOOL_DEFINITIONS } from '../src/wor
 import { classifyTool, reconciliationPlan } from '../src/workflow-autonomy.mjs';
 import { validateJsonSchema } from '../src/schema-validator.mjs';
 import { DeliveryStore } from '../src/delivery-store.mjs';
+import { windowsPrivateAcl } from '../src/owner-private-storage.mjs';
+
+// Disposable delivery fixtures must satisfy the same native owner-private
+// admission contract as production. Never relax DeliveryStore to admit broad ACLs.
+function privateDeliveryFixture(prefix) {
+  const directory=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),prefix)));
+  if(process.platform==='win32') windowsPrivateAcl(directory,{directory:true,initializeNew:true});
+  return directory;
+}
+
 
 test('workflow_run_status Host and durable read-only contracts agree',()=>{
   const definition=PROJECT_ENGINE_TOOL_DEFINITIONS.find(x=>x.name==='workflow_run_status');
@@ -62,7 +72,7 @@ test('project run persists caller correlation id and rejects invalid correlation
 
 test('WAITING_INPUT and BLOCKED project states become idempotent correlation-scoped deliveries', async () => {
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-')));
-  const deliveryRoot=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-private-')));
+  const deliveryRoot=privateDeliveryFixture('rc-project-delivery-private-');
   const deliveryStore=new DeliveryStore({directory:deliveryRoot,scope:'profile-a',forbiddenRoots:[root]});
   let plans=0;
   const config={
@@ -134,7 +144,7 @@ test('WAITING_INPUT and BLOCKED project states become idempotent correlation-sco
 
 for (const controlAction of ['pause','cancel']) test(controlAction+' project state becomes a durable delivery event', async () => {
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-control-')));
-  const deliveryRoot=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-control-private-')));
+  const deliveryRoot=privateDeliveryFixture('rc-project-delivery-control-private-');
   const deliveryStore=new DeliveryStore({directory:deliveryRoot,scope:'profile-control',forbiddenRoots:[root]});
   const config={allowedRoots:[root],durableWorkflows:{enabled:true,directory:path.join(root,'state'),executionTools:['read_text'],
     runner:{enabled:true,allowedTools:['read_text'],maxActions:2,maxDurationMs:10000}}};
@@ -163,7 +173,7 @@ for (const controlAction of ['pause','cancel']) test(controlAction+' project sta
 
 test('EXHAUSTED project state becomes a durable delivery event', async () => {
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-exhausted-')));
-  const deliveryRoot=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-exhausted-private-')));
+  const deliveryRoot=privateDeliveryFixture('rc-project-delivery-exhausted-private-');
   const deliveryStore=new DeliveryStore({directory:deliveryRoot,scope:'profile-exhausted',forbiddenRoots:[root]});
   const config={allowedRoots:[root],durableWorkflows:{enabled:true,directory:path.join(root,'state'),executionTools:['read_text'],
     runner:{enabled:true,allowedTools:['read_text'],maxActions:4,maxDurationMs:10000}}};
@@ -191,7 +201,7 @@ test('EXHAUSTED project state becomes a durable delivery event', async () => {
 
 test('COMPLETED project state becomes a durable delivery event', async () => {
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-completed-')));
-  const deliveryRoot=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-project-delivery-completed-private-')));
+  const deliveryRoot=privateDeliveryFixture('rc-project-delivery-completed-private-');
   const deliveryStore=new DeliveryStore({directory:deliveryRoot,scope:'profile-completed',forbiddenRoots:[root]});
   const config={allowedRoots:[root],durableWorkflows:{enabled:true,directory:path.join(root,'state'),executionTools:['write_text'],
     runner:{enabled:true,allowedTools:['write_text'],maxActions:2,maxDurationMs:10000}}};
