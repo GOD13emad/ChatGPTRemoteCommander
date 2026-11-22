@@ -8,7 +8,7 @@ import {createHash,randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {
   keyIdForSeed,inspectOwnerWorkerKeyCapsule,
-  rebindOwnerWorkerKeyCapsule
+  rebindOwnerWorkerKeyCapsule,resolvePinnedOwnerTunnelDirectory
 } from '../tools/provision-owner-worker-key-linux.mjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +42,38 @@ function capsule(root){
   }
   return {folder,seed,cipher,manifest,keyId,inspect};
 }
+
+test('generic owner pair resolver accepts only the pinned historical default alias, without re-enrollment',{
+  skip:process.platform!=='linux'
+},()=>{
+  const root=make(),uid=process.getuid(),pair=path.join(root,'.config',
+    'chatgpt-remote-commander','private-pair');
+  try{
+    fs.mkdirSync(pair,{recursive:true,mode:0o700});
+    const defaultDir=path.join(pair,'default');
+    fs.mkdirSync(defaultDir,{mode:0o700});
+    const pinned={schema:1,kind:'linux-owner-private-one-tunnel',
+      hostId:'synthetic-host',profileId:'Emad',ownerSidHash:'a'.repeat(64),
+      expectedExecutablePath:'/usr/bin/node',
+      expectedExecutableSha256:'b'.repeat(64),healthPort:43281,
+      expectedClientLeafDerSha256:'c'.repeat(64),enrolledAtMs:Date.now()};
+    const trust=path.join(defaultDir,'owner-tunnel-trust.json');
+    fs.writeFileSync(trust,JSON.stringify(pinned)+'\n',{mode:0o600});
+    const resolve=profile=>resolvePinnedOwnerTunnelDirectory({home:root,profile,ownerUid:uid});
+    assert.equal(resolve('Emad'),defaultDir,'exact profile in trusted default pair');
+    assert.equal(resolve('chatgpt-remote-commander'),defaultDir);
+    assert.throws(()=>resolve('another-account'),
+      {code:'RC012_WORKER_KEY_PINNED_TUNNEL_REQUIRED'});
+    const explicit=path.join(pair,'Emad');
+    fs.mkdirSync(explicit,{mode:0o700});
+    assert.equal(resolve('Emad'),explicit,'explicit directory takes precedence');
+    fs.rmdirSync(explicit);
+    fs.symlinkSync('/nonexistent/owner-pair',explicit);
+    assert.equal(resolve('Emad'),explicit,'dangling alias cannot trigger fallback');
+    assert.throws(()=>resolve('../Emad'),
+      {code:'RC012_WORKER_KEY_OWNER_ARGS_REQUIRED'});
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
 
 test('one owner/pair sealed Worker capsule validates exact hash, Ed25519 key and strict file owner ACL without showing seed',{
   skip:process.platform!=='linux'
