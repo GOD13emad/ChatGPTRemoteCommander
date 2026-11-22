@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {Readable} from 'node:stream';
 import {createV2PrivatePairMcpIngress} from '../src/v2-private-pair-mcp-http-ingress.mjs';
 import {createHash} from 'node:crypto';
@@ -49,6 +49,27 @@ test('native Linux and Electron builder derive one exact prerelease version from
  for(const program of [native,prepare,merged,upgrade])
    assert.doesNotMatch(program,/[\x22\x27]0\.12\.0-dev\.1[\x22\x27]/,
      'native build and delivery must not pin one stale candidate revision');
+});
+
+test('merged Linux GUI files stay publicly readable under restrictive builder umask',()=>{
+ const script=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ assert.match(script,/dest\.chmod\(0o755 if src_mode & 0o111 else 0o644\)/);
+ if(process.platform!=='linux')return;
+ const version=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8')).version;
+ const p=path.join(repo,'dist/unified',`Remote-Commander-Unified-${version}-Linux-amd64.deb`);
+ if(!fs.existsSync(p))return; // Source-only test before the CI packaging stage.
+ const result=spawnSync('dpkg-deb',['--contents',p],{encoding:'utf8',maxBuffer:16*1024*1024});
+ assert.equal(result.status,0,result.stderr);
+ const paths=['./opt/Remote Commander/resources/app.asar',
+  './opt/Remote Commander/resources/apparmor-profile',
+  './usr/share/applications/remote-commander-unified.desktop',
+  './usr/share/doc/chatgpt-remote-commander/changelog.gz',
+  './usr/share/icons/hicolor/128x128/apps/remote-commander-unified.png'];
+ for(const rel of paths){
+  const row=result.stdout.split('\n').find(x=>x.endsWith(' '+rel));
+  assert.ok(row,`missing packaged GUI asset: ${rel}`);
+  assert.match(row,/^-rw-r--r-- /,`GUI asset must be usable by nonroot desktop owner: ${rel}`);
+ }
 });
 
 test('one installer definition uses Windows NSIS per user and Linux DEB, not old host repairs',()=>{

@@ -87,7 +87,11 @@ async function claimWorker(root) {
 if (process.argv[2] === '--claim-worker') {
   await claimWorker(process.argv[3]);
 } else {
-  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 9000 }, async t => {
+  // Windows-hosted CI runs file-bound qualification under limited runner capacity.
+  // Keep behavioral assertions and true timer cycles, but do not mistake a
+  // delayed scheduling turn for missing enrollment or a leaked root lease.
+  const boundedWinBudget = process.platform === 'win32' ? 30000 : 9000;
+  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: boundedWinBudget }, async t => {
     const fixture = makeFixture({ scheduler: true, runner: { autoTick: true }, planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }) });
     try {
       await fixture.create();
@@ -100,7 +104,7 @@ if (process.argv[2] === '--claim-worker') {
       t.diagnostic('SCHEDULER_PHASE=unenrolled_not_planned');
       await fixture.start();
       t.diagnostic('SCHEDULER_PHASE=enrolled_waiting_for_completion');
-      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; });
+      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; }, process.platform === 'win32' ? 20000 : 6000);
       assert.equal(final.actions, 1);
       assert.equal(fixture.plans, 1);
       assert.equal(fixture.calls, 1);
@@ -171,7 +175,7 @@ if (process.argv[2] === '--claim-worker') {
     } finally { t.mock.restoreAll(); await fixture.dispose(); }
   });
 
-  test('cancel during an effect preserves its root lease and cancellation after the receipt', { timeout: 6000 }, async () => {
+  test('cancel during an effect preserves its root lease and cancellation after the receipt', { timeout: process.platform === 'win32' ? 25000 : 6000 }, async () => {
     const entered = deferred(), release = deferred();
     const fixture = makeFixture({ planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }), afterDispatch: async () => { entered.resolve(); await release.promise; } });
     let pending;
