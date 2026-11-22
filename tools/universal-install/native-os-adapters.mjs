@@ -131,6 +131,7 @@ function SnapshotCandidates($procs){
   $result+= [pscustomobject]@{
    pid=[int]$p.ProcessId
    created=([datetime]$p.CreationDate).ToUniversalTime().ToString('o')
+   parent=[int]$p.ParentProcessId
    exe=([IO.Path]::GetFullPath($p.ExecutablePath)).ToLowerInvariant()
    entry=([IO.Path]::GetFullPath($entry)).ToLowerInvariant()
    cmdHash=Sha([string]$p.CommandLine)
@@ -175,6 +176,63 @@ $tasks=@(Get-ScheduledTask -ErrorAction Stop|Where-Object {
   })
  }
 }|Sort-Object key)
+# An enrolled transfer task is owner state; its auxiliary listening sockets
+# must not rebind package approval when process/task/core identities are stable.
+$ignoredTransferPids=@{}
+$transferTasks=@(Get-ScheduledTask -TaskName 'CommanderTransferMeshPilot' -ErrorAction SilentlyContinue)
+$transferCandidates=@($records|Where-Object {
+ [IO.Path]::GetFileName([string]$_.exe) -ieq 'syncthing.exe' -and
+ ([string]$_.exe -match '(?i)[\\/]CommanderTransferPilot[\\/]bin[\\/]syncthing\.exe$')
+})
+if($transferCandidates.Count -ne 0 -or @($transferTasks|Where-Object {$_.State -eq 'Running'}).Count -ne 0){
+ if($transferTasks.Count -ne 1){throw 'COMMANDER_TRANSFER_TASK_AMBIGUOUS'}
+ $t=$transferTasks[0]
+ $actions=@($t.Actions)
+ if([string]$t.State -ne 'Running' -or $actions.Count -ne 1){
+  throw 'COMMANDER_TRANSFER_TASK_NOT_ACTIVE'
+ }
+ $binary=[IO.Path]::GetFullPath([string]$actions[0].Execute).ToLowerInvariant()
+ if(!(InRoot $binary) -or [IO.Path]::GetFileName($binary) -ine 'syncthing.exe'){
+  throw 'COMMANDER_TRANSFER_TASK_BINARY_UNTRUSTED'
+ }
+ try{
+  $taskOwnerSid=([Security.Principal.NTAccount]::new([string]$t.Principal.UserId)).
+    Translate([Security.Principal.SecurityIdentifier]).Value
+ }catch{throw 'COMMANDER_TRANSFER_TASK_OWNER_UNVERIFIABLE'}
+ if($taskOwnerSid -cne $sid){throw 'COMMANDER_TRANSFER_TASK_OWNER_MISMATCH'}
+ $transfer=@($records|Where-Object {$_.exe -eq $binary})
+ if($transfer.Count -lt 1 -or $transferCandidates.Count -ne $transfer.Count){
+  throw 'COMMANDER_TRANSFER_PROCESS_MISSING_OR_UNEXPECTED'
+ }
+ $scheduler=Get-CimInstance -ClassName Win32_Service -Filter "Name='Schedule'" -ErrorAction Stop
+ if(!$scheduler -or $scheduler.ProcessId -le 0 -or [string]$scheduler.State -ne 'Running' -or [string]$scheduler.StartName -ne 'LocalSystem'){
+  throw 'COMMANDER_TRANSFER_TASK_SCHEDULER_UNTRUSTED'
+ }
+ $byPid=@{};foreach($r in $transfer){$byPid[[string]$r.pid]=$r}
+ $taskRoots=@($transfer|Where-Object {
+  !$byPid.ContainsKey([string]$_.parent)
+ })
+ if($taskRoots.Count -ne 1 -or $taskRoots[0].parent -ne [int]$scheduler.ProcessId){
+  throw 'COMMANDER_TRANSFER_TASK_PROCESS_TREE_UNTRUSTED'
+ }
+ $rootPid=[int]$taskRoots[0].pid
+ foreach($rec in $transfer){
+  $seen=@{}
+  $cursor=$rec
+  while([int]$cursor.pid -ne $rootPid){
+   $k=[string]$cursor.pid
+   if($seen.ContainsKey($k) -or !$byPid.ContainsKey([string]$cursor.parent)){
+    throw 'COMMANDER_TRANSFER_TASK_PROCESS_TREE_BROKEN'
+   }
+   $seen[$k]=$true
+   $cursor=$byPid[[string]$cursor.parent]
+  }
+  $ignoredTransferPids[[string]$rec.pid]=$true
+ }
+}
+$approvalListeners=@($listeners|Where-Object {
+ !$ignoredTransferPids.ContainsKey([string]$_.pid)
+})
 # The native installed artifact is INTENTIONALLY not a runtime witness:
 # the same authorized native package transaction changes its bytes/version.
 # Native snapshot() checks HKCU uninstall registration + binary FileVersion,
@@ -187,7 +245,7 @@ $canonical1=ConvertTo-Json -InputObject $again -Depth 5 -Compress
 if($canonical0 -cne $canonical1){throw 'COMMANDER_PROCESS_CENSUS_CHANGED'}
 $data=[ordered]@{
  schema=1;ownerSid=$sid;tasks=@($tasks);
- processes=@($records);listeners=@($listeners)
+ processes=@($records);listeners=@($approvalListeners)
 }
 $body=ConvertTo-Json -InputObject $data -Depth 12 -Compress
 [Console]::Out.Write((Sha($body)))
