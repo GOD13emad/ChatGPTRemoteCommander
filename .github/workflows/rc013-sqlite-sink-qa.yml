@@ -22,23 +22,6 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
-      - name: Diagnose native Windows temporary path spelling (read-only)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          @'
-          const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
-          const d=fs.mkdtempSync(path.join(os.tmpdir(),'rc013-dir-probe-'));
-          try {
-            console.log(JSON.stringify({
-              node:process.version,requested:d,
-              resolved:path.resolve(d),
-              namespaced:path.toNamespacedPath(path.resolve(d)),
-              real:fs.realpathSync.native(d),
-              rootTemp:os.tmpdir(),realTemp:fs.realpathSync.native(os.tmpdir())
-            }));
-          } finally { fs.rmSync(d,{recursive:true,force:true}); }
-          '@ | node
       - run: node --check src/rc013-sqlite-effect-sink.mjs
       - run: node --check test/rc013-sqlite-effect-sink.test.mjs
       - run: node --test test/rc013-sqlite-effect-sink.test.mjs
