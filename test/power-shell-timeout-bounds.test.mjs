@@ -8,6 +8,7 @@ import {assessAccessStatus} from '../src/full-access-status.mjs';
 import {prepareShellCommand} from '../src/power-tools-v0.3.mjs';
 import {runShell as legacyRunShell} from '../src/power-tools.mjs';
 import {prepareProjectCommand} from '../src/tools-v0.3.mjs';
+import {runProjectCommand as legacyProjectCommand} from '../src/tools.mjs';
 
 function context(root, maxCommandMs = 4000, authorized = true) {
   const config = {
@@ -106,4 +107,26 @@ test('project-command route also rejects malformed timeout before process launch
   } finally {
     fs.rmSync(root, {recursive: true,force: true});
   }
+});
+
+// The pre-v0.3 legacy project route must not let malformed times reach pwsh.
+test('legacy project-command route shares the fail-closed timeout policy',async()=>{
+ const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-legacy-project-')));
+ const context=limit=>({roots:[root],config:{allowedPrograms:['node'],maxCommandMs:limit},
+  auditLog:path.join(root,'audit.jsonl')});
+ const call=(limit,timeout)=>legacyProjectCommand(context(limit),{
+  program:'node',args:['--version'],cwd:root,timeoutMs:timeout
+ });
+ try{
+  let coerced=false;
+  const trap={valueOf(){coerced=true;throw Error('UNTRUSTED_VALUE_OF')}};
+  for(const invalid of [Infinity,NaN,-Infinity,2147483648,3600001,-1,0,1.5,'5000',true,[],{},trap]){
+   await assert.rejects(call(4000,invalid),/COMMAND_TIMEOUT_INVALID/);
+  }
+  assert.equal(coerced,false);
+  for(const policy of [Infinity,NaN,-1,0,999,'5000',3600001]){
+   await assert.rejects(call(policy,1000),/COMMAND_TIMEOUT_POLICY_INVALID/);
+  }
+  assert.deepEqual(fs.readdirSync(root),[],'invalid inputs must not spawn or create audit artifacts');
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
