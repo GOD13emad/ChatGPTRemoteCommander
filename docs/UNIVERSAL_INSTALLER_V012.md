@@ -180,6 +180,52 @@ PASS; Windows native dialog code and signed-release policy must run on
 Windows CI and an owner-visible session before Windows canary acceptance.
 No installed package has been promoted by this code path.
 
+### Universal automatic update staging across Windows/Linux
+
+**Source-stage implementation**: `tools/universal-install/managed-updates.mjs`
+and `managed-update-scheduler.mjs` are the *same code on both OSes*.
+The owner-local scheduler runs `--stage` every 6 hours through systemd user
+timer (Linux) or a least-privilege Task Scheduler task (Windows). For each new
+**published stable release**, the update manager checks the source-tagged
+`docs/release-train-MAJOR.MINOR.json` and requires **all** of
+`publishApproved:true`, `autoupdateApproved:true`,
+`installedPromotionApproved:true`, `isStable:true`, `channel:stable`,
+a matching exact release tag and sourceVersion, and a newer version than
+the native installed package. It also verifies the local package against
+the GitHub asset digest and independent GitHub/Sigstore attestation pinned to
+the fixed repository, exact source commit and fixed workflow signer.
+It never treats a PR or NoPromote workflow artifact as an auto-promoted release.
+
+```text
+node tools/universal-install/managed-updates.mjs --check
+node tools/universal-install/managed-updates.mjs --stage
+node tools/universal-install/managed-update-scheduler.mjs --enable
+```
+
+The scheduler deploys only small user-local manager code from the **reviewed
+source**, never starts an installer or claims a J01/Worker authorization.
+The result `SIGNED_UPDATE_STAGED_AWAITING_OWNER` means installation must
+still use the common owner-visible `--attested-gui-approval` path with a
+reversible native manifest, baseline and OS privileges where applicable.
+The current dev.10 train has `autoupdateApproved:false` and
+`publishApproved:false` and **NO qualified stable release**: expected live
+check output is `NO_APPROVED_NEW_RELEASE`. Its explicit owner-authorized
+signed canary remains separate. Production 0.11 Tunnel never auto-switches.
+Future stable-channel auto-install without a new owner click would require a
+separately accepted publisher/OS policy and audited rollback; it is **not**
+implemented by this staging scheduler.
+
+**Legacy-entrypoint migration**: do not launch typed-hash scripts or request
+`OWNER-APPROVED`/64-hex manifest values from the manager. The deprecated
+`/home/aliemad/.cache/rc012-be6d-native-artifact-stage-20261122/owner-tty-canary-20261123.sh`
+on Emad Linux is now a compatibility shim to the shared signed GUI command.
+For any staged owner manifest the canonical operation is:
+`node tools/universal-install/native-cli.mjs --apply --manifest ABS_NATIVE_MANIFEST.json --attested-gui-approval`.
+Linux GUI needs a genuine owner DISPLAY/XAUTHORITY in the same logged-in seat;
+system package installation then has a separate polkit decision. Other chats
+must reuse the GitHub source/PR and this one contract, not create divergent
+per-host verification prompts.
+
 ## Native owner-pair J01 validation without a signed Worker grant
 
 The Linux owner-enrolled mTLS bootstrap now derives the canonical account-host

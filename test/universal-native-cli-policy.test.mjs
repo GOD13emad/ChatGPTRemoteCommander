@@ -1,3 +1,5 @@
+import './managed-update-scheduler.test.mjs';
+import './managed-updates-policy.test.mjs';
 import './universal-native-signed-owner-approval.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';

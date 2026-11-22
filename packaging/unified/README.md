@@ -41,17 +41,25 @@ node tools/universal-install/native-cli.mjs --plan --manifest ABS_NATIVE_MANIFES
 Manifest creation verifies file names/families, calculates actual SHA-256
 digests, and refuses existing output and version-order drift. It is **not**
 independent release trust: a digest calculated from the download itself is
-self-asserted. For a **package-only** `--apply` or explicit `--rollback`, the
-operator must also provide separately accepted release-manifest SHA-256 and Git
-HEAD through `RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256` and
-`RC012_OWNER_PINNED_SOURCE_HEAD`, and the manifest's
-`provenanceManifestPath` must reference the owner-approved release provenance
-receipt. The existing `verifyOwnerPinnedNativeRelease` verifies candidate
+self-asserted. For a **package-only** `--apply`, the preferred signed mode on Linux and Windows is
+`node tools/universal-install/native-cli.mjs --apply --manifest ABS_NATIVE_MANIFEST.json --attested-gui-approval`.
+It independently verifies the actual candidate using official GitHub/Sigstore
+attestation pinned to the exact source HEAD and workflow signer, derives the
+local provenance manifest digest automatically, and shows an owner-native
+Yes/Cancel window. **No manually typed SHA256 or transaction ID.**
+The alternative unsigned/legacy route still requires separately accepted
+release-manifest SHA-256 and Git HEAD through
+`RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256` and
+`RC012_OWNER_PINNED_SOURCE_HEAD` and explicit owner authentication.
+The manifest's `provenanceManifestPath` must reference the local release
+provenance receipt in either case. Signed candidate proof is not signed rollback
+proof; historical `dev.9` rollback acceptance remains separate. The existing `verifyOwnerPinnedNativeRelease` verifies candidate
 and exact old rollback for upgrade (schema 1); `verifyOwnerPinnedFreshNativeRelease`
 checks only the candidate for a genuine fresh host (schema 2) using the
-same tamper-resistant file fingerprint. The owner must then **manually type
-the exact transaction ID** in an
-interactive local terminal; Linux independently uses polkit for system-package
+same tamper-resistant file fingerprint. The **legacy terminal option** asks the owner to type the exact transaction
+ID; the signed one-click mode uses an explicit Windows WinForms or Linux Zenity
+consent instead, and an owner-visible operating-system privilege prompt still
+applies when required; Linux independently uses polkit for system-package
 effects, and the Windows adapter rejects SYSTEM/anonymous contexts while preserving
 per-user HKCU NSIS ownership; it never requests elevation and verifies no
 machine-wide duplicate. Administrator account membership alone must not
@@ -148,6 +156,17 @@ These QA packages must **not** be installed over operational Commander until the
 
 **No Stable claim:** Code signing, authenticated G1/J01 owner enrollment, MeshCentral managed-device adapter, Playwright browser adapter, automatic signed updates, reboot/login persistence, artifact provenance signing, migration/rollback and all-host singleton cutover are not yet implemented or accepted in this pilot. The existing active installations must remain in place until those gates succeed. `npm run build` alone is not an install acceptance or authorization grant.
 
+
+**Continuous signed updates (source-stage):**
+`node tools/universal-install/managed-updates.mjs --check` discovers eligible
+stable releases, and `--stage` automatically downloads and verifies the
+approved signed asset. A signed package is eligible only when its tagged
+source's release-train record explicitly sets `autoupdateApproved`,
+`publishApproved` and `installedPromotionApproved` to true. Without those
+independent release gates, the updater returns `NO_APPROVED_NEW_RELEASE`;
+no QA run is auto-promoted and no OS install occurs. Installing a staged
+update still needs the shared native owner approval and rollback checks.
+
 ### Owner-pinned unsigned native release provenance
 
 A commercial Authenticode/publisher signature is **not required** for an owner-approved initial private release. The replacement must still have independently established provenance: the owner/release authority pins the full SHA-256 of a separate manifest and the exact Git source HEAD *before* reading the candidate package. The manifest declares the platform and distinct candidate/rollback file hashes and sizes.
@@ -178,26 +197,4 @@ Run `node tools/owner-pair-private-source-canary.mjs <absolute-owner-private-pai
 
 ### Owner DPAPI migration recovery capsule (Windows only)
 
-Before a native Windows single-installer cutover, `packaging/unified/owner-dpapi-profile-recovery.ps1` backs up the **existing** owner-managed Tunnel profile and the local private mTLS client/server pair using the OS-bound DPAPI `CurrentUser` scope. Run `pwsh -NoProfile -File packaging/unified/owner-dpapi-profile-recovery.ps1 -Mode Stage` in the exact Windows owner session, followed by `-Mode Verify` and `-Mode TestRestore`. The last mode decrypts to a fresh owner-restricted *disposable* directory, verifies all six reconstructed file hashes, deletes the directory, and never alters the active profile. Both commands emit **only** file count and success/failure; no API key, PEM, Tunnel ID, decrypted bytes or YAML contents reach terminal output or Git. The capsule is in `%APPDATA%/ChatGPTRemoteCommander/owner-recovery/rc012-native-pair-dpapi` with a restricted current-owner ACL. It is atomic, bounded to six exact files/512 KiB, checks repeatable immutable baseline SHA-256 and validates decryptability and integrity. A changed source or tampered ciphertext is rejected. The single fixed capsule is reused when the baseline is unchanged; existing recovery data are never overwritten silently.
-
-For multiple Windows owner-private Tunnel profiles, use `-Mode Stage -ProfileName MMZ` (then `-Mode Verify -ProfileName MMZ` and `-Mode TestRestore -ProfileName MMZ`) with each account's exact owner profile and correspondingly named TLS pair directory. Each explicit profile uses its own `rc012-native-pair-dpapi-<ProfileName>` capsule. The canonical `chatgpt-remote-commander` profile uses the `default` TLS pair, but an arbitrary second account must never borrow `default`. The historical no-`ProfileName` command preserves the original legacy capsule location. New sealed capsules and receipts bind the selected profile explicitly. Earlier owner-scoped schema-1 capsules without that field remain accepted only when their DPAPI CurrentUser decryption, owner SID, exact six profile-specific paths, source digests and receipt integrity agree; cross-profile swaps, invalid names and changed source baselines fail closed. Windows disposable QA exercises two independent profiles, real DPAPI, independent encrypted staging, verification, disposable restoration, and negative cross-account swaps; this does **not** establish live owner/ChatGPT authorization or installer acceptance.
-
-**Scope:** This is a verified *encrypted backup*, not a restoration or installer transaction. DPAPI `CurrentUser` cannot recover data from a different Windows account, and this capsule does not cover the operational Core data store, Linux, credential-manager secrets, or a changed API-key source outside the Tunnel profile. Before migration, independently verify other active owner configuration and the actual restore path. Never delete the live profile or rotate the only Tunnel until end-to-end native J01, rollback and isolated restore testing pass.
-
-### Linux owner-scoped native Tunnel recovery (without a second installation)
-
-Use the bundled `packaging/unified/owner-systemd-creds-profile-recovery.sh` script from the same owner account as the existing `Emad` Tunnel profile. `bash packaging/unified/owner-systemd-creds-profile-recovery.sh Stage`, then `Verify` and `TestRestore`. This reuses the installed systemd `systemd-creds encrypt --user --with-key=host` and requires no commercial signing or extra package. It seals the existing single `Emad.yaml` profile plus five mTLS CA/client/server files into one user-only encrypted capsule at `~/.local/state/chatgpt-remote-commander/owner-recovery/rc012-native-pair-systemd-creds` (mode 0700, sealed files 0600). No plaintext archive is persisted: tar streams into the encryption command. Repeated Stage reuses an unchanged baseline, and source mutation or ciphertext tampering is rejected. TestRestore decrypts into an owner-only disposable path, checks every file hash and cleans that path. A real Linux owner session passed all four modes plus negative fixture checks; both machines keep their live tunnel untouched.
-
-**Multiple owner-private profiles:** The historical one-argument `Stage` / `Verify` / `TestRestore` remains bound to `Emad.yaml` and its original legacy capsule name. A new, explicitly selected owner profile uses `bash packaging/unified/owner-systemd-creds-profile-recovery.sh Stage --profile-name=chatgpt-remote-commander` (or the corresponding `Verify` / `TestRestore`), with an isolated encrypted capsule named `rc012-native-pair-systemd-creds-<profile>` and a matching `systemd-creds --name=rc012-native-pair-<profile>` binding. The canonical `chatgpt-remote-commander` profile selects the `default` TLS pair; any additional owner profile selects only its identically named private pair. A malformed name, missing private source, changed baseline, aliasing ciphertext/receipt or cross-profile restore is refused. Source-only tests do not establish a production installation, native signed J01 grant, cross-host recoverability or package rollback.
-
-This is same-host, same-owner backup, **not** an automatic restore after a lost Linux OS key or changed user account; full Core state, service unit and native updater rollback remain separate acceptance items.
-
-### Linux Native J01 from the existing owner user service
-
-The Linux user-level Commander service normally has no `XDG_SESSION_ID` even when its owner is logged into GNOME Wayland/X11. Native J01 now uses systemd's `loginctl show-session auto` **only** when the process is in the current UID's `user@UID.service` cgroup, its XDG runtime and session-bus paths belong to that UID, and its graphical session type is declared. It then re-verifies `Id/User/Seat/Active/Remote/Class/Type/Leader/State` and the correct display before and after every native consent request. A remote session, headless host, foreign UID, mismatched display, missing user bus, or untrusted binary is denied; the TLS-pair, signed worker grant, revocation, and exact action approval remain separate. This changes no installed service or tunnel. On Emad Linux the actual same-user service successfully resolved `seat0` Wayland despite an absent `XDG_SESSION_ID`, and Zenity is installed. A readiness probe never issues an owner grant.
-
-### Reuse the existing owner-local llama.cpp model (opt-in project proposals)
-
-The existing `tools/local-ollama-planner.mjs` now supports both the original Ollama loopback and the already-installed owner-local `llama.cpp` server, without a second service or paid API. A qualified owner may configure the existing Project Runner command provider with `node tools/local-ollama-planner.mjs --backend llama.cpp --model qwen3-06b-q8` when its exact Node/script path and trusted workflow policy have been enrolled. Its only HTTP destination is `127.0.0.1:8080/v1/chat/completions`; it reads the same-user protected API key from `~/.config/commander-local-ai/secrets/llama-api-key` (owner UID, mode 0600, owner-only directory mode 0700) without printing or storing the key in Git or command-line arguments. It returns **one proposal only**; never calls a tool. The existing Project Engine validates tool scope, action arguments, one-writer leases, mutation receipts, and owner grants before any effect. A model refusal is safely reduced to `block`, empty tool and empty argument object. The current tiny local model may be insufficient for autonomous software repair; this capability is not a substitute for v0.12 Protected ingress, native owner authorization or a verified auto-update transaction.
-
-On Emad Linux, the existing llama service remained active after the narrow owner-only secret-directory ACL correction (775 to 700). A real, explicitly non-mutating one-step planner smoke returned `{"action":"block","tool":"","argumentsJson":"{}"}`. This proves only an authenticated local model **proposal**, not unattended workflow task completion or any live service cutover.
+Before a native Windows single-installer cutover, `packaging/unified/owner-dpapi-profile-recovery.ps1` backs up the **existing** owner-managed Tunnel profile and the local private mTLS client/server pair using the OS-bound DPAPI `CurrentUser` scope. Run `pwsh -NoProfile -File packaging/unified/owner-dpapi-profile-recovery.ps1 -Mode Stage` in the exact Windows owner session, followed by `-Mode Verify` and `-Mode TestRestore`. The last mode decrypts to a fresh owner-restricted *disposable* directory, verifies all six reconstructed file hashes, deletes the directory, and never alters the active profile. Both commands emit **only** file count and success/failure; no API key, PEM, Tunnel ID, decrypted bytes or YAML contents reach terminal output or Git. The capsule is in `%APPDATA%/ChatGPTRemoteCommander/owner-recovery/rc012-native-pair-dpapi` with a restricted current-owner ACL. It is atomic, bounded to six exact files/512 KiB, checks repeatable immu
