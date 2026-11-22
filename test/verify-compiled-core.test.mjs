@@ -72,3 +72,8 @@ test('invalid manifest path traversal is refused', () => fixture(args => {
   fs.writeFileSync(args.sourceManifest, payload);
   assert.throws(() => verifyCompiledCore(args), /NATIVE_CORE_UNSAFE_MANIFEST_PATH/);
 }));
+
+test('hosted Windows extraction forces embedded 7z and not the outer NSIS parser', () => {
+  const yaml = fs.readFileSync(new URL('../.github/workflows/unified-installer-pilot.yml', import.meta.url), 'utf8');
+  assert.match(yaml, /& \$zipPath x -t7z -y/);
+});

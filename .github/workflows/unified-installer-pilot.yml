@@ -160,7 +160,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $zipPath)) { throw 'NATIVE_CORE_NATIVE_7Z_MISSING' }
           $dest = Join-Path $env:RUNNER_TEMP 'rc012-compiled-nsis-verify'
           New-Item -ItemType Directory -Path $dest -Force | Out-Null
-          & $zipPath x -y "-o$dest" $exes[0].FullName 'resources\core\*'
+          & $zipPath x -t7z -y "-o$dest" $exes[0].FullName 'resources\core\*'
           if ($LASTEXITCODE -ne 0) { throw 'NATIVE_CORE_NSIS_EXTRACT_FAILED' }
           node test/native-compiled-core-verifier.mjs --core-root (Join-Path $dest 'resources/core') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/core/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
       - name: Artifact fingerprint (Linux)
