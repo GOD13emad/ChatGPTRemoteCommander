@@ -26,6 +26,9 @@ test('Windows one-click script is a real owner-session Yes/No UI, never a typed 
   assert.match(script,/System\.Windows\.Forms\.MessageBox/);
   assert.match(script,/System\.Windows\.Forms\.MessageBoxButtons\]::YesNo/);
   assert.match(script,/MessageBoxDefaultButton\]::Button2/);
+  assert.match(script,/\$hostForm\.TopMost=\$true/);
+  assert.match(script,/MessageBox\]::Show\(\$hostForm,\$message/);
+  assert.match(script,/\$hostForm\.Dispose\(\)/);
   assert.match(script,/UserInteractive/);
   assert.match(script,/SessionId -le 0/);
   assert.ok(script.includes('\n'),'PowerShell script must have actual line breaks');

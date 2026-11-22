@@ -56,11 +56,25 @@ export function windowsGuiApprovalScript(plan){
     "if ($owner.IsSystem -or $owner.IsAnonymous) {exit 19}",
     "Add-Type -AssemblyName System.Windows.Forms",
     "$message=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+b64+"'))",
-    "$answer=[System.Windows.Forms.MessageBox]::Show($message,"+
+    // A normal unowned MessageBox appeared behind the active browser on the
+    // owner's real Windows desktop. Attach it to a topmost zero-opacity form.
+    // This changes visibility ONLY, never consent, elevation or user input.
+    "$hostForm=New-Object System.Windows.Forms.Form",
+    "$hostForm.TopMost=$true",
+    "$hostForm.ShowInTaskbar=$false",
+    "$hostForm.FormBorderStyle='None'",
+    "$hostForm.Width=1",
+    "$hostForm.Height=1",
+    "$hostForm.Opacity=0",
+    "try {",
+    " $hostForm.Show()",
+    " $hostForm.Activate()",
+    " $answer=[System.Windows.Forms.MessageBox]::Show($hostForm,$message,"+
       "'ChatGPT Commander - Native owner approval',"+
       "[System.Windows.Forms.MessageBoxButtons]::YesNo,"+
       "[System.Windows.Forms.MessageBoxIcon]::Question,"+
       "[System.Windows.Forms.MessageBoxDefaultButton]::Button2)",
+    "} finally { $hostForm.Close(); $hostForm.Dispose() }",
     "if($answer -eq [System.Windows.Forms.DialogResult]::Yes) {exit 0} else {exit 10}"
   ].join('\n');
 }

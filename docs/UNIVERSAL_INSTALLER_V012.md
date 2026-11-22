@@ -143,7 +143,10 @@ is a valid shortcut.
 
 Native owner package approval is separate and remains explicit: Linux uses
 `zenity`, Windows uses an actual current-owner-session WinForms Yes/No
-dialog via system Windows PowerShell; No is the default. No GUI session,
+dialog via system Windows PowerShell. On Windows, the MessageBox is owned by an
+invisible topmost Form so it stays visible above another active browser window;
+No is the default and only an explicit Yes can approve. This is a visibility
+fix, not an input takeover or automatic authorization. No GUI session,
 denial, timeout, absent `gh`, failed attestation, changed manifest or source,
 or invalid manifest identity are all fail-closed. The old `--gui-approval`
 mode still requires an independently owner-pinned manifest SHA and HEAD;
