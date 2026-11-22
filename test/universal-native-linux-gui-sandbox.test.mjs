@@ -143,8 +143,10 @@ test('bounded securityfs profile list proves only exact loaded AppArmor identity
  const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
  f.readKernelProfiles=()=>Buffer.from('other-application (enforce)\nremote-commander-unified (unconfined)\n');
  const r=inspectLinuxGuiSandbox(f);
- assert.equal(r.status,'OWNER_POLICY_LOADED_PENDING_GUI_SMOKE');
- assert.equal(r.loadedProfileVerified,true);
+ assert.equal(r.status,'OWNER_POLICY_NAME_LOADED_CONTENT_UNVERIFIED');
+ assert.equal(r.kernelProfileNameObserved,true);
+ assert.equal(r.kernelProfileContentVerified,false);
+ assert.equal(r.loadedProfileVerified,false);
  assert.equal(r.stablePromotionAccepted,false);
  assert.equal(r.guiStarted,false);
 });
