@@ -137,3 +137,42 @@ test('active system policy symlink is rejected even if bytes match',()=>{
  const q=check({data:{[active]:profile},stats:{[active]:st}});
  assert.equal(q.status,'OWNER_POLICY_EXISTING_UNTRUSTED');
 });
+
+test('bounded securityfs profile list proves only exact loaded AppArmor identity',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ f.readKernelProfiles=()=>Buffer.from('other-application (enforce)\nremote-commander-unified (unconfined)\n');
+ const r=inspectLinuxGuiSandbox(f);
+ assert.equal(r.status,'OWNER_POLICY_LOADED_PENDING_GUI_SMOKE');
+ assert.equal(r.loadedProfileVerified,true);
+ assert.equal(r.stablePromotionAccepted,false);
+ assert.equal(r.guiStarted,false);
+});
+test('known complete kernel listing without exact target requires owner-approved load',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ f.readKernelProfiles=()=>Buffer.from('other-application (enforce)\nremote-commander-unified-extra (enforce)\n');
+ const r=inspectLinuxGuiSandbox(f);
+ assert.equal(r.status,'OWNER_POLICY_FILE_PRESENT_KERNEL_NOT_LOADED');
+ assert.equal(r.nativeOwnerApprovalRequired,true);
+ assert.equal(r.loadedProfileVerified,false);
+});
+test('kernel listing access denied remains unverifiable, not a false negative',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ f.readKernelProfiles=()=>{throw Object.assign(new Error('denied'),{code:'EACCES'});};
+ assert.equal(inspectLinuxGuiSandbox(f).status,'OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION');
+});
+test('empty or oversized kernel listing remains unknown rather than unloaded',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ for(const raw of ['',Buffer.alloc(1024*1024+1)]){
+   f.readKernelProfiles=()=>raw;
+   assert.equal(inspectLinuxGuiSandbox(f).status,'OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION');
+ }
+});
+test('read-only bounded kernel query cannot be used on invalid platform',()=>{
+ const f=fixture();
+ f.readKernelProfiles=()=>{throw new Error('should not be called');};
+ assert.throws(()=>inspectLinuxGuiSandbox({...f,platform:'win32'}),{code:'RC_GUI_POLICY_PREFLIGHT_ARGUMENT_INVALID'});
+});
