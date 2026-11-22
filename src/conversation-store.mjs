@@ -190,8 +190,11 @@ export class ConversationStore{
     if(!Number.isSafeInteger(leaseMs)||leaseMs<5000||leaseMs>120000)fail('CONVERSATION_LEASE_INVALID');
     return this.transaction(()=>{
       const stamp=Date.now(),iso=now();
-      this.db.prepare("UPDATE handoffs SET state='DEFERRED',attempt_id=NULL,lease_until=NULL,last_code='LEASE_EXPIRED',next_attempt_at=?,updated_at=? WHERE scope=? AND state='CLAIMED' AND lease_until<?")
-        .run(stamp,iso,this.scope,stamp);
+      // Expiry is not proof that the external UI send did not occur.
+      // Never automatically reclaim a potentially delivered message.
+      // Explicit resolveUncertain(retry|confirm_sent|cancel) is required.
+      this.db.prepare("UPDATE handoffs SET state='UNCERTAIN',attempt_id=NULL,lease_until=NULL,last_code='LEASE_EXPIRED_OUTCOME_UNCERTAIN',next_attempt_at=NULL,updated_at=? WHERE scope=? AND state='CLAIMED' AND lease_until<?")
+        .run(iso,this.scope,stamp);
       const row=this.db.prepare(`SELECT * FROM handoffs WHERE scope=? AND state IN ('QUEUED','DEFERRED')
         AND COALESCE(next_attempt_at,0)<=? ORDER BY seq LIMIT 1`).get(this.scope,stamp);
       if(!row)return null;
@@ -270,7 +273,13 @@ export class ConversationStore{
     });
   }
   nextDue(){
-    const row=this.db.prepare("SELECT MIN(COALESCE(next_attempt_at,0)) AS due FROM handoffs WHERE scope=? AND state IN ('QUEUED','DEFERRED')").get(this.scope);
+    // Wake for both ready queues AND an in-flight lease whose sender may
+    // have crashed. claimNext quarantines expired claims as UNCERTAIN.
+    const row=this.db.prepare(
+      "SELECT MIN(due) AS due FROM ("+
+      "SELECT COALESCE(next_attempt_at,0) AS due FROM handoffs WHERE scope=? AND state IN ('QUEUED','DEFERRED') "+
+      "UNION ALL SELECT lease_until+1 AS due FROM handoffs WHERE scope=? AND state='CLAIMED' AND lease_until IS NOT NULL)"
+    ).get(this.scope,this.scope);
     return typeof row?.due==='number'?row.due:null;
   }
   stats(){
