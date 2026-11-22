@@ -70,3 +70,34 @@ test('two SQLite handles cannot rebind target while another has a claimed delive
   assert.equal(store.binding('p').tabTitle,'Original conversation');
  } finally{other.close();}
 }));
+
+test('expired-retry handoff cannot silently migrate to another chat after unbind',()=>fixture(({store,bind,enqueue})=>{
+ bind();
+ const handoff=enqueue('evt-retry-foreign');
+ const claimed=store.claimNext({leaseMs:5000});
+ assert.equal(claimed.handoffId,handoff.handoffId);
+ store.unbind('p');
+ assert.equal(store.get(handoff.handoffId).state,'UNCERTAIN');
+ store.resolveUncertain(handoff.handoffId,'retry');
+ assert.equal(store.get(handoff.handoffId).state,'DEFERRED');
+ assert.throws(()=>bind('Different ChatGPT conversation'),
+   e=>hasCode(e,'CONVERSATION_PENDING_DESTINATION_CHANGE'));
+ assert.equal(store.binding('p').state,'UNBOUND');
+ assert.equal(store.get(handoff.handoffId).state,'DEFERRED');
+ store.cancelEvent('p','evt-retry-foreign');
+ assert.equal(store.get(handoff.handoffId).state,'CANCELLED');
+ assert.equal(bind('Different ChatGPT conversation').tabTitle,'Different ChatGPT conversation');
+ assert.equal(store.claimNext({leaseMs:5000}),null);
+}));
+
+test('pending handoff remains bound to original chat until explicitly cancelled',()=>fixture(({store,bind,enqueue})=>{
+ bind();
+ const h=enqueue('evt-queued-retarget');
+ assert.equal(store.get(h.handoffId).state,'QUEUED');
+ assert.throws(()=>bind('Different ChatGPT conversation'),
+   e=>hasCode(e,'CONVERSATION_PENDING_DESTINATION_CHANGE'));
+ assert.equal(store.binding('p').tabTitle,'Original conversation');
+ assert.equal(bind('Original conversation').tabTitle,'Original conversation');
+ store.cancelEvent('p','evt-queued-retarget');
+ assert.equal(bind('Different ChatGPT conversation').tabTitle,'Different ChatGPT conversation');
+}));

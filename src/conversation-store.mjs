@@ -135,6 +135,23 @@ export class ConversationStore{
       ).get(this.scope,pid);
       if(inFlight)fail('CONVERSATION_DELIVERY_IN_FLIGHT');
       const existing=this.binding(pid),stamp=now();
+      // A queued/deferred envelope was accepted for a specific destination.
+      // Rebinding it to another chat after an explicit retry can leak data.
+      // Allow an exact same-destination refresh; require explicit queue
+      // cancellation before choosing a different browser/tab/root or controls.
+      if(existing){
+        const changed=existing.root!==root||existing.browser!==browser
+          ||existing.tabTitle!==tabTitle
+          ||stable(existing.composerNames)!==stable(composerNames)
+          ||stable(existing.sendNames)!==stable(sendNames)
+          ||stable(existing.stopNames)!==stable(stopNames);
+        if(changed){
+          const pending=this.db.prepare(
+            "SELECT 1 FROM handoffs WHERE scope=? AND project_id=? AND state IN ('QUEUED','DEFERRED') LIMIT 1"
+          ).get(this.scope,pid);
+          if(pending)fail('CONVERSATION_PENDING_DESTINATION_CHANGE');
+        }
+      }
       this.db.prepare(`INSERT INTO bindings(scope,project_id,project_root,browser,tab_title,composer_names,send_names,stop_names,state,created_at,updated_at,last_seen_at)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)
         ON CONFLICT(scope,project_id) DO UPDATE SET project_root=excluded.project_root,browser=excluded.browser,
