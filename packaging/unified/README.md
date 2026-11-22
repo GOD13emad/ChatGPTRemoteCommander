@@ -34,7 +34,7 @@ The same local commands work on either operating system with the appropriate
 ```text
 node tools/universal-install/native-manifest.mjs --candidate ABS_NEW_PACKAGE --previous ABS_ROLLBACK_PACKAGE --expected-head EXACT_GIT_SHA --output ABS_NATIVE_MANIFEST.json
 node tools/universal-install/native-cli.mjs --plan --manifest ABS_NATIVE_MANIFEST.json
-# On a truly EMPTY host add --fresh to the manifest generation command.
+# On a truly EMPTY host add --fresh and OMIT --previous ABS_ROLLBACK_PACKAGE.
 # The native CLI and transaction remain identical across Windows/Linux.
 ```
 
@@ -46,9 +46,11 @@ operator must also provide separately accepted release-manifest SHA-256 and Git
 HEAD through `RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256` and
 `RC012_OWNER_PINNED_SOURCE_HEAD`, and the manifest's
 `provenanceManifestPath` must reference the owner-approved release provenance
-receipt. The engine calls the already existing
-`verifyOwnerPinnedNativeRelease` routine to verify both binaries and their
-sizes. The owner must then **manually type the exact transaction ID** in an
+receipt. The existing `verifyOwnerPinnedNativeRelease` verifies candidate
+and exact old rollback for upgrade (schema 1); `verifyOwnerPinnedFreshNativeRelease`
+checks only the candidate for a genuine fresh host (schema 2) using the
+same tamper-resistant file fingerprint. The owner must then **manually type
+the exact transaction ID** in an
 interactive local terminal; Linux independently uses polkit for system-package
 effects, and the Windows adapter refuses an elevated owner process. A remote
 noninteractive command cannot silently approve installation. Neither package
@@ -61,11 +63,13 @@ registry registrations or orphaned executables are denial conditions, never
 auto-repaired machine-by-machine. If installation fails AFTER the candidate
 becomes installed, the same coordinator invokes the OS-owned package
 uninstaller and demands independent readback of native absence and unchanged
-active runtime. For the initial private release, the owner-pinned artifact
-manifest still contains candidate plus previous binary for provenance checks:
-the previous artifact is not installed on a fresh machine. This code path
-has isolated positive/negative tests but has NOT been admitted by a clean
-host native install/uninstall or owner-host Cutover. Do not call it Stable.
+active runtime. For a genuine clean first installation only the candidate
+package plus independent owner-pinned release manifest schema 2 is required.
+No historical native package is needed or fabricated. Native OS uninstall
+and independently checked package absence constitute its recovery target.
+Upgrades still require separate owner-pinned candidate AND old native
+package hashes (schema 1). The fresh path has isolated tests, NOT accepted
+real clean-host install/uninstall or owner-host Cutover; not Stable.
 
 Machine-global journal states are `INTENT_COMMITTED`,
 `NATIVE_EFFECT_STARTED`, `VERIFIED`, `ROLLBACK_STARTED`,

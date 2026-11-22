@@ -89,7 +89,13 @@
     "desktop/linux-control-center/dashboard_ui.py",
     "desktop/profile-display-names.ps1",
     "desktop/profile-manager-windows.ps1",
-    "installer/RemoteCommander.iss"
+    "installer/RemoteCommander.iss",
+    "tools/universal-install/native-cli.mjs",
+    "tools/universal-install/native-transaction.mjs",
+    "tools/universal-install/native-os-adapters.mjs",
+    "tools/universal-install/native-journal.mjs",
+    "tools/universal-install/native-manifest.mjs",
+    "packaging/unified/owner-pinned-provenance.mjs"
   ],
   "nativeCandidateRoot": "packaging/unified",
   "qaTransactionHelper": "tools/universal-install/engine.mjs",
@@ -102,7 +108,13 @@
     "src/workflow-tools.mjs",
     "src/transfer-tools.mjs",
     "src/gui-contract.mjs",
-    "src/profile-identity-registry.mjs"
+    "src/profile-identity-registry.mjs",
+    "tools/universal-install/native-cli.mjs",
+    "tools/universal-install/native-transaction.mjs",
+    "tools/universal-install/native-os-adapters.mjs",
+    "tools/universal-install/native-journal.mjs",
+    "tools/universal-install/native-manifest.mjs",
+    "packaging/unified/owner-pinned-provenance.mjs"
   ],
   "nativeTransactionalEngine": {
     "schema": "rc-universal-native-transaction-v1",
@@ -133,6 +145,13 @@
     "policyProof": "test/universal-native-cli-policy.test.mjs",
     "initialInstallMode": "--fresh (explicit clean host only; OS-native uninstall fallback)",
     "initialInstallIsLiveOwnerHostAccepted": false,
-    "rollbackAfterFirstInstall": "native DEB remove/NSIS uninstall with exact baseline readback"
-  }
+    "rollbackAfterFirstInstall": "native DEB remove/NSIS uninstall with exact baseline readback",
+    "authority": "sole native effect coordinator, with OS-specific package adapter",
+    "packagingGate": "packaging/unified/prepare.mjs",
+    "provenanceModule": "packaging/unified/owner-pinned-provenance.mjs",
+    "initialInstallNeedsHistoricalPackage": false,
+    "initialInstallManifestSchema": 2,
+    "initialInstallRollbackTarget": "NATIVE_ABSENCE_AFTER_OS_UNINSTALL_AND_VERIFY"
+  },
+  "nativeInstallAuthority": "tools/universal-install/native-cli.mjs"
 }

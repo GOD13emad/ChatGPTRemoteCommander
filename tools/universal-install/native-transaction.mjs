@@ -49,8 +49,12 @@ export function verifyNativePlanInput(value){
   const installationKind=value.installationKind??'upgrade';
   assert(['fresh','upgrade'].includes(installationKind),
     'UNIVERSAL_NATIVE_INSTALLATION_KIND_INVALID');
+  if(installationKind==='upgrade')
+    assert(value.previous!==null,
+      'UNIVERSAL_NATIVE_UPGRADE_PREVIOUS_REQUIRED');
   for(const which of ['candidate','previous']){
     const item=value[which];
+    if(which==='previous'&&installationKind==='fresh'&&item===null)continue;
     assert(item&&Object.getPrototypeOf(item)===Object.prototype
       &&Object.keys(item).sort().join(',')==='path,sha256,version',
       'UNIVERSAL_NATIVE_ARTIFACT_SHAPE_INVALID');
@@ -58,16 +62,18 @@ export function verifyNativePlanInput(value){
       &&releaseParts(item.version)!==null,
       'UNIVERSAL_NATIVE_ARTIFACT_ID_INVALID');
   }
-  assert(increasingRelease(value.candidate.version,value.previous.version),
-    'UNIVERSAL_NATIVE_VERSION_ORDER_INVALID');
-  assert(value.candidate.path!==value.previous.path
-    &&value.candidate.sha256!==value.previous.sha256,
-    'UNIVERSAL_NATIVE_ROLLBACK_IDENTITY_COLLISION');
+  if(value.previous!==null){
+    assert(increasingRelease(value.candidate.version,value.previous.version),
+      'UNIVERSAL_NATIVE_VERSION_ORDER_INVALID');
+    assert(value.candidate.path!==value.previous.path
+      &&value.candidate.sha256!==value.previous.sha256,
+      'UNIVERSAL_NATIVE_ROLLBACK_IDENTITY_COLLISION');
+  }
   return Object.freeze({
     product:PRODUCT,platform:value.platform,architecture:value.architecture,
     installationKind,expectedCommit:value.expectedCommit,
     candidate:Object.freeze({...value.candidate}),
-    previous:Object.freeze({...value.previous})
+    previous:value.previous===null?null:Object.freeze({...value.previous})
   });
 }
 function exactSnapshot(value){
@@ -94,7 +100,8 @@ function identity(spec,before){
   const values=[
     TRANSACTION_SCHEMA,spec.product,spec.platform,spec.architecture,
     spec.installationKind,spec.expectedCommit,spec.candidate.version,spec.candidate.sha256,
-    spec.previous.version,spec.previous.sha256,before.runtime.fingerprint
+    spec.previous?.version??'NATIVE_ABSENCE',
+    spec.previous?.sha256??'NO_ROLLBACK_ARTIFACT',before.runtime.fingerprint
   ];
   return sha(values.join('\0'));
 }
@@ -145,10 +152,11 @@ export async function executeNativeTransaction({
     fail('UNIVERSAL_NATIVE_FRESH_UNINSTALL_ADAPTER_REQUIRED');
   const [candidate,previous,before]=await Promise.all([
     adapter.inspect(spec.candidate),
-    adapter.inspect(spec.previous),
+    spec.previous===null?Promise.resolve(null):adapter.inspect(spec.previous),
     adapter.snapshot()
   ]);
-  for(const [given,seen] of [[spec.candidate,candidate],[spec.previous,previous]]){
+  for(const [given,seen] of [[spec.candidate,candidate],
+    ...(spec.previous===null?[]:[[spec.previous,previous]])]){
     assert(seen&&seen.product===spec.product&&seen.platform===spec.platform
       &&seen.architecture===spec.architecture&&seen.format==='native'
       &&seen.version===given.version&&seen.sha256===given.sha256,
@@ -158,7 +166,7 @@ export async function executeNativeTransaction({
   assert(compatibleObserved(before,spec),'UNIVERSAL_NATIVE_STATE_UNTRUSTED');
   const atBaseline=spec.installationKind==='fresh'
     ?before.version===null&&before.registeredInstallCount===0
-    :before.version===spec.previous.version&&before.registeredInstallCount===1;
+    :before.version===spec.previous?.version&&before.registeredInstallCount===1;
   const atCandidate=before.version===spec.candidate.version
     &&before.registeredInstallCount===1;
   assert(atBaseline||atCandidate,'UNIVERSAL_NATIVE_INSTALLED_VERSION_DRIFT');
@@ -166,7 +174,7 @@ export async function executeNativeTransaction({
     ...spec,transactionId:identity(spec,before),
     baselineRuntimeFingerprint:before.runtime.fingerprint,
     installedVersion:before.version,
-    rollbackArtifactVerified:true,
+    rollbackArtifactVerified:spec.previous!==null,
     rollbackExecutionVerified:false,
     rollbackTarget:spec.installationKind==='fresh'
       ?'NATIVE_ABSENCE':spec.previous.version,
@@ -197,7 +205,8 @@ export async function executeNativeTransaction({
     exactSnapshot(fresh);
     assert(fresh.version===before.version&&sameRuntime(before,fresh),
       'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
-    const primary=action==='apply'?spec.candidate:spec.previous;
+    const primary=action==='apply'||spec.installationKind==='fresh'
+      ?spec.candidate:spec.previous;
     const desiredVersion=action==='rollback'&&spec.installationKind==='fresh'
       ?null:primary.version;
     await journal.write('INTENT_COMMITTED',{

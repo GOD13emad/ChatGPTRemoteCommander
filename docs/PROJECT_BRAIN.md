@@ -1510,3 +1510,31 @@ Next independent acceptance: provision owner-held real Ed25519 key through
 native credential provider, approve exact machine-global Worker grants
 under real J01, establish durable lease+real Plugin ingress, verify a
 genuine protected Core effect and reversible one-install cutover per host.
+
+### RC012-UNIVERSAL-INSTALLER-AUTHORITY-20261122 — single canonical native engine
+
+Owner accepted ONE platform-independent native installation architecture for
+all Commander systems, not machine-specific installers or account-specific
+patches. The existing `installer/universal-install-contract.json` and
+`docs/UNIVERSAL_INSTALLER_V012.md` are canonical; single native effect authority
+`tools/universal-install/native-cli.mjs` routes through one
+`native-transaction.mjs` policy, lease and journal, with OS adapters limited
+to Windows NSIS and Linux dpkg/polkit. The packaging gate now requires this
+complete shared engine inventory. The older `engine.mjs` remains QA-only. Clean first install uses one native
+candidate plus independently pinned provenance schema 2, with OS-native
+uninstall/verified absence as rollback. An upgrade retains the exact
+previous native package and schema 1. The package's source-pinned Core
+must include the provenance verifier itself.
+GitHub [PR #521](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/521)
+contains the code, stacked on migration [PR #512]
+(https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/512).
+Earlier exact-source results: Linux 34/34 and Windows 21/21 unit tests PASS,
+same native manifest/CLI plans on real owner PC+Laptop PASS. 2026-11-22 fleet
+read-only package versions: Emad Linux and Windows dev.9, MMZ Linux and the
+two Windows servers dev.8. Windows NSIS registrations are one Core per host;
+other Browser Commander uninstall entries belong to a separate product.
+Windows a982 preflight was stale; the dba0 branch correctly detects NSIS.
+Both real platform preflights still NO_PROMOTE due to protected route,
+native owner J01/Signed Worker admission, provenance, actual reversible
+Core cutover and fleet/reboot unaccepted. These unaccepted gates are not
+closed by CI, documentation or user request; retain live Core/Tunnels.

@@ -77,3 +77,30 @@ test('the same manifest accepts explicit clean-machine install mode, never infer
     }
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('fresh single-package manifest has no previous-version dependency on either OS',()=>{
+  const dir=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-manifest-qa-'));
+  try{
+    for(const platform of ['linux','windows']){
+      const target=path.join(dir,platform);fs.mkdirSync(target);
+      const suffix=platform==='linux'?'Linux-amd64.deb':'Windows-x64.exe';
+      const candidate=path.join(target,
+        'Remote-Commander-Unified-0.12.0-dev.9-'+suffix);
+      fs.writeFileSync(candidate,Buffer.alloc(2050,21));
+      const output=path.join(target,'manifest.json');
+      const base=['--candidate',candidate,'--expected-head','a'.repeat(40),
+        '--output',output];
+      const result=prepareNativeManifest(['--fresh',...base],
+        {platform,architecture:'x64'});
+      assert.equal(result.installedArtifactCount,1);
+      assert.equal(result.installationKind,'fresh');
+      const doc=JSON.parse(fs.readFileSync(output,'utf8'));
+      assert.equal(doc.previous,null);
+      assert.equal(verifyNativePlanInput((({schema,...rest})=>rest)(doc))
+        .installationKind,'fresh');
+      assert.throws(()=>prepareNativeManifest(base,{
+        platform,architecture:'x64'
+      }),{code:'UNIVERSAL_NATIVE_MANIFEST_ARGS_REQUIRED'});
+    }
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

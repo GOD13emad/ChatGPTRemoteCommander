@@ -265,3 +265,39 @@ test('general release ordering handles dev-to-stable, next minor and 1.0 without
     }));
   }
 });
+
+test('fresh single artifact: no historical package, one common install/uninstall on both OSes',async()=>{
+  for(const platform of ['windows','linux']){
+    const f=fixture(platform);
+    f.input.installationKind='fresh';
+    f.input.previous=null;
+    f.setVersion(null);
+    let inspected=0;
+    const original=f.adapter.inspect;
+    f.adapter.inspect=async input=>{inspected++;return original(input);};
+    const plan=await executeNativeTransaction({
+      action:'plan',input:f.input,adapter:f.adapter
+    });
+    assert.equal(plan.status,'READY_TO_FIRST_INSTALL');
+    assert.equal(plan.plan.previous,null);
+    assert.equal(plan.plan.rollbackArtifactVerified,false);
+    assert.equal(plan.plan.rollbackTarget,'NATIVE_ABSENCE');
+    assert.equal(inspected,1);
+    assert.equal(f.invocations.length,0);
+    const upgraded=await executeNativeTransaction({action:'apply',...f});
+    assert.equal(upgraded.status,'NATIVE_PACKAGE_FIRST_INSTALLED');
+    assert.equal(f.getVersion(),'0.12.0-dev.9');
+    const undone=await executeNativeTransaction({action:'rollback',...f});
+    assert.equal(undone.status,'NATIVE_PACKAGE_ROLLED_BACK');
+    assert.equal(f.getVersion(),null);
+    assert.deepEqual(f.invocations,['install','uninstall']);
+  }
+});
+
+test('an upgrade with no previous artifact must fail before native effect',async()=>{
+  const f=fixture('windows');
+  f.input.previous=null;
+  assert.throws(()=>verifyNativePlanInput(f.input),
+    {code:'UNIVERSAL_NATIVE_UPGRADE_PREVIOUS_REQUIRED'});
+  assert.equal(f.invocations.length,0);
+});

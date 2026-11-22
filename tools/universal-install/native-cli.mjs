@@ -70,18 +70,27 @@ export async function nativeCli(argv=process.argv.slice(2)){
     if(!provenanceManifestPath||head!==input.expectedCommit
       ||typeof pinned!=='string'||!/^[a-f0-9]{64}$/.test(pinned))
       fail('UNIVERSAL_NATIVE_INDEPENDENT_PROVENANCE_REQUIRED');
-    const {verifyOwnerPinnedNativeRelease}=await import(
+    const provenance=await import(
       '../../packaging/unified/owner-pinned-provenance.mjs');
-    const proof=await verifyOwnerPinnedNativeRelease({
-      manifestPath:provenanceManifestPath,
-      ownerPinnedManifestSha256:pinned,ownerPinnedHead:head,
-      candidatePath:input.candidate.path,rollbackPath:input.previous.path,
-      platform:os==='windows'?'win32':os
-    });
+    const fresh=input.installationKind==='fresh'&&input.previous===null;
+    const proof=fresh
+      ?await provenance.verifyOwnerPinnedFreshNativeRelease({
+        manifestPath:provenanceManifestPath,
+        ownerPinnedManifestSha256:pinned,ownerPinnedHead:head,
+        candidatePath:input.candidate.path,
+        platform:os==='windows'?'win32':os
+      })
+      :await provenance.verifyOwnerPinnedNativeRelease({
+        manifestPath:provenanceManifestPath,
+        ownerPinnedManifestSha256:pinned,ownerPinnedHead:head,
+        candidatePath:input.candidate.path,rollbackPath:input.previous.path,
+        platform:os==='windows'?'win32':os
+      });
     if(proof.ownerPinnedNativeReleaseVerified!==true
-      ||proof.ownerPinnedRollbackVerified!==true
       ||proof.candidateSha256!==input.candidate.sha256
-      ||proof.rollbackSha256!==input.previous.sha256)
+      ||!fresh&&(proof.ownerPinnedRollbackVerified!==true
+        ||proof.rollbackSha256!==input.previous.sha256)
+      ||fresh&&proof.rollbackTarget!=='NATIVE_ABSENCE')
       fail('UNIVERSAL_NATIVE_PROVENANCE_MISMATCH');
   }
   const journal=mode==='plan'?undefined:createNativeFileJournal();

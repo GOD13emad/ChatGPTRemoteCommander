@@ -16,18 +16,22 @@ const NAME=/^Remote-Commander-Unified-((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:
 function readArgs(args){
   const keys=new Set(['--candidate','--previous','--expected-head','--output']);
   const fresh=args.filter(x=>x==='--fresh').length;
-  if(fresh>1||![8,9].includes(args.length)||(args.length===9)!==(fresh===1))
+  if(fresh>1||!(fresh?[7,9].includes(args.length):args.length===8))
     fail('UNIVERSAL_NATIVE_MANIFEST_ARGS_REQUIRED');
   const parts=fresh?args.filter(x=>x!=='--fresh'):args;
   const v=new Map();
-  for(let i=0;i<8;i+=2){
+  for(let i=0;i<parts.length;i+=2){
     if(!keys.has(parts[i])||v.has(parts[i])||typeof parts[i+1]!=='string')
       fail('UNIVERSAL_NATIVE_MANIFEST_ARGS_INVALID');
     v.set(parts[i],parts[i+1]);
   }
-  if(v.size!==4||!SHA.test(v.get('--expected-head')??''))
+  if((fresh&&![3,4].includes(v.size))||(!fresh&&v.size!==4)
+    ||!['--candidate','--expected-head','--output'].every(k=>v.has(k))
+    ||(!fresh&&!v.has('--previous'))
+    ||!SHA.test(v.get('--expected-head')??''))
     fail('UNIVERSAL_NATIVE_MANIFEST_SOURCE_HEAD_INVALID');
-  for(const k of ['--candidate','--previous','--output'])
+  for(const k of ['--candidate','--output',
+    ...(v.has('--previous')?['--previous']:[])])
     if(!path.isAbsolute(v.get(k)??''))
       fail('UNIVERSAL_NATIVE_MANIFEST_ABSOLUTE_PATH_REQUIRED');
   return {values:v,fresh:fresh===1};
@@ -77,10 +81,11 @@ export function prepareNativeManifest(args,{
     expectedCommit:v.get('--expected-head'),
     ...(fresh?{installationKind:'fresh'}:{}),
     candidate:inspect(v.get('--candidate'),platform,architecture),
-    previous:inspect(v.get('--previous'),platform,architecture)
+    previous:v.has('--previous')
+      ?inspect(v.get('--previous'),platform,architecture):null
   });
   if(path.resolve(input.candidate.path)===output
-    ||path.resolve(input.previous.path)===output)
+    ||input.previous!==null&&path.resolve(input.previous.path)===output)
     fail('UNIVERSAL_NATIVE_MANIFEST_OUTPUT_COLLISION');
   const data={schema:'rc-universal-native-install-manifest-v1',...input};
   fs.writeFileSync(output,JSON.stringify(data,null,2)+'\n',{
@@ -88,7 +93,7 @@ export function prepareNativeManifest(args,{
   });
   return {status:'UNIVERSAL_NATIVE_DECLARATIVE_MANIFEST_WRITTEN',
     platform,output,installationKind:fresh?'fresh':'upgrade',
-    installedArtifactCount:2,
+    installedArtifactCount:input.previous===null?1:2,
     independentSourceProvenanceVerified:false,
     nativeEffectsPerformed:false};
 }
