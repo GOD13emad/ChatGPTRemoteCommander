@@ -30,9 +30,9 @@ test('unapproved release cannot register any recurring OS task',()=>{
 });
 test('Linux scheduler writes only two intended owner unit files and is idempotent',()=>{
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-stage-timer-'));
+ const prevConfig=process.env.XDG_CONFIG_HOME;
  try{
   const calls=[];
-  const prevConfig=process.env.XDG_CONFIG_HOME;
   process.env.XDG_CONFIG_HOME=path.join(home,'.config');
   const args={platform:'linux',home,checkRelease:approved,
    run:(p,a)=>{calls.push([p,a]);}};
