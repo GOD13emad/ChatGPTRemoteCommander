@@ -35,7 +35,7 @@ test('private Windows delivery fixture passes read-only ACL preflight',{skip:!on
   const s=new DeliveryStore({directory:dir,scope:'qa'});
   s.writeArtifact({status:'COMPLETED',index:0});s.close();
   const result=audit(dir);
-  assert.equal(result.complete,true);assert.equal(result.eligible,true);
+  assert.equal(result.complete,true,'redacted preflight summary: '+JSON.stringify(result));assert.equal(result.eligible,true);
   assert.equal(result.artifactFilesChecked,1);
   assert.equal(result.ownerMismatch,0);assert.equal(result.broadAllow,0);
 });
@@ -43,7 +43,7 @@ test('inherited Windows ACL fails closed without rewriting files',{skip:!onWindo
   const dir=path.join(fixture(t),'inherited');fs.mkdirSync(dir);
   const report=audit(dir);
   assert.equal(report.eligible,false);
-  assert.ok(report.inheritedDirectoryAcl>0||report.broadAllow>0);
+  assert.ok(report.inheritedDirectoryAcl>0||report.broadAllow>0,'redacted preflight summary: '+JSON.stringify(report));
   assert.ok(fs.statSync(dir).isDirectory());
   assert.equal(fs.existsSync(path.join(dir,'delivery.sqlite')),false);
 });
@@ -53,7 +53,7 @@ test('bounded scan never labels partial Windows artifact audit eligible',{skip:!
   try {for(let i=0;i<3;i++)s.writeArtifact({status:'COMPLETED',index:i});}
   finally{s.close();}
   const report=audit(dir,'qa',2);
-  assert.equal(report.limitReached,true);assert.equal(report.complete,false);
+  assert.equal(report.limitReached,true,'redacted preflight summary: '+JSON.stringify(report));assert.equal(report.complete,false);
   assert.equal(report.eligible,false);assert.equal(report.artifactFilesChecked,2);
 });
 
@@ -68,6 +68,6 @@ test('PowerShell 7 native ACL path agrees with Windows PowerShell 5.1', {skip:!o
   try{s.writeArtifact({status:'COMPLETED',value:'ps7'});}finally{s.close();}
   const v5=audit(dir,'qa',10);
   const v7=audit(dir,'qa',10,'pwsh.exe');
-  assert.equal(v5.eligible,true);
+  assert.equal(v5.eligible,true,'redacted Windows PowerShell preflight summary: '+JSON.stringify(v5));
   assert.deepEqual(v7,v5);
 });
