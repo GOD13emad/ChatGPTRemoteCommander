@@ -266,7 +266,8 @@ test('opt-in project intent guard filters dictionary translation but preserves a
       'عبارت «ادامه بده» رو توضیح بده',
       'برای عبارت «ادامه بده» یک مترادف بنویس',
       'ترجمه جمله ادامه بده پروژه چیست؟',
-      'What is the English for continue project?'
+      'What is the English for continue project?',
+      'Explain the phrase "continue project"'
     ]) {
       const routed=registry.execute('agent_extension_route',{task,limit:5});
       assert.ok(!routed.items.some(x=>x.id==='project-execution-brain'),task);
@@ -279,7 +280,8 @@ test('opt-in project intent guard filters dictionary translation but preserves a
       'ترجمه کن و پروژه را ادامه بده',
       'ترجمه مقاله را ادامه بده',
       'ادامه بده کار ترجمه مقاله را',
-      'Continue the project translation task'
+      'Continue the project translation task',
+      'Please translate the draft and also audit the project'
     ]) {
       const routed=registry.execute('agent_extension_route',{task,limit:5});
       assert.ok(routed.items.some(x=>x.id==='project-execution-brain'),task);
