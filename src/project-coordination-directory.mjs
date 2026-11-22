@@ -241,6 +241,34 @@ export class ProjectCoordinationDirectory{
       return this.#snapshot(projectId);
     });
   }
+  async withdrawCurrentMembership({projectId,ownerProof}){
+    // Current-chat metadata withdrawal only. Neither this directory nor
+    // owner membership consent revokes a separate signed Worker grant,
+    // cancels an existing outbound handoff or permits local tool execution.
+    id(projectId,'PROJECT_ID',PROJECT);
+    const att=await this.route();
+    this.#requireMember(projectId,att);
+    if(await this.authorizeProject({
+      action:'withdrawCurrentMembership',projectId,att,ownerProof
+    })!==true)fail('PROJECT_HUB_OWNER_APPROVAL_REQUIRED');
+    await this.assertRouteUnchanged(att);
+    return this.tx(()=>{
+      this.#requireMember(projectId,att);
+      const result=this.db.prepare(
+        'DELETE FROM contexts WHERE project_id=? AND host=? AND principal=? '+
+        'AND profile=? AND conversation=? AND binding_hash=? AND tunnel_hash=?'
+      ).run(projectId,att.hostId,att.principalId,att.profileId,
+        att.conversationId,att.bindingHash,att.tunnelBindingHash);
+      if(result.changes!==1)fail('PROJECT_HUB_CURRENT_CHAT_NOT_MEMBER');
+      const remaining=this.db.prepare(
+        'SELECT COUNT(*) AS n FROM contexts WHERE project_id=?'
+      ).get(projectId).n;
+      return Object.freeze({
+        projectId,withdrawn:true,registeredChats:Number(remaining),
+        executionAllowed:false
+      });
+    });
+  }
   #join(projectId,att){
     const existing=this.db.prepare(
       'SELECT binding_hash,tunnel_hash FROM contexts '+
