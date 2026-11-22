@@ -738,7 +738,8 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,29,'G1 private owner TLS/Core, native J01, signed pair Worker, encrypted worker-key provisioning, stream-safe consent, recovery and Linux tunnel observer stay source-pinned');
+  assert.equal(files.length,30,'G1 private owner TLS/Core, native J01, signed pair Worker, encrypted worker-key provisioning, Windows host-name preflight, stream-safe consent, recovery and Linux tunnel observer stay source-pinned');
+  assert.ok(files.includes('test/windows-owner-tunnel-host-resolution.test.mjs'),'native Windows read-only exact owner host regression must run in CI');
   assert.ok(files.includes('test/v012-owner-local-canary.test.mjs'),'real owner-local canary and failed-bootstrap quarantine must run in CI');
   assert.ok(files.includes('test/owner-pinned-provenance.test.mjs'),'owner-pinned unsigned candidate and rollback integrity must run in CI');
   assert.ok(files.includes('test/owner-dpapi-profile-recovery.test.mjs'),'native Windows DPAPI backup and tamper rejection must run in CI');

@@ -150,12 +150,17 @@ if (process.argv[2] === '--claim-worker') {
     } finally { await fixture.dispose(); }
   });
 
-  test('pre-expired deadline refuses planner and all filesystem effects', { timeout: 6000 }, async () => {
+  test('pre-expired deadline refuses planner and all filesystem effects', { timeout: 6000 }, async t => {
     const fixture = makeFixture({ planner: async () => { throw Error('Expired run must not plan'); } });
     try {
       await fixture.create();
       const started = await fixture.start({ durationMs: 1000 });
-      await sleep(Math.max(0, started.deadline - Date.now() + 25));
+      // Advance only the process clock, not production state or the planner.
+      // A wall-clock sleep made this bounded no-effect test dependent on
+      // scheduling delays during the long Windows qualification job. The two
+      // preceding deadline tests still exercise actual abort timers.
+      const expiredAt = Math.max(Date.now(), started.deadline + 25);
+      t.mock.method(Date, 'now', () => expiredAt);
       const result = await fixture.tick();
       assert.equal(result.status, 'EXHAUSTED');
       assert.equal(result.lastCode, 'PROJECT_DEADLINE_EXHAUSTED');
@@ -163,7 +168,7 @@ if (process.argv[2] === '--claim-worker') {
       assert.equal(fixture.plans, 0);
       assert.equal(fixture.calls, 0);
       assert.equal(fs.existsSync(path.join(fixture.root, 'result.txt')), false);
-    } finally { await fixture.dispose(); }
+    } finally { t.mock.restoreAll(); await fixture.dispose(); }
   });
 
   test('cancel during an effect preserves its root lease and cancellation after the receipt', { timeout: 6000 }, async () => {

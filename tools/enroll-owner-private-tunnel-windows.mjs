@@ -113,18 +113,31 @@ function recordOwner(dir,record){
     throw e;
   }
 }
-async function main(){
-  if(process.platform!=='win32'||process.argv.length<4||process.argv.length>5
-    ||!APPDATA||!path.isAbsolute(APPDATA))
+// Windows COMPUTERNAME can be truncated to 15 characters while os.hostname()
+// reports the full host identity. For read-only preflight, derive the host
+// locally instead of requiring shell callers to guess its spelling. Mutating
+// enrollment STILL requires an explicit exact host argument and native consent.
+export function resolveWindowsOwnerEnrollmentArgs(args,localHost){
+  if(!Array.isArray(args)||typeof localHost!=='string'||!ID.test(localHost))
     fail('RC012_WINDOWS_OWNER_TUNNEL_ENROLL_ARGS_INVALID');
-  const [profile,host]=process.argv.slice(2,4);
-  if(![profile,host].every(x=>typeof x==='string'&&ID.test(x)))
+  const ownerLocalReadOnly=args.length===2&&args[1]==='--preflight';
+  if(!ownerLocalReadOnly&&(args.length<2||args.length>3))
     fail('RC012_WINDOWS_OWNER_TUNNEL_ENROLL_ARGS_INVALID');
-  if(os.hostname().toLowerCase()!==host.toLowerCase())
+  const [profile,host,mode]=ownerLocalReadOnly
+    ?[args[0],localHost,'--preflight']
+    :[args[0],args[1],args[2]??null];
+  if(![profile,host].every(x=>typeof x==='string'&&ID.test(x))
+    ||(mode!==null&&mode!=='--preflight'))
+    fail('RC012_WINDOWS_OWNER_TUNNEL_ENROLL_ARGS_INVALID');
+  if(localHost.toLowerCase()!==host.toLowerCase())
     fail('RC012_WINDOWS_OWNER_TUNNEL_HOST_MISMATCH');
-  const mode=process.argv[4]??null;
-  if(mode!==null&&mode!=='--preflight')
+  return Object.freeze({profile,host,mode});
+}
+async function main(){
+  if(process.platform!=='win32'||!APPDATA||!path.isAbsolute(APPDATA))
     fail('RC012_WINDOWS_OWNER_TUNNEL_ENROLL_ARGS_INVALID');
+  const {profile,host,mode}=resolveWindowsOwnerEnrollmentArgs(
+    process.argv.slice(2),os.hostname());
   const dir=path.join(APPDATA,'ChatGPTRemoteCommander','private-pair',
     profile==='chatgpt-remote-commander'?'default':profile);
   directory(dir);
@@ -191,7 +204,8 @@ async function main(){
     tunnelChanged:false,workerGrantIssued:false,fullAccessActive:false
   }));
 }
-main().catch(e=>{
-  console.error(e?.code??'RC012_WINDOWS_OWNER_TUNNEL_ENROLL_FAILED');
-  process.exitCode=2;
-});
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))
+  main().catch(e=>{
+    console.error(e?.code??'RC012_WINDOWS_OWNER_TUNNEL_ENROLL_FAILED');
+    process.exitCode=2;
+  });
