@@ -13,7 +13,7 @@ import {
 import {fileURLToPath} from 'node:url';
 import {createLinuxNativeOwnerSessionProvider}
   from '../src/native-owner-session-provider-linux.mjs';
-import {createPinnedLinuxPrivateTunnelIdentity}
+import {createPinnedLinuxPrivateTunnelIdentity,resolveLinuxOwnerPairDirectory}
   from '../src/linux-private-tunnel-owner-pin.mjs';
 import {assertTrustedLinuxMappedRootExecutable}
   from '../src/native-linux-host-owner-identity.mjs';
@@ -251,9 +251,10 @@ async function main(){
     'chatgpt-remote-commander');
   const security=path.join(base,'private-pair-security-'+profile);
   privateDir(base,uid);privateDir(security,uid);
-  const pinnedDirectory=path.join(home,'.config',
-    'chatgpt-remote-commander','private-pair',
-    profile==='chatgpt-remote-commander'?'default':profile);
+  const pinnedDirectory=resolveLinuxOwnerPairDirectory({
+    root:path.join(home,'.config','chatgpt-remote-commander','private-pair'),
+    profile,ownerUid:uid
+  });
   const native=createLinuxNativeOwnerSessionProvider({
     ownerIdentityMode:'host-uid-v2'
   });

@@ -90,6 +90,34 @@ export function readLinuxOwnerTunnelPin({
   return normalizeLinuxOwnerTunnelPin(parsed,{nowMs});
 }
 
+// Resolve the one owner-pinned directory, including historical default aliases.
+// The default directory is NEVER accepted for an unrelated profile.
+export function resolveLinuxOwnerPairDirectory({
+  root,profile,ownerUid=process.getuid?.()
+}={}){
+  if(process.platform!=='linux'||typeof root!=='string'
+    ||!path.isAbsolute(root)||root.includes('\0')
+    ||typeof profile!=='string'
+    ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile)
+    ||profile==='.'||profile==='..')
+    fail('RC012_LINUX_OWNER_PAIR_SELECTION_REQUIRED');
+  safeDirectory(root,ownerUid);
+  const historical=path.join(root,'default');
+  const selected=path.join(root,profile==='chatgpt-remote-commander'
+    ?'default':profile);
+  const exists=p=>{
+    try{fs.lstatSync(p);return true;}
+    catch(e){if(e?.code==='ENOENT')return false;throw e;}
+  };
+  // An existing profile path must validate, even if it is a malicious symlink.
+  const dir=exists(selected)?selected:historical;
+  if(!exists(dir))fail('RC012_LINUX_OWNER_PAIR_NOT_ENROLLED');
+  const pinned=readLinuxOwnerTunnelPin({directory:dir,ownerUid});
+  if(pinned.profileId!==profile)
+    fail('RC012_LINUX_OWNER_PAIR_PROFILE_MISMATCH');
+  return dir;
+}
+
 export async function enrollLinuxOwnerTunnelPin({
   directory,record,authorizeOwner,verifyCurrent,
   ownerUid=process.getuid?.(),nowMs=Date.now()
