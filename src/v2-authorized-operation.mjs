@@ -3,6 +3,7 @@
 // below must come from an authorized principal/session worker and existing Commander
 // access/lease/receipt services, not from request headers, tool arguments, or model text.
 import { createHash } from 'node:crypto';
+import { isProxy } from 'node:util/types';
 import {
   normalizeV2Route, assertV2CallerBinding, v2ResourceLeaseKey,
   v2OperationKey
@@ -54,5 +55,85 @@ export async function executeV2BoundOperation(route, services, tool) {
         return services.execute(r);
       }
     );
+  });
+}
+
+
+/**
+ * RC013 source-only opt-in primary-host admission for workflow-root effects.
+ *
+ * This reuses executeV2BoundOperation (authenticated route, revocable grant,
+ * existing root lease, durable receipts). It does NOT create a new lease store,
+ * trusted device, owner identity, approval, RPC route, or native effect-sink.
+ * Never wire this adapter from MCP input. All four additional callbacks below
+ * must be installed by trusted native owner/transport bootstrap:
+ *
+ *   nativeHostId()             the OS-attested local host identifier
+ *   readNativePrimary(project) owner-pinned primary/epoch/root registry
+ *   verifyNativePrimary(pin)   independently authenticates the registry pin
+ *   withEffectSinkFence(pin, execute) performs a native atomic fence check
+ *       at the ACTUAL effect sink for the entire execute callback.
+ *
+ * A lease in process memory, separate SQLite DBs, a Boolean flag, a metadata
+ * marker, or a check only before execute is NOT sufficient.
+ * This function refuses secondary-host local effects. Authenticated forwarding
+ * to the primary must be added separately before multi-host promotion.
+ * Until wired to an effect-sink implementation, this is a contract QA candidate.
+ */
+export async function executeV2PinnedPrimaryWorkflowOperation(route, services, tool) {
+  const r=normalizeV2Route(route);
+  if(r.target.kind!=='workflow-root')fail('V2_PRIMARY_WORKFLOW_ROOT_REQUIRED');
+  if(!services||typeof services!=='object')fail('V2_TRUSTED_DEPENDENCY_REQUIRED');
+  for(const name of ['nativeHostId','readNativePrimary','verifyNativePrimary','withEffectSinkFence']){
+    requireFunction(services[name]);
+  }
+  const host=await services.nativeHostId();
+  if(typeof host!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(host))
+    fail('V2_PRIMARY_NATIVE_HOST_UNVERIFIED');
+
+  // Verify the native owner record, not arbitrary host hints in user-facing args.
+  const load=async()=>{
+    const raw=await services.readNativePrimary(r.target.id);
+    // Native provider records must contain only own, enumerable data fields.
+    // Do not invoke attacker-supplied Proxy traps or accessors while checking
+    // pin identity; copy one immutable snapshot before async verification.
+    if(!raw||typeof raw!=='object'||Array.isArray(raw)||isProxy(raw)
+      ||Object.getPrototypeOf(raw)!==Object.prototype
+      ||Reflect.ownKeys(raw).sort().join(',')!==['authorityEpoch','primaryHostId','projectId','rootFingerprint'].sort().join(','))
+      fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+    const p={};
+    for(const key of ['authorityEpoch','primaryHostId','projectId','rootFingerprint']){
+      const descriptor=Object.getOwnPropertyDescriptor(raw,key);
+      if(!descriptor||!descriptor.enumerable||!Object.hasOwn(descriptor,'value'))
+        fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+      p[key]=descriptor.value;
+    }
+    Object.freeze(p);
+    if(typeof p.projectId!=='string'||p.projectId!==r.target.id
+      ||typeof p.primaryHostId!=='string'||p.primaryHostId!==host
+      ||typeof p.rootFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(p.rootFingerprint)
+      ||!Number.isSafeInteger(p.authorityEpoch)||p.authorityEpoch<1)
+      fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+    // The check itself must use native trust/cryptographic provenance, not p flags.
+    if(await services.verifyNativePrimary(p)!==true)
+      fail('V2_PRIMARY_OWNER_PIN_UNVERIFIED');
+    return Object.freeze({
+      projectId:p.projectId,primaryHostId:p.primaryHostId,
+      rootFingerprint:p.rootFingerprint,authorityEpoch:p.authorityEpoch
+    });
+  };
+
+  if(r.hostId!==host)fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+  const first=await load();
+  const sinkScope=Object.freeze({
+    ...first, operationKey:v2OperationKey(r),resourceKey:v2ResourceLeaseKey(r)
+  });
+  // Native sink MUST reject stale epochs and duplicate operation keys in the
+  // same atomic effect boundary. Callback result/exception is not a release ACK.
+  return services.withEffectSinkFence(sinkScope,async()=>{
+    const fresh=await load();
+    for(const name of ['projectId','primaryHostId','rootFingerprint','authorityEpoch'])
+      if(fresh[name]!==first[name])fail('V2_PRIMARY_AUTHORITY_CHANGED');
+    return executeV2BoundOperation(r,services,tool);
   });
 }
