@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -35,6 +35,39 @@ test('Windows exact owner selector has no default or cross-profile credential fa
       {profilePresent:false,valid:false});
   }
  }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+test('owner-local legacy Commander tunnels are discovered by executable identity, not host names',()=>{
+ const home='/home/owner';
+ const unit='profile-A-tunnel.service';
+ const exe=path.posix.join(home,'.local','share','ChatGPTRemoteCommander',
+   'tools','tunnel-client-v0.0.15-linux-amd64','tunnel-client');
+ const fixture={unit,home,
+   fragmentPath:path.posix.join(home,'.config','systemd','user',unit),
+   execStart:'{ path='+exe+' ; argv[]='+exe+' run --profile profile-A ; ignore_errors=no ; }'};
+ assert.equal(isLinuxOwnerCommanderLegacyTunnelUnit(fixture),true);
+ for(const bad of [
+   {unit:'other.service'},
+   {unit:'profile-B-tunnel.service'},
+   {fragmentPath:path.posix.join('/','etc','systemd','user',unit)},
+   {fragmentPath:path.posix.join(home,'.config','systemd','user','wrong.service')},
+   {execStart:fixture.execStart.replace('run --profile profile-A','run --profile other')},
+   {execStart:fixture.execStart.replace('tunnel-client-v0.0.15-linux-amd64','misc')},
+   {execStart:fixture.execStart.replace(exe+' run',exe+' --api-key=secret run')},
+   {home:path.posix.join('/','home','other')},
+   {home:'relative'}
+ ])assert.equal(isLinuxOwnerCommanderLegacyTunnelUnit({...fixture,...bad}),false);
+ const r=assessMigration({platform:'linux',connectionMode:'private-tunnel',
+   inventoryReliable:true,nativePackageInstalled:true,
+   allNativePayloadPathsAvailable:true,units:[
+     {kind:'tunnel',active:true,enabled:true,knownExecutable:false,
+       nativeTunnelCompatible:false}
+   ]});
+ assert.equal(r.activeTunnelUnits,1);
+ assert.equal(r.enabledTunnelUnits,1);
+ assert.ok(r.blocked.includes('TUNNEL_CUTOVER_UNVERIFIED'));
+ assert.ok(r.blocked.includes('ACTIVE_SERVICE_EXECUTABLE_UNMAPPED'));
+ assert.equal(r.decision,'NO_PROMOTE');
 });
 
 test('read-only Linux inventory preserves Native Tunnel and old live service blockers',()=>{
