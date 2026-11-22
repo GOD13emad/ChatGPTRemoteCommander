@@ -14,6 +14,8 @@ param(
   [string]$ExpectedCommit = '',
   [string]$SourceBundle = '',
   [string]$SourceBundleSha256 = '',
+  [string]$SourceSnapshot = '',
+  [string]$SourceSnapshotSha256 = '',
   [string]$WindowsJobRunnerPath = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -35,7 +37,8 @@ if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') {
 if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
   throw 'Invalid -ExpectedCommit SHA.'
 }
-
+# Verify SHA and archive paths before prerequisites; helper owns the detail.
+if($SourceSnapshot){if($SourceBundle){throw 'SHALLOW_SOURCE_AND_BUNDLE_MUTUALLY_EXCLUSIVE'};$sourceHelper=Join-Path $PSScriptRoot 'offline-shallow-source.ps1';if(-not(Test-Path -LiteralPath $sourceHelper -PathType Leaf)){$sourceHelper=Join-Path $PSScriptRoot 'tools\offline-shallow-source.ps1'};& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $sourceHelper -Mode Preflight -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot -ArchiveSha256 $SourceSnapshotSha256 | Out-Null;if($LASTEXITCODE -ne 0){throw 'SHALLOW_SOURCE_PREFLIGHT_FAILED'}}elseif($SourceSnapshotSha256){throw 'SHALLOW_SOURCE_SHA_WITHOUT_ARCHIVE'}
 # Persist an exact-commit source bundle at one stable per-user path. The installer
 # temp directory is ephemeral; the Git remote must remain usable for later updates.
 if($SourceBundle){
@@ -210,6 +213,7 @@ function Invoke-ExistingSafeUpdate {
     if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) { throw 'candidate auto-update-windows.ps1 missing' }
     $args = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-InstallDir',$InstallDir,'-SourceRef',$SourceRef,'-ExpectedCommit',$commit,'-Force')
     if ($SourceBundle) { $args += @('-SourceBundle',$Repo,'-SourceBundleSha256',$SourceBundleSha256) }
+    if ($SourceSnapshot) { $args += @('-SourceSnapshotRepo',$Repo) }
     if ($WindowsJobRunnerPath) { $args += @('-WindowsJobRunnerPath',$WindowsJobRunnerPath) }
     if ($PowerMode) { $args += '-PowerMode' }
     if ($StandardMode) { $args += '-StandardMode' }
@@ -566,6 +570,7 @@ $InstallDir = Resolve-InstallDir
 $canonicalLiveInstall=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\app'))
 $isCanonicalLiveInstall=([IO.Path]::GetFullPath($InstallDir).TrimEnd('\') -ieq $canonicalLiveInstall.TrimEnd('\'))
 Ensure-Prerequisites
+if($SourceSnapshot){$store=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\source-snapshots';$receipt=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $sourceHelper -Mode Import -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot -ArchiveSha256 $SourceSnapshotSha256 -StoreRoot $store);if($LASTEXITCODE -ne 0){throw 'SHALLOW_SOURCE_IMPORT_FAILED'};$record=$receipt|Select-Object -Last 1|ConvertFrom-Json;if($record.status -notin @('SHALLOW_SOURCE_IMPORTED','SHALLOW_SOURCE_ALREADY_IMPORTED') -or -not $record.repoRoot){throw 'SHALLOW_SOURCE_IMPORT_RECEIPT_INVALID'};$Repo=[string]$record.repoRoot}
 
 $existingInstall = Test-Path -LiteralPath (Join-Path $InstallDir '.git')
 if ($existingInstall -and $isCanonicalLiveInstall) {
@@ -611,6 +616,7 @@ if ($existingInstall -and $isCanonicalLiveInstall) {
     $updater = Join-Path $InstallDir 'auto-update-windows.ps1'
     $args = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$updater,'-InstallDir',$InstallDir,'-SourceRef',$SourceRef,'-ExpectedCommit',$head,'-Force')
     if ($SourceBundle) { $args += @('-SourceBundle',$Repo,'-SourceBundleSha256',$SourceBundleSha256) }
+    if ($SourceSnapshot) { $args += @('-SourceSnapshotRepo',$Repo) }
     if ($PowerMode) { $args += '-PowerMode' }
     if ($StandardMode) { $args += '-StandardMode' }
     if ($GuiControl) { $args += '-GuiControl' }
