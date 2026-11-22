@@ -291,9 +291,11 @@ export class ProjectCoordinationDirectory{
   async observe(projectId,event){
     id(projectId,'PROJECT_ID',PROJECT);
     const att=await this.route();
-    this.#requireMember(projectId,att);
     const value=checkedEvidence(event);
     return this.tx(()=>{
+      // Membership and insertion must share one SQLite write transaction.
+      // Another owner process may revoke a chat before BEGIN IMMEDIATE.
+      this.#requireMember(projectId,att);
       const prior=this.db.prepare(
         'SELECT operation,outcome,evidence_sha256,host,principal,profile,conversation '+
         'FROM events WHERE project_id=? AND event_key=?'
