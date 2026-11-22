@@ -45,6 +45,8 @@ try {
         file.split('/').every(bit=>bit&&bit!=='.'&&bit!=='..'&&
           /^[A-Za-z0-9._+@-]+$/.test(bit)) &&
         SHA64.test(sha),'PARITY_INVALID_SOURCE_FILE');
+      // Public Core excludes all optional private extensions on both OSes.
+      check(!/^extensions\//i.test(file),'PARITY_PUBLIC_CORE_PRIVATE_EXTENSION_DENIED');
       check(!seen.has(file.toLowerCase()),'PARITY_PATH_COLLISION');
       seen.add(file.toLowerCase());keys.push(file);
     }

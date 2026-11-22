@@ -51,3 +51,18 @@ test('distinct source file bytes, tree, count or expected commit refuse parity',
    }
  }finally{fs.rmSync(f.dir,{recursive:true,force:true});}
 });
+
+test('both hosts match on disallowed private extensions but public Core admission fails closed',()=>{
+ const f=fixture();
+ try{
+  for(const name of ['extensions/coucou-bridge/agent.json','Extensions/coucou-bridge/SKILL.md']){
+   const poisoned=structuredClone(f.input);
+   poisoned.files[name]='e'.repeat(64);
+   poisoned.count=Object.keys(poisoned.files).length;
+   f.save(f.w,poisoned);f.save(f.l,poisoned);
+   const result=f.run();
+   assert.equal(result.status,2,result.stdout);
+   assert.match(JSON.parse(result.stderr).reason,/PARITY_PUBLIC_CORE_PRIVATE_EXTENSION_DENIED/);
+  }
+ }finally{fs.rmSync(f.dir,{recursive:true,force:true});}
+});
