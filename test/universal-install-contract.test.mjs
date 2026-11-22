@@ -29,6 +29,12 @@ test('one package contract covers both operating systems and all nine accepted c
     assert.ok(fs.existsSync(path.join(root,p)),p);
 });
 
+test('immutable public Core tar omits optional extension bundle path',()=>{
+ const native=read('packaging/unified/prepare.mjs');
+ assert.match(native,/'archive','--format=tar','--output',tar,head,\s*'src','tools','vendor','assets','config\.json','package\.json'/u);
+ assert.doesNotMatch(native,/'archive','--format=tar','--output',tar,head,\s*'src','tools','vendor','assets','extensions'/u);
+});
+
 test('an exact-source installer QA pass cannot authorize v0.12 stable or all-account Full Power',()=>{
   assert.equal(release.publishApproved,false);
   assert.equal(release.installedPromotionApproved,false);
