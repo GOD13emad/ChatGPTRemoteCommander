@@ -184,3 +184,69 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
           node tools/universal-install/verify-native-parity.mjs --windows "$RUNNER_TEMP/windows-source/source-manifest.json" --linux "$RUNNER_TEMP/linux-source/source-manifest.json" --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+
+
+  qa-provenance:
+    # Reuse the already-qualified repository standard GitHub/Sigstore action.
+    # Dispatch-only: untrusted pull requests cannot request attestation
+    # publication, and exact GITHUB_SHA binds the built Core and packages.
+    name: Source-pinned native QA provenance (NoPromote)
+    if: github.event_name == 'workflow_dispatch'
+    needs: [package, exact-source-parity]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: rc-unified-windows-nsis-qa
+          path: dist/qa-provenance/windows
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: rc-unified-linux-deb-qa
+          path: dist/qa-provenance/linux
+      - name: Verify exactly two same-run native QA assets and immutable source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          version="$(node -p "require('./package.json').version")"
+          test "$version" = "$(node -p "require('./docs/release-train-0.12.json').sourceVersion")"
+          [[ "$version" =~ ^0\.12\.0-dev\.[1-9][0-9]*$ ]]
+          win="dist/qa-provenance/windows/Remote-Commander-Unified-$version-Windows-x64.exe"
+          linux="dist/qa-provenance/linux/Remote-Commander-Unified-$version-Linux-amd64.deb"
+          test -s "$win" && test -s "$linux"
+          test "$(find dist/qa-provenance -type f | wc -l)" -eq 2
+          sha256sum "$win" "$linux"
+          echo "RC012_NATIVE_QA_PROVENANCE_INPUTS_VERIFIED sha=$GITHUB_SHA"
+      - name: Attest immutable native QA package bytes (not Stable or installed)
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # official v4
+        with:
+          subject-path: 'dist/qa-provenance/*/*'
+          create-storage-record: false
+      - name: Verify GitHub Sigstore provenance for both exact QA assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          for asset in "dist/qa-provenance/windows/Remote-Commander-Unified-$version-Windows-x64.exe" \
+                       "dist/qa-provenance/linux/Remote-Commander-Unified-$version-Linux-amd64.deb"; do
+            gh attestation verify "$asset" --repo "$GH_REPO" \
+              --source-ref "$GITHUB_REF" --source-digest "$GITHUB_SHA" \
+              --signer-workflow "$GH_REPO/.github/workflows/unified-installer-pilot.yml" >/dev/null
+          done
+          echo "RC012_NATIVE_QA_PROVENANCE_VERIFIED_NO_PROMOTE sha=$GITHUB_SHA"
