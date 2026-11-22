@@ -256,7 +256,17 @@ test('opt-in project intent guard filters dictionary translation but preserves a
       'فقط ترجمه کن: «ادامه بده» به انگلیسی چه می‌شود؟',
       'ترجمه جمله ادامه بده چیست؟',
       'What does "continue project" mean?',
-      'How do you say "audit project" in Persian?'
+      'How do you say "audit project" in Persian?',
+      '«ادامه بده» به انگلیسی چه می‌شود؟',
+      'به انگلیسی بگو «ادامه بده»',
+      '«ادامه بده» را به آلمانی برگردان',
+      'What is the English for "continue project"?',
+      'How do you say continue project in Persian?',
+      'در جمله «ادامه بده پروژه» فعل کدام است؟',
+      'عبارت «ادامه بده» رو توضیح بده',
+      'برای عبارت «ادامه بده» یک مترادف بنویس',
+      'ترجمه جمله ادامه بده پروژه چیست؟',
+      'What is the English for continue project?'
     ]) {
       const routed=registry.execute('agent_extension_route',{task,limit:5});
       assert.ok(!routed.items.some(x=>x.id==='project-execution-brain'),task);
@@ -265,7 +275,11 @@ test('opt-in project intent guard filters dictionary translation but preserves a
       'ادامه بده پروژه شبیه‌سازی COMSOL را',
       'پروژه ترجمه متون را ادامه بده',
       'Translate the status memo, then continue project',
-      'ترجمه کن و سپس پروژه را ادامه بده'
+      'ترجمه کن و سپس پروژه را ادامه بده',
+      'ترجمه کن و پروژه را ادامه بده',
+      'ترجمه مقاله را ادامه بده',
+      'ادامه بده کار ترجمه مقاله را',
+      'Continue the project translation task'
     ]) {
       const routed=registry.execute('agent_extension_route',{task,limit:5});
       assert.ok(routed.items.some(x=>x.id==='project-execution-brain'),task);

@@ -137,12 +137,24 @@ function taskTokens(value) {
 // require context-sensitive activation; do not suggest them for word/phrase translation.
 // Keep this scoped to opt-in extensions and preserve unrelated language agents.
 function translationOnlyContext(task) {
+  // The quoted command is subject matter, not a project request. Guard only
+  // metadata opt-ins; other extensions keep their declared routing semantics.
   const outside=String(task??'').trim().toLowerCase().replace(
-    /«[^»]{0,512}»|“[^”]{0,512}”|"[^"]{0,512}"|'[^']{0,512}'/gu, ' ');
-  const languageCue=/(?:\b(?:translate|translation|meaning|mean|define)\b|\bwhat does\b|\bhow do you say\b|ترجمه|معنی|معنا|تعریف|تلفظ)/iu;
+    /«[^»]{0,512}»|“[^”]{0,512}”|"[^"]{0,512}"|'[^']{0,512}'|\x60[^\x60]{0,512}\x60/gu, ' ');
+  const languageCue=/(?:\b(?:translate|translation|meaning|mean|define|synonym|paraphrase|grammar|grammatical)\b|\bwhat does\b|\bhow do you say\b|\bwhat is(?: the)? (?:english|persian|german|arabic|french|translation) for\b|ترجمه|معنی|معنا|تعریف|تلفظ|مترادف|برگردان|توضیح\s+بده|فعل\s+(?:کدام|چیست)|به\s+(?:انگلیسی|فارسی|آلمانی|عربی|فرانسوی))/iu;
   if(!languageCue.test(outside)) return false;
   const projectAction=/(?:\b(?:resume|continue|audit|execute|finish|run|fix|deploy)\b[\s\S]{0,100}\b(?:project|workflow|task)\b|\b(?:project|workflow|task)\b[\s\S]{0,100}\b(?:resume|continue|audit|execute|finish|run|fix|deploy)\b|(?:پروژه|کار|رساله|شبیه‌سازی)[\s\S]{0,100}(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|تحلیل کن|بررسی کن|تحقیق کن|انجام بده|شروع کن)|(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|انجام بده)[\s\S]{0,100}(?:پروژه|کار|رساله|شبیه‌سازی))/iu;
-  return !projectAction.test(outside);
+  // Preserve a separately requested project action after a translation.
+  const nextProjectAction=/(?:\b(?:then|and then|afterwards|next)\b[\s\S]{0,100}\b(?:continue|resume|audit|execute|finish|run|fix|deploy)\b|(?:سپس|بعد(?:ش| از آن)?|و\s+سپس|و\s+پروژه)[\s\S]{0,100}(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|انجام بده))/iu;
+  if(nextProjectAction.test(outside)) return false;
+  // Explicit language requests must not be misread as project verbs even if
+  // the phrase being translated is not surrounded by quotation marks.
+  const explicitLanguageRequest=/(?:\b(?:translate|define|what does|how do you say|what is(?: the)? (?:english|persian|german|arabic|french|translation) for|synonym|paraphrase)\b|(?:^|[.!?؟؛،:]\s*)(?:فقط\s*)?(?:ترجمه\s+(?:کن|کنید|جمله|عبارت|کلمه|این جمله|این عبارت)|معنی|معنا|مترادف|تعریف)|به\s+(?:انگلیسی|فارسی|آلمانی|عربی|فرانسوی)\s+(?:بگو|چه می‌شود|برگردان)|توضیح\s+بده|فعل\s+(?:کدام|چیست)|برگردان)/iu;
+  if(explicitLanguageRequest.test(outside)) return true;
+  if(projectAction.test(outside)) return false;
+  // "ترجمه مقاله را ادامه بده" is work, not a dictionary translation.
+  if(/(?:\b(?:resume|continue|audit|execute|finish|run|fix|deploy)\b|ادامه بده|ادامه دهید|نهایی کن|اجرا کن|انجام بده)/iu.test(outside)) return false;
+  return true;
 }
 
 function routeScore(ext, task) {
