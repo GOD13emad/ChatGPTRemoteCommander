@@ -116,8 +116,11 @@ test('isolated DPAPI Windows seed enroll/readback/revocation-like mismatch and n
       powershellPath:POWERSHELL,
       // Preserve a bounded code-only diagnostic if hosted CI denies the
       // synthetic credential: no user SID, file path or ciphertext is printed.
-      execFileImpl:(file,args,options,cb)=>execFile(file,args,options,
-        (error,stdout,stderr)=>{
+      // Hosted CI can cold-start PowerShell more slowly under parallel QA.
+      // Only this disposable test fixture gets an extended bounded reader
+      // budget; production loader's 8s default is not changed.
+      execFileImpl:(file,args,options,cb)=>execFile(file,args,
+        {...options,timeout:20000},(error,stdout,stderr)=>{
           if(error){
             const detail=Buffer.isBuffer(stderr)
               ?stderr.toString('utf8'):String(stderr??'');
