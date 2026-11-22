@@ -78,7 +78,11 @@ function executePowerShell({execFileImpl,powershellPath,script,encoding,maxBuffe
   });
 }
 
-/** Resolve only the current Windows process owner's SID hash; this is not GUI consent. */
+/** Legacy raw-SID worker resolver; preserved for existing DPAPI blobs.
+ * New native J01 owner-binding integrations must instead supply the exact
+ * createWindowsNativeOwnerSessionProvider().resolveOwnerSidHash callback.
+ * The DPAPI loader below accepts both formats only for the SAME real SID.
+ */
 export function createWindowsNativeOwnerSidHashResolver({
   platform=process.platform,execFileImpl=execFileDefault,
   powershellPath=defaultPowerShellPath(),verifyExecutable=defaultVerifyExecutable
@@ -144,8 +148,11 @@ export function createWindowsDpapiSeedLoader({
       "$expectedOwner='"+ownerSidHash+"'",
       "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
       "$sha=[Security.Cryptography.SHA256]::Create()",
-      "try{$sidBytes=[Text.Encoding]::UTF8.GetBytes($sid);$sidDigest=$sha.ComputeHash($sidBytes);$actualOwner=[BitConverter]::ToString($sidDigest).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}",
-      "if($actualOwner -cne $expectedOwner){throw 'OWNER_MISMATCH'}",
+      "try{$sidBytes=[Text.Encoding]::UTF8.GetBytes($sid);$sidDigest=$sha.ComputeHash($sidBytes);$actualLegacyOwner=[BitConverter]::ToString($sidDigest).Replace('-','').ToLowerInvariant()$j01Bytes=[Text.Encoding]::UTF8.GetBytes('commander.os-owner.sid.v1'+[char]0+'win32'+[char]0+'sid='+$sid);$j01Digest=$sha.ComputeHash($j01Bytes);$actualJ01Owner=[BitConverter]::ToString($j01Digest).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}",
+      // Both digests correspond to the SAME CURRENT native SID. Keep existing
+      // raw-SID CurrentUser DPAPI blobs valid; new J01 owner pairs use the
+      // canonical domain-separated hash, never a caller-supplied identity.
+      "if($actualLegacyOwner -cne $expectedOwner -and $actualJ01Owner -cne $expectedOwner){throw 'OWNER_MISMATCH'}",
       "function Assert-PrivateAcl([string]$Target,[string]$OwnerSid,[bool]$Directory){",
       "  $item=Get-Item -LiteralPath $Target -Force",
       "  if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'REPARSE_POINT'}",
@@ -169,7 +176,7 @@ export function createWindowsDpapiSeedLoader({
       "$entropy=[Text.Encoding]::UTF8.GetBytes('commander.worker.identity.v1|'+$profile+'|'+$expectedOwner)",
       "$plain=$null",
       "try{$plain=[Security.Cryptography.ProtectedData]::Unprotect($cipher,$entropy,[Security.Cryptography.DataProtectionScope]::CurrentUser);if($plain.Length -ne 32){throw 'SEED_SIZE'};[Console]::OpenStandardOutput().Write($plain,0,$plain.Length)}",
-      "finally{if($cipher){[Array]::Clear($cipher,0,$cipher.Length)};if($entropy){[Array]::Clear($entropy,0,$entropy.Length)};if($plain){[Array]::Clear($plain,0,$plain.Length)};if($sidBytes){[Array]::Clear($sidBytes,0,$sidBytes.Length)};if($sidDigest){[Array]::Clear($sidDigest,0,$sidDigest.Length)}}"
+      "finally{if($cipher){[Array]::Clear($cipher,0,$cipher.Length)};if($entropy){[Array]::Clear($entropy,0,$entropy.Length)};if($plain){[Array]::Clear($plain,0,$plain.Length)};if($sidBytes){[Array]::Clear($sidBytes,0,$sidBytes.Length)};if($sidDigest){[Array]::Clear($sidDigest,0,$sidDigest.Length)};if($j01Bytes){[Array]::Clear($j01Bytes,0,$j01Bytes.Length)};if($j01Digest){[Array]::Clear($j01Digest,0,$j01Digest.Length)}}"
     ].join('\n');
     let output;
     try{
