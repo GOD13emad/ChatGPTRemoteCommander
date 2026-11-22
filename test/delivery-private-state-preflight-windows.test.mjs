@@ -1,0 +1,58 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import {spawnSync} from 'node:child_process';
+import {DeliveryStore} from '../src/delivery-store.mjs';
+
+const onWindows=process.platform==='win32';
+const script=path.resolve('tools/delivery-private-state-preflight.ps1');
+const ps=path.win32.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+function fixture(t,prefix='rc-private-preflight-'){
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),prefix));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  return root;
+}
+function audit(dir,scope='qa',max=10){
+  const p=spawnSync(ps,['-NoLogo','-NoProfile','-NonInteractive','-File',script,
+    '-Directory',dir,'-Scope',scope,'-MaxArtifactFiles',String(max)],{
+      encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:8192});
+  assert.equal(p.status,0,'preflight script failed (no raw output exposed)');
+  const result=JSON.parse(p.stdout.trim());
+  assert.equal(result.schema,1);
+  assert.equal(result.kind,'delivery-private-state-preflight');
+  assert.equal(result.platform,'windows');
+  assert.deepEqual(Object.keys(result).sort(),[
+    'schema','kind','platform','complete','eligible','checked','artifactFilesChecked',
+    'artifactScanLimit','limitReached','missingRequired','reparsePoints',
+    'ownerMismatch','inheritedDirectoryAcl','broadAllow','inspectionErrors'
+  ].sort());
+  return result;
+}
+test('private Windows delivery fixture passes read-only ACL preflight',{skip:!onWindows},t=>{
+  const dir=path.join(fixture(t),'store');
+  const s=new DeliveryStore({directory:dir,scope:'qa'});
+  s.writeArtifact({status:'COMPLETED',index:0});s.close();
+  const result=audit(dir);
+  assert.equal(result.complete,true);assert.equal(result.eligible,true);
+  assert.equal(result.artifactFilesChecked,1);
+  assert.equal(result.ownerMismatch,0);assert.equal(result.broadAllow,0);
+});
+test('inherited Windows ACL fails closed without rewriting files',{skip:!onWindows},t=>{
+  const dir=path.join(fixture(t),'inherited');fs.mkdirSync(dir);
+  const report=audit(dir);
+  assert.equal(report.eligible,false);
+  assert.ok(report.inheritedDirectoryAcl>0||report.broadAllow>0);
+  assert.ok(fs.statSync(dir).isDirectory());
+  assert.equal(fs.existsSync(path.join(dir,'delivery.sqlite')),false);
+});
+test('bounded scan never labels partial Windows artifact audit eligible',{skip:!onWindows},t=>{
+  const dir=path.join(fixture(t),'many');
+  const s=new DeliveryStore({directory:dir,scope:'qa'});
+  try {for(let i=0;i<3;i++)s.writeArtifact({status:'COMPLETED',index:i});}
+  finally{s.close();}
+  const report=audit(dir,'qa',2);
+  assert.equal(report.limitReached,true);assert.equal(report.complete,false);
+  assert.equal(report.eligible,false);assert.equal(report.artifactFilesChecked,2);
+});
