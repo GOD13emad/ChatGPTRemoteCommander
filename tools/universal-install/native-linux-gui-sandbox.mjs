@@ -143,8 +143,72 @@ export function inspectLinuxGuiSandbox({
       kernelProfileContentVerified:false,loadedProfileVerified:false
     });
   }
+  // Absence of an /etc policy file is not evidence that an orphaned
+  // profile name is absent from the running kernel. An unknown kernel state
+  // must not authorize registering a new file over an unidentified policy.
+  const noFileKernel=observedKernelPolicy(readKernelProfiles);
+  if(noFileKernel===true)return result('OWNER_POLICY_ORPHANED_KERNEL_PROFILE');
+  if(noFileKernel===null)return result('OWNER_POLICY_ABSENT_FILE_KERNEL_UNVERIFIED');
   return result('OWNER_POLICY_REQUIRED',{
     installedProfileSha256:found,profileMatchesPinnedRelease:true,
     installedGuiIdentityObserved:true,loadedProfileVerified:false
+  });
+}
+
+
+// A data-only intent for the existing native installer transaction.
+// No method in this module executes a privileged command or grants owner
+// approval. A caller-supplied SHA is not publisher provenance by itself.
+export function planLinuxGuiSandboxPolicy(options={}){
+  const observed=inspectLinuxGuiSandbox(options);
+  const common={
+    schema:'rc-native-linux-gui-policy-plan-v1',
+    sourceState:observed.status,
+    expectedProfileSha256:options.expectedProfileSha256,
+    ownerApprovalIssued:false,
+    publisherProvenanceVerified:false,
+    nativeEffectAuthorized:false,
+    kernelProfileContentVerified:false,
+    guiStarted:false,
+    stablePromotionAccepted:false
+  };
+  let status='BLOCKED_UNVERIFIED_POLICY_STATE';
+  let requestedEffect='NONE',priorPolicyFile='UNKNOWN';
+  switch(observed.status){
+    case 'APPARMOR_POLICY_NOT_REQUIRED':
+      status='NO_POLICY_EFFECT_REQUIRED';
+      requestedEffect='NONE';
+      break;
+    case 'OWNER_POLICY_REQUIRED':
+      status='OWNER_APPROVAL_AND_NATIVE_SNAPSHOT_REQUIRED';
+      requestedEffect='REGISTER_AND_LOAD_PINNED_PROFILE';
+      priorPolicyFile='ABSENT';
+      break;
+    case 'OWNER_POLICY_FILE_PRESENT_KERNEL_NOT_LOADED':
+      status='OWNER_APPROVAL_AND_NATIVE_SNAPSHOT_REQUIRED';
+      requestedEffect='LOAD_EXISTING_PINNED_PROFILE';
+      priorPolicyFile='PINNED_EXISTING';
+      break;
+    case 'OWNER_POLICY_NAME_LOADED_CONTENT_UNVERIFIED':
+      status='BLOCKED_KERNEL_POLICY_BYTES_UNVERIFIED';
+      requestedEffect='NONE';
+      priorPolicyFile='PINNED_EXISTING';
+      break;
+    case 'OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION':
+      status='BLOCKED_KERNEL_OBSERVATION_UNAVAILABLE';
+      requestedEffect='NONE';
+      priorPolicyFile='PINNED_EXISTING';
+      break;
+    default:
+      // No unsafe source, foreign policy, indeterminate kernel or denied
+      // preflight may produce a native operation intention.
+      break;
+  }
+  return Object.freeze({
+    ...common,status,requestedEffect,priorPolicyFile,
+    nativeOwnerApprovalRequired:requestedEffect!=='NONE',
+    exactPriorStateSnapshotRequired:requestedEffect!=='NONE',
+    rollbackReceiptRequired:requestedEffect!=='NONE',
+    ownerPolicyEffectPerformed:false
   });
 }
