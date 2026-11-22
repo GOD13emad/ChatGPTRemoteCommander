@@ -14,8 +14,8 @@ function fixture(t,prefix='rc-private-preflight-'){
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   return root;
 }
-function audit(dir,scope='qa',max=10){
-  const p=spawnSync(ps,['-NoLogo','-NoProfile','-NonInteractive','-File',script,
+function audit(dir,scope='qa',max=10,executable=ps){
+  const p=spawnSync(executable,['-NoLogo','-NoProfile','-NonInteractive','-File',script,
     '-Directory',dir,'-Scope',scope,'-MaxArtifactFiles',String(max)],{
       encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:8192});
   assert.equal(p.status,0,'preflight script failed (no raw output exposed)');
@@ -55,4 +55,19 @@ test('bounded scan never labels partial Windows artifact audit eligible',{skip:!
   const report=audit(dir,'qa',2);
   assert.equal(report.limitReached,true);assert.equal(report.complete,false);
   assert.equal(report.eligible,false);assert.equal(report.artifactFilesChecked,2);
+});
+
+test('PowerShell 7 native ACL path agrees with Windows PowerShell 5.1', {skip:!onWindows}, t=>{
+  const probe=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command','$PSVersionTable.PSEdition'],{
+    encoding:'utf8',windowsHide:true,timeout:10000,maxBuffer:512
+  });
+  if(probe.status!==0||probe.stdout.trim()!=='Core')return t.skip('pwsh 7 unavailable');
+  const root=fixture(t);
+  const dir=path.join(root,'private');
+  const s=new DeliveryStore({directory:dir,scope:'qa'});
+  try{s.writeArtifact({status:'COMPLETED',value:'ps7'});}finally{s.close();}
+  const v5=audit(dir,'qa',10);
+  const v7=audit(dir,'qa',10,'pwsh.exe');
+  assert.equal(v5.eligible,true);
+  assert.deepEqual(v7,v5);
 });
