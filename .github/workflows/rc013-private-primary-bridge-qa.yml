@@ -5,6 +5,8 @@ on:
       - 'src/v2-private-pair-operation-gate.mjs'
       - 'src/v2-authorized-operation.mjs'
       - 'src/v2-routing-contract.mjs'
+      - 'src/mutation-idempotency.mjs'
+      - 'src/rc013-sqlite-effect-sink.mjs'
       - 'test/v2-private-primary-gate.integration.test.mjs'
       - 'test/v2-primary-writer-admission.test.mjs'
       - '.github/workflows/rc013-private-primary-bridge-qa.yml'
