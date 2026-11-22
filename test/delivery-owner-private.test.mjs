@@ -43,3 +43,31 @@ test('Windows inherited existing folder is rejected without automatic repair',{s
  assert.throws(()=>new DeliveryStore({directory:dir,scope:'winqa'}),/OWNER_PRIVATE_DIRECTORY_UNSAFE/);
  assert.equal(fs.existsSync(path.join(dir,'delivery.sqlite')),false);
 });
+
+test('existing public artifact root rejected without repair', {skip:!onPosix},t=>{
+ const dir=path.join(fixture(t),'artifact-root');const st=new DeliveryStore({directory:dir,scope:'qa'});
+ st.close();const root=path.join(dir,'artifacts');fs.mkdirSync(root,{mode:0o700});fs.chmodSync(root,0o777);
+ const reopened=new DeliveryStore({directory:dir,scope:'qa'});
+ try {assert.throws(()=>reopened.writeArtifact({status:'COMPLETED'}),/DELIVERY_PRIVATE_DIRECTORY_UNSAFE/);}
+ finally {reopened.close();}
+ assert.equal(fs.statSync(root).mode&0o777,0o777);
+});
+test('existing public artifact file rejected despite matching digest', {skip:!onPosix},t=>{
+ const dir=path.join(fixture(t),'artifact-file');const st=new DeliveryStore({directory:dir,scope:'qa'});
+ const result={status:'COMPLETED',value:9};const a=st.writeArtifact(result);const file=st.artifactPath(a.id);
+ fs.chmodSync(file,0o644);
+ try {assert.throws(()=>st.writeArtifact(result),/DELIVERY_PRIVATE_FILE_UNSAFE/);}
+ finally {st.close();}
+ assert.equal(fs.statSync(file).mode&0o777,0o644);
+});
+
+test('Windows NEW content-addressed artifact uses private owner DACL',{skip:!onWindows},t=>{
+ const dir=path.join(fixture(t),'win-artifact');const s=new DeliveryStore({directory:dir,scope:'winqa'});
+ try {
+   const result={status:'COMPLETED',value:'private'};
+   const ref=s.writeArtifact(result);
+   assert.deepEqual(ref.bytes,Buffer.byteLength(JSON.stringify(result)));
+   assert.ok(fs.existsSync(s.artifactPath(ref.id)));
+   assert.deepEqual(s.writeArtifact(result),ref);
+ } finally {s.close();}
+});
