@@ -116,22 +116,24 @@ test('bundled Browser preserves an existing owner-installed Browser, including a
   assert.match(guard,/product-install\.json/);
   assert.match(guard,/Result := not RegQueryStringValue/);
 });
-test('private exact Core source Git bundle is pinned through native Inno, fresh install and update',()=>{
+test('offline exact-head shallow ZIP replaces distributable full-history Git bundle',()=>{
   const iss=read('installer/RemoteCommander.iss');
   const builder=read('installer/build-setup.ps1');
   const install=read('install.ps1');
   const updater=read('auto-update-windows.ps1');
-  assert.match(iss,/#ifdef CoreSourceBundle/);
-  assert.match(iss,/Source: "{#CoreSourceBundle}"/);
-  assert.match(iss,/ExtractTemporaryFile\('\{#CoreBundleName\}'\)/);
-  assert.match(iss,/SourceBundleSha256/);
-  assert.match(builder,/bundle verify \$SourceBundle/);
-  assert.match(builder,/bundle list-heads \$SourceBundle/);
-  assert.match(builder,/DCoreSourceBundleSHA256/);
-  assert.match(install,/SOURCE_BUNDLE_SHA256_MISMATCH/);
-  assert.match(install,/if \(\$SourceBundle\) \{ \$args \+= @\('-SourceBundle',\$Repo,'-SourceBundleSha256'/);
-  assert.match(updater,/SOURCE_BUNDLE_SHA256_MISMATCH/);
-  assert.match(updater,/\$Repo=\$file.FullName/);
+  const helper=read('tools/offline-shallow-source.ps1');
+  assert.match(iss,/#error CORE_FULL_HISTORY_BUNDLE_FORBIDDEN/);
+  assert.match(iss,/#ifdef CoreSourceSnapshot/);
+  assert.match(iss,/ExtractTemporaryFile\('offline-shallow-source[.]ps1'\)/);
+  assert.match(iss,/SourceSnapshotSha256/);
+  assert.match(builder,/CORE_LEGACY_BUNDLE_DIRECT_USE_FORBIDDEN/);
+  assert.match(builder,/DCoreSourceSnapshotSHA256/);
+  assert.match(install,/SHALLOW_SOURCE_IMPORT_FAILED/);
+  assert.match(install,/SourceSnapshotRepo/);
+  assert.match(updater,/SHALLOW_SOURCE_REPOSITORY_VERIFICATION_FAILED/);
+  assert.match(helper,/SHALLOW_SOURCE_HISTORY_INCLUDED/);
+  assert.match(helper,/SHALLOW_SOURCE_ARCHIVE_SHA256_MISMATCH/);
+  assert.match(helper,/SHALLOW_SOURCE_UNREACHABLE_OBJECT/);
 });
 
 test('product icon is a standards-compliant multi-image ICO asset',()=>{
@@ -165,7 +167,7 @@ test('Windows Inno archive source files omit build-host file timestamps',()=>{
   const section=read('installer/RemoteCommander.iss').split('[Files]')[1]?.split('[Icons]')[0];
   assert.ok(section,'Inno [Files] section required');
   const entries=section.split(/\r?\n/).map(x=>x.trim()).filter(x=>x.startsWith('Source:'));
-  assert.equal(entries.length,11,'validate Core bundle, pinned Windows runner, display labels and exact installer file inventory');
+  assert.equal(entries.length,12,'validate pinned Shallow Git snapshot, verifier, Windows runner, display labels and exact installer inventory');
   for(const entry of entries){
     assert.match(entry,/\bnotimestamp\b/,'each packaged file must omit source filesystem timestamps');
   }
@@ -211,9 +213,15 @@ test('pinned Windows Job Object runner is built, embedded, installed and staged 
   assert.ok(updater.includes('Promote-Control $stage.Commit $ref $stage.Dir'));
   assert.ok(updater.indexOf('Copy-WindowsJobRunner $stage.Dir')<updater.indexOf('$script:QualificationCommit=$stage.Commit'),
     'candidate native runner must be verified before qualification and routing');
-  assert.ok(releaseSync.includes('git bundle create $bundle $bundleRef'));
-  assert.ok(releaseSync.includes('git check-ref-format $bundleRef'));
-  assert.ok(releaseSync.includes('-SourceBundle $bundle'),'the published setup embeds the exact Core source bundle');
+  assert.ok(releaseSync.includes('git bundle create $bundle $bundleRef'),
+    'legacy CI may construct historical input, but builder must never embed it');
+  assert.ok(releaseSync.includes('-SourceBundle $bundle'));
+  assert.ok(builder.includes('LEGACY_GIT_BUNDLE_NEVER_EMBEDDED'));
+  assert.ok(builder.includes('CORE_LEGACY_BUNDLE_DIRECT_USE_FORBIDDEN'));
+  assert.ok(builder.includes('test/offline-shallow-source.test.mjs'));
+  assert.ok(builder.includes('/DCoreSourceSnapshotSHA256'));
+  assert.ok(!builder.includes('/DCoreSourceBundle='));
+  assert.ok(iss.includes('#error CORE_FULL_HISTORY_BUNDLE_FORBIDDEN'));
   assert.ok(ci.includes('verify-windows-job-runner.ps1 -Ensure'));
   assert.ok(ci.includes("dotnet-version: '8.0.427'"));
 });
