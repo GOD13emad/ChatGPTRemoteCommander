@@ -69,10 +69,14 @@ function installedNativeVersion(){
     return result.stdout.trim().replace('~dev.','-dev.');
   }
   if(process.platform==='win32'){
-    const reg=String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\e8b3b1a5-66f7-5b0b-b5ed-ddf867067934`;
+    const reg=String.raw`HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\e8b3b1a5-66f7-5b0b-b5ed-ddf867067934`;
+    // A missing key is an expected *first-install* state. An absent-key
+    // Get-ItemProperty call can set a nonzero exit code even with SilentlyContinue.
     const script="$ErrorActionPreference='Stop';"+
-      "$v=Get-ItemProperty -LiteralPath '"+reg+"' -ErrorAction SilentlyContinue;"+
-      "if($null -ne $v){[Console]::Write($v.DisplayVersion)}";
+      "$p='"+reg+"';"+
+      "if(Test-Path -LiteralPath $p){"+
+      "$v=Get-ItemProperty -LiteralPath $p -ErrorAction Stop;"+
+      "[Console]::Write($v.DisplayVersion)}";
     // The Windows Store may expose a non-launchable pwsh.exe app alias.
     // Use the built-in Windows PowerShell executable on every Windows host.
     const shell=path.join(process.env.SystemRoot||String.raw`C:\Windows`,
