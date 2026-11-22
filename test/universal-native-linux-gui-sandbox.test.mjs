@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {inspectLinuxGuiSandbox,planLinuxGuiSandboxPolicy} from '../tools/universal-install/native-linux-gui-sandbox.mjs';
+import {inspectLinuxGuiSandbox,planLinuxGuiSandboxPolicy,revalidateLinuxGuiPolicyPlan} from '../tools/universal-install/native-linux-gui-sandbox.mjs';
 import {createNativeOsAdapter} from '../tools/universal-install/native-os-adapters.mjs';
 const ROOT='/opt/Remote Commander';
 const p=ROOT+'/resources/apparmor-profile',gui=ROOT+'/remote-commander-unified';
@@ -13,7 +13,7 @@ const flags={
 const profile='abi <abi/4.0>,\nprofile "remote-commander-unified" "/opt/Remote Commander/remote-commander-unified" flags=(unconfined) {\n  userns,\n}\n';
 const sha=createHash('sha256').update(profile).digest('hex');
 const fileInfo=(bytes,{uid=0,mode=0o100644,nlink=1,size=bytes?.length??150,dev=1,ino=9}={})=>({
- uid,mode,nlink,size,dev,ino,mtimeMs:1,ctimeMs:1,isFile:()=>true,isSymbolicLink:()=>false
+ uid,mode,nlink,size,dev,ino,mtimeMs:1,ctimeMs:1,isFile:()=>true,isDirectory:()=>false,isSymbolicLink:()=>false
 });
 const dirInfo=({uid=0,mode=0o40755,link=false}={})=>({
   uid,mode,nlink:2,size:4096,dev:1,ino:5,mtimeMs:1,ctimeMs:1,
@@ -264,4 +264,71 @@ test('policy file absent and kernel unreadable never authorizes registration',()
  const q=inspectLinuxGuiSandbox(f);
  assert.equal(q.status,'OWNER_POLICY_ABSENT_FILE_KERNEL_UNVERIFIED');
  assert.equal(planLinuxGuiSandboxPolicy(f).status,'BLOCKED_UNVERIFIED_POLICY_STATE');
+});
+
+
+test('pre-effect compare remains blocked for unchanged data despite fingerprint match',()=>{
+ const f=fixture();
+ const plan=planLinuxGuiSandboxPolicy(f);
+ assert.equal(plan.requestedEffect,'REGISTER_AND_LOAD_PINNED_PROFILE');
+ assert.match(plan.preEffectStateFingerprint,/^[a-f0-9]{64}$/);
+ const compared=revalidateLinuxGuiPolicyPlan(plan,f);
+ assert.equal(compared.status,'PRE_EFFECT_STATE_STABLE');
+ assert.equal(compared.nativeEffectAuthorized,false);
+ assert.equal(compared.ownerApprovalIssued,false);
+ assert.equal(compared.publisherProvenanceVerified,false);
+ assert.equal(compared.stablePromotionAccepted,false);
+});
+test('pre-effect changes of parent inode fail even when policy contents match',()=>{
+ const f=fixture();
+ const plan=planLinuxGuiSandboxPolicy(f);
+ const old=f.stat;
+ f.stat=x=>{
+   const s=old(x);
+   return x===ROOT?{...s,ino:s.ino+200}:s;
+ };
+ const r=revalidateLinuxGuiPolicyPlan(plan,f);
+ assert.equal(r.status,'BLOCKED_PRE_EFFECT_STATE_DRIFT');
+ assert.notEqual(r.latestStateFingerprint,r.originalStateFingerprint);
+});
+test('new foreign policy file before owner native effect blocks stale plan',()=>{
+ const f=fixture(),plan=planLinuxGuiSandboxPolicy(f);
+ const old=f.stat;
+ f.stat=x=>{
+   if(x==='/etc/apparmor.d/remote-commander-unified')
+     return fileInfo(Buffer.from(profile),{ino:199});
+   return old(x);
+ };
+ const r=revalidateLinuxGuiPolicyPlan(plan,f);
+ assert.equal(r.status,'BLOCKED_PRE_EFFECT_STATE_DRIFT');
+});
+test('kernel profile appearing after approval preview blocks stale registration',()=>{
+ const f=fixture(),plan=planLinuxGuiSandboxPolicy(f);
+ f.readKernelProfiles=()=>Buffer.from('remote-commander-unified (enforce)\n');
+ const r=revalidateLinuxGuiPolicyPlan(plan,f);
+ assert.equal(r.status,'BLOCKED_PRE_EFFECT_STATE_DRIFT');
+});
+test('kernel access loss fails closed between plan and effect',()=>{
+ const f=fixture(),plan=planLinuxGuiSandboxPolicy(f);
+ f.readKernelProfiles=()=>{throw Object.assign(new Error('denied'),{code:'EACCES'});};
+ assert.equal(revalidateLinuxGuiPolicyPlan(plan,f).status,'BLOCKED_PRE_EFFECT_STATE_DRIFT');
+});
+test('tampered or non-pinned policy plan fails before inspecting native state',()=>{
+ const f=fixture(),plan=planLinuxGuiSandboxPolicy(f);
+ assert.throws(()=>revalidateLinuxGuiPolicyPlan({...plan,preEffectStateFingerprint:'x'},f),
+   {code:'RC_GUI_POLICY_PRE_EFFECT_PLAN_INVALID'});
+ assert.throws(()=>revalidateLinuxGuiPolicyPlan(plan,{...f,expectedProfileSha256:'a'.repeat(64)}),
+   {code:'RC_GUI_POLICY_PRE_EFFECT_PLAN_INVALID'});
+});
+test('shared adapter revalidates Linux policy intents without any OS command',()=>{
+ const adapter=createNativeOsAdapter({
+   platform:'linux',architecture:'x64',
+   run:()=>{throw Error('forbidden native effect')}
+ });
+ const f=fixture(),plan=adapter.planGuiSandboxPolicy(f);
+ assert.equal(adapter.revalidateGuiPolicyPlan(plan,f).status,'PRE_EFFECT_STATE_STABLE');
+ const win=createNativeOsAdapter({platform:'windows',architecture:'x64',
+   run:()=>{throw Error('forbidden native effect')}
+ });
+ assert.equal(Object.hasOwn(win,'revalidateGuiPolicyPlan'),false);
 });
