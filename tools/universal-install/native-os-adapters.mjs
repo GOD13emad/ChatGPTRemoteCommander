@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
-import {inspectLinuxGuiSandbox,planLinuxGuiSandboxPolicy,revalidateLinuxGuiPolicyPlan} from './native-linux-gui-sandbox.mjs';
+import {inspectLinuxGuiSandbox,planLinuxGuiSandboxPolicy,revalidateLinuxGuiPolicyPlan,reconcileLinuxGuiPolicyFailure} from './native-linux-gui-sandbox.mjs';
 
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 const check=(c,e)=>{if(!c)fail(e);};
@@ -290,5 +290,6 @@ export function createNativeOsAdapter({
   if(!win)native.inspectGuiSandbox=args=>inspectLinuxGuiSandbox({...args,platform});
   if(!win)native.planGuiSandboxPolicy=args=>planLinuxGuiSandboxPolicy({...args,platform});
   if(!win)native.revalidateGuiPolicyPlan=(approvedPlan,args)=>revalidateLinuxGuiPolicyPlan(approvedPlan,{...args,platform});
+  if(!win)native.reconcileGuiPolicyFailure=(beforePlan,args)=>reconcileLinuxGuiPolicyFailure(beforePlan,{...args,platform});
   return Object.freeze(native);
 }
