@@ -280,3 +280,43 @@ export function revalidateLinuxGuiPolicyPlan(approvedPlan,options={}){
     kernelProfileContentVerified:false,stablePromotionAccepted:false
   });
 }
+
+
+// Reconcile a failed or uncertain AppArmor effect without guessing that a
+// failed parser/process call meant "no change". Pure read-only observation:
+// an unchanged pre-effect fingerprint is evidence of baseline preservation,
+// never proof of granted OS permission or a successfully loaded kernel policy.
+// Any drift requires the existing native transaction journal and its trusted
+// owner to reconcile before a destructive rollback is attempted.
+export function reconcileLinuxGuiPolicyFailure(beforePlan,options={}){
+  if(!beforePlan||beforePlan.schema!=='rc-native-linux-gui-policy-plan-v1'
+    ||beforePlan.status!=='OWNER_APPROVAL_AND_NATIVE_SNAPSHOT_REQUIRED'
+    ||!SHA.test(beforePlan.expectedProfileSha256??'')
+    ||!SHA.test(beforePlan.preEffectStateFingerprint??'')
+    ||!['REGISTER_AND_LOAD_PINNED_PROFILE',
+      'LOAD_EXISTING_PINNED_PROFILE'].includes(beforePlan.requestedEffect)
+    ||options.expectedProfileSha256!==beforePlan.expectedProfileSha256)
+    fail('RC_GUI_POLICY_RECOVERY_PLAN_INVALID');
+  const observed=planLinuxGuiSandboxPolicy(options);
+  const preserved=observed.status===beforePlan.status
+    &&observed.sourceState===beforePlan.sourceState
+    &&observed.priorPolicyFile===beforePlan.priorPolicyFile
+    &&observed.requestedEffect===beforePlan.requestedEffect
+    &&observed.preEffectStateFingerprint===beforePlan.preEffectStateFingerprint;
+  return Object.freeze({
+    schema:'rc-native-linux-gui-policy-recovery-v1',
+    status:preserved?'BASELINE_STATE_REOBSERVED':
+      'NEEDS_MANUAL_RECONCILIATION',
+    baselineFingerprint:beforePlan.preEffectStateFingerprint,
+    observedFingerprint:observed.preEffectStateFingerprint??null,
+    baselineMatched:preserved,
+    // Even a matching observation does not prove a native effect never took
+    // place. The journal must still account for an uncertain command outcome.
+    effectOutcomeKnown:false,
+    nativeRollbackAuthorized:false,
+    ownerApprovalIssued:false,
+    kernelProfileContentVerified:false,
+    guiStarted:false,stablePromotionAccepted:false,
+    journalReconciliationRequired:true
+  });
+}
