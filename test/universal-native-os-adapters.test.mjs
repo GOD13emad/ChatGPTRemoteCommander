@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createNativeOsAdapter}
+import {createNativeOsAdapter,cleanFreshLinuxOwnerState}
   from '../tools/universal-install/native-os-adapters.mjs';
 import {executeNativeTransaction}
   from '../tools/universal-install/native-transaction.mjs';
@@ -174,4 +174,34 @@ test('fresh rollback uses OS-native dpkg remove and fixed user-local NSIS uninst
     else process.env.LOCALAPPDATA=old;
     fs.rmSync(temp,{recursive:true,force:true});
   }
+});
+
+test('fresh Linux state permits ONLY its own journal but rejects profiles and orphaned state',()=>{
+  const home=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-blank-home-'));
+  const root=path.join(home,'.local','state','chatgpt-remote-commander');
+  const journal=path.join(root,'rc-universal-native-journal');
+  try{
+    assert.equal(cleanFreshLinuxOwnerState(home),true);
+    fs.mkdirSync(journal,{recursive:true});
+    fs.writeFileSync(path.join(journal,'install.lock'),'mock lock');
+    fs.writeFileSync(path.join(journal,'events.jsonl'),'mock events');
+    assert.equal(cleanFreshLinuxOwnerState(home),true);
+    fs.writeFileSync(path.join(root,'profile.json'),'profile');
+    assert.equal(cleanFreshLinuxOwnerState(home),false);
+    fs.unlinkSync(path.join(root,'profile.json'));
+    fs.mkdirSync(path.join(home,'.local','share','ChatGPTRemoteCommander'),
+      {recursive:true});
+    assert.equal(cleanFreshLinuxOwnerState(home),false);
+    fs.rmSync(path.join(home,'.local','share','ChatGPTRemoteCommander'),
+      {recursive:true});
+    fs.mkdirSync(path.join(home,'.config','chatgpt-remote-commander'),
+      {recursive:true});
+    assert.equal(cleanFreshLinuxOwnerState(home),false);
+    fs.rmSync(path.join(home,'.config','chatgpt-remote-commander'),
+      {recursive:true});
+    assert.equal(cleanFreshLinuxOwnerState(home),true);
+    fs.rmSync(journal,{recursive:true});
+    fs.symlinkSync(home,journal);
+    assert.equal(cleanFreshLinuxOwnerState(home),false);
+  }finally{fs.rmSync(home,{recursive:true,force:true});}
 });

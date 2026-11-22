@@ -73,6 +73,31 @@ function shaOfRuntime(raw){
     'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
   return sha(raw);
 }
+// The owner-local transaction journal is allowed on an otherwise empty host.
+// A real user profile, native Core service or historic Commander data is NOT.
+// Refuse ambiguous links, files in the state root or any unexpected sibling.
+export function cleanFreshLinuxOwnerState(home=os.homedir()){
+  check(typeof home==='string'&&path.isAbsolute(home),
+    'UNIVERSAL_NATIVE_FRESH_OWNER_ROOT_INVALID');
+  const existing=[
+    path.join(home,'.config','chatgpt-remote-commander'),
+    path.join(home,'.local','share','ChatGPTRemoteCommander'),
+    path.join(home,'.local','share','chatgpt-remote-commander')
+  ];
+  for(const root of existing){
+    if(fs.existsSync(root))return false;
+  }
+  const root=path.join(home,'.local','state','chatgpt-remote-commander');
+  if(!fs.existsSync(root))return true;
+  const stat=fs.lstatSync(root);
+  if(!stat.isDirectory()||stat.isSymbolicLink())return false;
+  const entries=fs.readdirSync(root);
+  if(entries.length!==1||entries[0]!=='rc-universal-native-journal')
+    return false;
+  const journal=path.join(root,'rc-universal-native-journal');
+  const st=fs.lstatSync(journal);
+  return st.isDirectory()&&!st.isSymbolicLink();
+}
 /** Effects are internal methods; executeNativeTransaction supplies owner
  * approval, exclusive journal and pre/post-effect reconciliation. */
 export function createNativeOsAdapter({
@@ -83,7 +108,7 @@ export function createNativeOsAdapter({
     &&['x64','arm64'].includes(architecture)
     &&typeof run==='function','UNIVERSAL_NATIVE_PLATFORM_UNSUPPORTED');
   const win=platform==='windows';
-  function getRuntime(){
+  function getRuntime({requireInactiveForFresh=false}={}){
     if(!win){
       const r=run('systemctl',['--user','show',
         'chatgpt-remote-commander.service','-p','MainPID',
@@ -96,8 +121,11 @@ export function createNativeOsAdapter({
       const main=/^MainPID=(\d+)$/m.exec(r.stdout);
       const state=/^ActiveState=([a-z-]+)$/m.exec(r.stdout);
       check(!!main&&!!state,'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
-      // Failed units must remain a distinct runtime failure signal.
+      // Failed units and zero-package but live legacy Core must not be
+      // interpreted as a clean native install target.
       const inactive=main[1]==='0'&&state[1]==='inactive';
+      if(requireInactiveForFresh&&!inactive)
+        fail('UNIVERSAL_NATIVE_FRESH_ACTIVE_LEGACY_CORE');
       return shaOfRuntime(inactive?'NO_ACTIVE_COMMANDER_CORE':r.stdout);
     }
     const script=[
@@ -149,11 +177,7 @@ export function createNativeOsAdapter({
         &&/no packages found matching/i.test(q.stderr)){
         // Fresh means no installed identity AND no existing user config.
         // Any orphaned account/tunnel state must use migration, not install.
-        const roots=[
-          path.join(os.homedir(),'.config','chatgpt-remote-commander'),
-          path.join(os.homedir(),'.local','state','chatgpt-remote-commander')
-        ];
-        check(roots.every(p=>!fs.existsSync(p)),
+        check(cleanFreshLinuxOwnerState(),
           'UNIVERSAL_NATIVE_FRESH_OWNER_STATE_PRESENT');
         version=null;
       }else fail('UNIVERSAL_NATIVE_INSTALLED_PACKAGE_MISSING');
@@ -199,7 +223,8 @@ export function createNativeOsAdapter({
     }
     return {...metadata,version,registeredInstallCount:version===null?0:1,
       integrityVerified:integrity,runtime:{
-        fingerprint:getRuntime(),liveCoreCutover:false,
+        fingerprint:getRuntime({requireInactiveForFresh:version===null}),
+        liveCoreCutover:false,
         ownerGrantIssued:false,existingTunnelModified:false
       }};
   }
