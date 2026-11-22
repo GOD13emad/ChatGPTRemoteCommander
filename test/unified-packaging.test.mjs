@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {Readable} from 'node:stream';
 import {createV2PrivatePairMcpIngress} from '../src/v2-private-pair-mcp-http-ingress.mjs';
 import {createHash} from 'node:crypto';
@@ -356,4 +356,36 @@ test('preview upgrade refuses oversized runtime data without replacing current C
     assert.equal(validateCore(first.target).head,old.head);
     assert.ok(!fs.existsSync(path.join(data,'runtime','core.rollback')));
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('native hosted Core boundary admits exact owner verifier but rejects arbitrary packaging and mode spoofing',()=>{
+ const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+ const m=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]*?)\r?\nPUBLIC_APP_BOUNDARY/);
+ assert.ok(m,'hosted policy must be an executable Python payload check');
+ assert.match(m[1],/owner_verifier="packaging\/unified\/owner-pinned-provenance\.mjs"/);
+ assert.match(m[1],/if index==1:required\.add\(owner_verifier\)/);
+ if(process.platform!=='linux')return;
+ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-public-app-boundary-'));
+ const old=path.join(tmp,'old.contents'),newFile=path.join(tmp,'new.contents');
+ const prefix='./usr/lib/chatgpt-remote-commander/app/';
+ const row=(rel,dir=false)=>(dir?'drwxr-xr-x':'-rw-r--r--')+' root/root 0 2026-11-23 00:00 '+prefix+rel;
+ const common=[row('',true),row('src/',true),row('src/server-v0.3.mjs'),row('config.json'),row('package.json')];
+ const allowed=[...common,row('packaging/',true),row('packaging/unified/',true),row('packaging/unified/owner-pinned-provenance.mjs')];
+ const run=()=>spawnSync('python3',['-',old,newFile],{input:m[1],encoding:'utf8',timeout:12000,env:{...process.env,PATH:tmp+path.delimiter+process.env.PATH}});
+ try{
+  fs.writeFileSync(path.join(tmp,'dpkg-deb'),'#!/bin/sh\n[ "$1" = "--contents" ] || exit 19\nexec /bin/cat -- "$2"\n',{mode:0o700});
+  fs.writeFileSync(old,common.join('\n')+'\n');
+  fs.writeFileSync(newFile,allowed.join('\n')+'\n');
+  const good=run(); assert.equal(good.status,0,good.stderr);
+  assert.match(good.stdout,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/);
+  fs.writeFileSync(newFile,allowed.concat(row('packaging/unified/rogue.sh')).join('\n')+'\n');
+  const rogue=run(); assert.notEqual(rogue.status,0);
+  assert.match(rogue.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED packaging\/unified\/rogue\.sh/);
+  fs.writeFileSync(newFile,allowed.filter(x=>!x.includes('owner-pinned-provenance.mjs')).join('\n')+'\n');
+  const missing=run(); assert.notEqual(missing.status,0);
+  assert.match(missing.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/);
+  fs.writeFileSync(newFile,allowed.map(x=>x===row('packaging/',true)?row('packaging'):x).join('\n')+'\n');
+  const spoof=run(); assert.notEqual(spoof.status,0);
+  assert.match(spoof.stderr,/RC012_PUBLIC_NATIVE_APP_PARENT_NOT_DIRECTORY packaging/);
+ }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });

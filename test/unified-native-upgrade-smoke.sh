@@ -35,8 +35,10 @@ python3 - "$OLD" "$NEW" <<'PUBLIC_APP_BOUNDARY'
 import subprocess, sys
 prefix="./usr/lib/chatgpt-remote-commander/app/"
 allowed_dirs={"src","tools","vendor","assets"}
-allowed_files={"config.json","package.json"}
-for pkg in sys.argv[1:]:
+owner_verifier="packaging/unified/owner-pinned-provenance.mjs"
+allowed_files={"config.json","package.json",owner_verifier}
+allowed_parents={"packaging","packaging/unified"}
+for index,pkg in enumerate(sys.argv[1:]):
     listing=subprocess.check_output(["dpkg-deb","--contents",pkg],text=True)
     seen=set()
     for row in listing.splitlines():
@@ -45,11 +47,17 @@ for pkg in sys.argv[1:]:
         relative=row[at+len(prefix):].split(" -> ",1)[0].strip().rstrip("/")
         if not relative: continue
         head=relative.split("/",1)[0]
+        if relative in allowed_parents:
+            if not row.startswith("d"):
+                raise SystemExit("RC012_PUBLIC_NATIVE_APP_PARENT_NOT_DIRECTORY "+relative)
+            seen.add(relative)
+            continue
         if relative in allowed_files or head in allowed_dirs:
             seen.add(relative)
             continue
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
     required={"package.json","config.json","src/server-v0.3.mjs"}
+    if index==1:required.add(owner_verifier)
     if not required.issubset(seen):
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING")
 print("RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS")
