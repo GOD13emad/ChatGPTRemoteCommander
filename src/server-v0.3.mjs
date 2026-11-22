@@ -19,6 +19,7 @@ import { createOwnerGuiReadOnlyProxy } from './gui-owner-delegation.mjs';
 import { createOwnerWorkspaceReadOnlyProxy } from './owner-workspace-delegation.mjs';
 import { createOwnerWorkspaceProxy } from './owner-workspace-proxy.mjs';
 import { executeWorkspaceTool, assertWorkspaceToolPolicy, workspaceToolDefinitions } from './workspace-tools.mjs';
+import { isWorkspaceControllerToolName } from './workspace-routing.mjs';
 import { exposedGuiTools, assertLegacyGuiPermitted } from './gui-target-only-policy.mjs';
 import { executeBrowserTool, browserToolDefinitions, reapBrowserOrphans } from './browser-tools.mjs';
 import { lockStats } from './locks.mjs';
@@ -652,7 +653,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
           semanticOnly:true,powerMode:true});
         return result;
       }
-      if (name.startsWith('workspace_') && !name.startsWith('workspace_target_')) {
+      if (isWorkspaceControllerToolName(name)) {
         const scopedCtx = currentExecutionContext();
         assertWorkspaceToolPolicy(scopedCtx.config,name,args);
         const delegated=legacyWorkspaceProxy
