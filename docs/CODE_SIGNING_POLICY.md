@@ -32,6 +32,12 @@ The project supports user-configured ChatGPT / Secure MCP Tunnel connections and
 
 The project also needs provider review against SignPath Foundation's restrictions on hacking tools, end-user privacy and security, installer disclosure and signed software scope. Legitimate owner-authorized remote administration does **not** itself establish or deny eligibility.
 
+## Source-pinned Go dependency license preflight (2026-11-22; scoped)
+
+This is a **source-only dependency audit**, not certification of the installer or a completed SignPath/legal review. The official [openai/tunnel-client](https://github.com/openai/tunnel-client) `v0.0.15` annotated tag `f34e8247f17fc964deeac25aead143f6640224cc` resolves to source commit `a390c168ff1b2d14e73a95991c186c6aba3ff5a0`. On an isolated, owner-controlled Windows QA checkout, with the source-declared Go 1.27.0 toolchain and pinned [google/go-licenses/v2 v2.0.1](https://github.com/google/go-licenses), license reports for `./cmd/client-runtime-cloudflared`, `./cmd/client-runtime` and `./cmd/client` each contained **57 library records**, with identical report SHA-256 `8accc819e3c3d3380d0666b5098447f976c6617241826cb50351fee80a28cba4`: **20 Apache-2.0, 20 BSD-3-Clause, 17 MIT**, zero unknown license labels. A scoped `go-licenses check ./cmd/client-runtime-cloudflared` completed successfully and `go-licenses save` emitted **55** source-license/attribution files. No service, active installation or publisher credential was changed.
+
+**Limitations:** `go-licenses` reported non-Go Assembly files requiring separate inspection. Source package reports do not cover or crosswalk all **119** entries in the independently extracted packaged Tunnel SPDX; **117** SPDX entries still have `licenseDeclared=NOASSERTION`. Nor does successful classification prove each required distribution notice, shipped binary provenance, all other native app components, or an applicable legal conclusion. Do **not** infer that the released Tunnel binary was proven reproducibly built from the inspected tag. Keep the broader license/privacy gate open until an independent maintainer/legal reviewer reconciles those scopes.
+
 ## Open admission checks
 
 - [ ] Verify **all shipped components** and licenses/attribution obligations, not merely npm development packages or the presence of SPDX files. Some bundled tunnel SPDX packages have `licenseDeclared=NOASSERTION`; the separate vendor license report is not a legal determination.
