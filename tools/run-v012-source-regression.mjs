@@ -29,7 +29,8 @@ const files = [
   "test/local-ollama-planner.test.mjs",
   "test/native-tunnel-client-observer-linux.test.mjs",
   "test/v012-private-native-worker-adapter.test.mjs",
-  "test/v012-private-owner-worker-key-provision.test.mjs"
+  "test/v012-private-owner-worker-key-provision.test.mjs",
+  "test/windows-owner-tunnel-host-resolution.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -51,7 +52,7 @@ const batches = [
   files.slice(18, 20), // NoPromote and owner-pinned provenance
   files.slice(20, 22), // Protected Core and Windows encrypted recovery
   files.slice(22, 23), // Linux encrypted recovery: two expensive fixtures
-  files.slice(23, 29) // Native owner, dialogs, Tunnel, signed Worker and sealed key
+  files.slice(23, 30) // Native owner, dialogs, Tunnel, Worker, sealed key, hostname
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
