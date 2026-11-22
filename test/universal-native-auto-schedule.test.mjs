@@ -32,6 +32,8 @@ test('Linux scheduler writes only two intended owner unit files and is idempoten
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-stage-timer-'));
  try{
   const calls=[];
+  const prevConfig=process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME=path.join(home,'.config');
   const args={platform:'linux',home,checkRelease:approved,
    run:(p,a)=>{calls.push([p,a]);}};
   const r=enableNativeStageScheduler(args);
@@ -41,10 +43,12 @@ test('Linux scheduler writes only two intended owner unit files and is idempoten
   assert.ok(fs.readFileSync(path.join(dir,
     'chatgpt-commander-native-stage.timer'),'utf8').includes('Persistent=true'));
   assert.equal(calls[0][0],'systemctl');
-  assert.equal(calls[1][1][2],'chatgpt-commander-native-stage.timer');
+  assert.equal(calls[1][1][3],'chatgpt-commander-native-stage.timer');
   enableNativeStageScheduler(args);
   assert.equal(calls.length,4);
- }finally{fs.rmSync(home,{recursive:true,force:true});}
+ }finally{if(prevConfig===undefined)delete process.env.XDG_CONFIG_HOME;
+  else process.env.XDG_CONFIG_HOME=prevConfig;
+  fs.rmSync(home,{recursive:true,force:true});}
 });
 test('Windows scheduler only stages signed release at limited user privilege',()=>{
  const calls=[];
