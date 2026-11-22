@@ -199,3 +199,16 @@ test('legacy default directory resolves ONLY its exact pinned Linux profile',{
       {code:'RC012_LINUX_OWNER_TRUST_FILE_UNSAFE'});
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('all enrolled Linux runtime consumers use the shared owner pair resolver',()=>{
+  const files=[
+    '../tools/provision-owner-worker-key-linux.mjs',
+    '../tools/migrate-owner-tunnel-pin-linux-v2.mjs',
+    '../src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs'
+  ];
+  for(const name of files){
+    const source=fs.readFileSync(new URL(name,import.meta.url),'utf8');
+    assert.match(source,/resolveLinuxOwnerPairDirectory/,
+      'historical default owner-pair alias must resolve centrally: '+name);
+  }
+});
