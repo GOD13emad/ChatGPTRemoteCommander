@@ -14,11 +14,12 @@ export function createOwnerWorkspaceReadOnlyProxy({
  if(policy?.enabled!==true)return null;
  if(platform!=='win32')error('WINDOWS_ONLY');
  if(config?.powerMode?.guiControl?.enabled!==true)error('CORE_GUI_DISABLED');
- if(policy.port!==48838)error('PORT_INVALID');
+ if(policy.port!==48838&&policy.port!==48839)error('PORT_INVALID');
  if(typeof policy.authFile!=='string'||!path.win32.isAbsolute(policy.authFile))error('AUTH_PATH_INVALID');
  if(typeof primaryStatus!=='function'||typeof fetchImpl!=='function')error('DEPENDENCIES_INVALID');
  // Fixed reviewed owner agent endpoint; arbitrary local ports are refused before auth read.
- const endpoint='http://127.0.0.1:48838/mcp';
+ const endpoint=policy.port===48839
+  ?'http://127.0.0.1:48839/mcp':'http://127.0.0.1:48838/mcp';
  return {
   async execute(name,args={}){
    if(name!=='workspace_target_list')return {handled:false};
