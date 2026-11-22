@@ -126,29 +126,44 @@ export class ConversationStore{
     for(const [items,code] of [[composerNames,'COMPOSER'],[sendNames,'SEND'],[stopNames,'STOP']]){
       if(!Array.isArray(items)||items.length<1||items.length>10||items.some(x=>typeof x!=='string'||!x.trim()||x.length>120))fail('CONVERSATION_'+code+'_NAMES_INVALID');
     }
-    const existing=this.binding(pid),stamp=now();
-    this.db.prepare(`INSERT INTO bindings(scope,project_id,project_root,browser,tab_title,composer_names,send_names,stop_names,state,created_at,updated_at,last_seen_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)
-      ON CONFLICT(scope,project_id) DO UPDATE SET project_root=excluded.project_root,browser=excluded.browser,
-      tab_title=excluded.tab_title,composer_names=excluded.composer_names,send_names=excluded.send_names,
-      stop_names=excluded.stop_names,state='BOUND',updated_at=excluded.updated_at`)
-      .run(this.scope,pid,root,browser,tabTitle,stable(composerNames),stable(sendNames),stable(stopNames),'BOUND',existing?.createdAt??stamp,stamp);
-    return this.binding(pid);
+    return this.transaction(()=>{
+      // Pin destination changes behind the same writer lock as claimNext.
+      // An active or uncertain UI send cannot be redirected or silently
+      // resurrected by a concurrent browser/tab rebind.
+      const inFlight=this.db.prepare(
+        "SELECT 1 AS n FROM handoffs WHERE scope=? AND project_id=? AND state IN ('CLAIMED','UNCERTAIN') LIMIT 1"
+      ).get(this.scope,pid);
+      if(inFlight)fail('CONVERSATION_DELIVERY_IN_FLIGHT');
+      const existing=this.binding(pid),stamp=now();
+      this.db.prepare(`INSERT INTO bindings(scope,project_id,project_root,browser,tab_title,composer_names,send_names,stop_names,state,created_at,updated_at,last_seen_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,NULL)
+        ON CONFLICT(scope,project_id) DO UPDATE SET project_root=excluded.project_root,browser=excluded.browser,
+        tab_title=excluded.tab_title,composer_names=excluded.composer_names,send_names=excluded.send_names,
+        stop_names=excluded.stop_names,state='BOUND',updated_at=excluded.updated_at`)
+        .run(this.scope,pid,root,browser,tabTitle,stable(composerNames),stable(sendNames),stable(stopNames),'BOUND',existing?.createdAt??stamp,stamp);
+      return this.binding(pid);
+    });
   }
   unbind(pid){
     pid=projectId(pid);
-    if(!this.binding(pid))return {projectId:pid,unbound:false};
-    this.transaction(()=>{
-      this.db.prepare("UPDATE bindings SET state='UNBOUND',updated_at=? WHERE scope=? AND project_id=?").run(now(),this.scope,pid);
-      this.db.prepare("UPDATE handoffs SET state='CANCELLED',updated_at=?,last_code='CONVERSATION_UNBOUND' WHERE scope=? AND project_id=? AND state IN ('QUEUED','CLAIMED','DEFERRED')")
-        .run(now(),this.scope,pid);
+    return this.transaction(()=>{
+      if(!this.binding(pid))return {projectId:pid,unbound:false};
+      const stamp=now();
+      this.db.prepare("UPDATE bindings SET state='UNBOUND',updated_at=? WHERE scope=? AND project_id=?").run(stamp,this.scope,pid);
+      // A claimed send may already have reached the external chat.
+      // Never assert cancellation or blindly retry an in-flight effect.
+      this.db.prepare("UPDATE handoffs SET state='UNCERTAIN',attempt_id=NULL,lease_until=NULL,next_attempt_at=NULL,updated_at=?,last_code='CONVERSATION_UNBOUND_IN_FLIGHT_OUTCOME_UNCERTAIN' WHERE scope=? AND project_id=? AND state='CLAIMED'")
+        .run(stamp,this.scope,pid);
+      this.db.prepare("UPDATE handoffs SET state='CANCELLED',attempt_id=NULL,lease_until=NULL,next_attempt_at=NULL,updated_at=?,last_code='CONVERSATION_UNBOUND' WHERE scope=? AND project_id=? AND state IN ('QUEUED','DEFERRED')")
+        .run(stamp,this.scope,pid);
+      return {projectId:pid,unbound:true};
     });
-    return {projectId:pid,unbound:true};
   }
   markBinding(pid,state,{seen=false}={}){
     pid=projectId(pid);boundedText(state,64,'CONVERSATION_BINDING_STATE_INVALID');
     const stamp=now();
-    this.db.prepare('UPDATE bindings SET state=?,updated_at=?,last_seen_at=CASE WHEN ?=1 THEN ? ELSE last_seen_at END WHERE scope=? AND project_id=?')
+    // Late UI observations may not re-enable an explicitly unbound chat.
+    this.db.prepare("UPDATE bindings SET state=?,updated_at=?,last_seen_at=CASE WHEN ?=1 THEN ? ELSE last_seen_at END WHERE scope=? AND project_id=? AND state!='UNBOUND'")
       .run(state,stamp,seen?1:0,stamp,this.scope,pid);
     return this.binding(pid);
   }

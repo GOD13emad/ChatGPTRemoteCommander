@@ -195,8 +195,9 @@ export function createConversationController({
   async function attemptOne(){
     if(closed||busy)return null;
     busy=true;
+    let item=null;
     try{
-      const item=store.claimNext({leaseMs:30000});
+      item=store.claimNext({leaseMs:30000});
       if(!item){schedule();return null;}
       const binding=store.binding(item.projectId);
       if(!binding||binding.state==='UNBOUND'){
@@ -232,6 +233,19 @@ export function createConversationController({
       const deferred=store.defer(item.handoffId,item.attemptId,code,delayFor(code,item.deferrals));
       schedule();
       return deferred;
+    }catch(error){
+      // A native UI send may complete after the owner unbound its chat.
+      // Preserve the UNCERTAIN audit record; do not falsely acknowledge,
+      // retry or surface a misleading background dispatcher rejection.
+      if(error?.conversationCode==='CONVERSATION_CLAIM_LOST'&&item){
+        const current=store.get(item.handoffId);
+        if(current.state==='UNCERTAIN'
+          &&current.lastCode==='CONVERSATION_UNBOUND_IN_FLIGHT_OUTCOME_UNCERTAIN'){
+          schedule();
+          return current;
+        }
+      }
+      throw error;
     }finally{
       busy=false;
     }
