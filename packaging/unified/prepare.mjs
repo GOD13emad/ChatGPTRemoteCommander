@@ -16,6 +16,17 @@ if(unifiedContract.schema!=='rc-unified-installer-v1' ||
    unifiedContract.sourceTrain!=='0.12' ||
    unifiedContract.nativeCandidateRoot!=='packaging/unified' ||
    unifiedContract.qaTransactionHelper!=='tools/universal-install/engine.mjs' ||
+   unifiedContract.nativeInstallAuthority!=='tools/universal-install/native-cli.mjs' ||
+   unifiedContract.nativeTransactionalEngine?.entrypoint!==unifiedContract.nativeInstallAuthority ||
+   unifiedContract.nativeTransactionalEngine?.commonCoordinator!=='tools/universal-install/native-transaction.mjs' ||
+   unifiedContract.nativeTransactionalEngine?.journal!=='tools/universal-install/native-journal.mjs' ||
+   unifiedContract.nativeTransactionalEngine?.osAdapter!=='tools/universal-install/native-os-adapters.mjs' ||
+   unifiedContract.nativeTransactionalEngine?.manifestGenerator!=='tools/universal-install/native-manifest.mjs' ||
+   unifiedContract.nativeTransactionalEngine?.provenanceModule!=='packaging/unified/owner-pinned-provenance.mjs' ||
+   unifiedContract.nativeTransactionalEngine?.initialInstallNeedsHistoricalPackage!==false ||
+   unifiedContract.nativeTransactionalEngine?.ownerIndependentProvenanceRequired!==true ||
+   unifiedContract.nativeTransactionalEngine?.coreCutoverAllowed!==false ||
+   unifiedContract.nativeTransactionalEngine?.initialInstallIsLiveOwnerHostAccepted!==false ||
    !Array.isArray(unifiedContract.requiredEmbeddedCoreFiles) ||
    unifiedContract.requiredEmbeddedCoreFiles.length<5 ||
    unifiedContract.presentation?.crossOsVisualParityAccepted!==false)
@@ -46,7 +57,8 @@ const tar=path.join(stage,'committed-core.tar');
 if(fs.existsSync(tar))throw Error('UNIFIED_ARCHIVE_PREEXISTS');
 try{
   execFileSync('git',['-c','core.autocrlf=false','archive','--format=tar','--output',tar,head,
-    'src','tools','vendor','assets','config.json','package.json'],{
+    'src','tools','vendor','assets','config.json','package.json',
+    'packaging/unified/owner-pinned-provenance.mjs'],{
       cwd:repo,timeout:30000,env:{...process.env,GIT_NO_LAZY_FETCH:'1'}
     });
   execFileSync('tar',['-xf',tar,'-C',core],{timeout:30000});

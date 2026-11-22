@@ -749,8 +749,13 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       security:{
         directory:path.join(root,'owner-grants'),
         issuer:'commander.local',audience:'remote-commander',
+        // server-v0.3 supplies this trusted receipt store in production.
+        // Source before the factory-mode fix rejected this as "ambiguous".
+        receiptStore,
         resolveOwnerRoute:async handle=>route(handle),
-        bindWorkerToNativeOwner:({ownerStack,identity})=>{
+        bindWorkerToNativeOwner:({ownerStack,identity,receiptStore:boundReceipts})=>{
+          assert.equal(boundReceipts,receiptStore);
+          assert.equal(typeof identity.resolveTransportIdentity,'function');
           assert.equal(ownerStack.nativeSessionBindings.size,0);
           assert.equal(typeof ownerStack.grantRegistry.readWorkerGrant,'function');
           assert.equal(identity.hostId,'host-1');
@@ -900,7 +905,7 @@ test('real full-catalog 0.12 owner-local protected boot stays fail-closed withou
     assert.equal(result.status,0,(result.stderr||'').slice(-1024));
     const proof=JSON.parse((result.stdout||'').trim());
     assert.equal(proof.result,'RC012_OWNER_LOCAL_PROTECTED_SOURCE_CANARY_PASS');
-    assert.equal(proof.version,'0.12.0-dev.9');
+    assert.equal(proof.version,'0.12.0-dev.10');
     assert.equal(proof.protectedIngressWired,true);
     assert.equal(proof.protectedIngressReady,false);
     assert.equal(proof.tlsClientAuthenticated,true);

@@ -10,6 +10,10 @@ import {win32} from 'node:path';
 
 const PROFILE=/^[A-Za-z0-9_-]{1,64}$/;
 const HASH=/^[a-f0-9]{64}$/;
+// Existing DPAPI credentials retain raw-SID-v1 custody by default.
+// Explicit native-j01-v2 custody matches the trusted WTS/J01 owner session.
+const OWNER_HASH_MODES=new Set(['raw-sid-v1','native-j01-v2']);
+const J01_SID_EXPRESSION="'commander.os-owner.sid.v1'+[char]0+'win32'+[char]0+'sid='+$sid";
 const PREFIX=Buffer.from('302e020100300506032b657004220420','hex');
 const fail=code=>{throw Object.assign(new Error(code),{code,nativeWorkerKeyCode:code});};
 
@@ -81,18 +85,21 @@ function executePowerShell({execFileImpl,powershellPath,script,encoding,maxBuffe
 /** Resolve only the current Windows process owner's SID hash; this is not GUI consent. */
 export function createWindowsNativeOwnerSidHashResolver({
   platform=process.platform,execFileImpl=execFileDefault,
-  powershellPath=defaultPowerShellPath(),verifyExecutable=defaultVerifyExecutable
+  powershellPath=defaultPowerShellPath(),verifyExecutable=defaultVerifyExecutable,
+  ownerHashMode='raw-sid-v1'
 }={}){
   if(platform!=='win32'||typeof execFileImpl!=='function'
-    ||typeof verifyExecutable!=='function')
+    ||typeof verifyExecutable!=='function'
+    ||!OWNER_HASH_MODES.has(ownerHashMode))
     fail('NATIVE_WORKER_KEY_WINDOWS_BOOTSTRAP_REQUIRED');
   const executable=localWindowsPath(powershellPath,'NATIVE_WORKER_KEY_POWERSHELL_PATH_INVALID');
   assertTrustedPowerShell(executable,verifyExecutable);
+  const sidSource=ownerHashMode==='native-j01-v2'?J01_SID_EXPRESSION:'$sid';
   const script=[
     "$ErrorActionPreference='Stop'",
     "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
     "$sha=[Security.Cryptography.SHA256]::Create()",
-    "try{$bytes=[Text.Encoding]::UTF8.GetBytes($sid);$digest=$sha.ComputeHash($bytes);$hash=[BitConverter]::ToString($digest).Replace('-','').ToLowerInvariant();[Console]::Out.Write($hash)}",
+    "try{$bytes=[Text.Encoding]::UTF8.GetBytes("+sidSource+");$digest=$sha.ComputeHash($bytes);$hash=[BitConverter]::ToString($digest).Replace('-','').ToLowerInvariant();[Console]::Out.Write($hash)}",
     "finally{if($bytes){[Array]::Clear($bytes,0,$bytes.Length)};if($digest){[Array]::Clear($digest,0,$digest.Length)};$sha.Dispose()}"
   ].join('\n');
   return async()=>{
@@ -122,29 +129,35 @@ export function createWindowsNativeOwnerSidHashResolver({
 export function createWindowsDpapiSeedLoader({
   platform=process.platform,credentialPath,profileId,
   execFileImpl=execFileDefault,powershellPath=defaultPowerShellPath(),
-  verifyExecutable=defaultVerifyExecutable
+  verifyExecutable=defaultVerifyExecutable,ownerHashMode='raw-sid-v1'
 }={}){
   if(platform!=='win32'||typeof execFileImpl!=='function'
-    ||typeof verifyExecutable!=='function'||!PROFILE.test(profileId??''))
+    ||typeof verifyExecutable!=='function'||!PROFILE.test(profileId??'')
+    ||!OWNER_HASH_MODES.has(ownerHashMode))
     fail('NATIVE_WORKER_KEY_WINDOWS_BOOTSTRAP_REQUIRED');
   const file=localWindowsPath(credentialPath,'NATIVE_WORKER_KEY_CREDENTIAL_PATH_INVALID');
   const executable=localWindowsPath(powershellPath,'NATIVE_WORKER_KEY_POWERSHELL_PATH_INVALID');
   assertTrustedPowerShell(executable,verifyExecutable);
   const pathB64=Buffer.from(file,'utf8').toString('base64');
   const profileB64=Buffer.from(profileId,'utf8').toString('base64');
+  const sidSource=ownerHashMode==='native-j01-v2'?J01_SID_EXPRESSION:'$sid';
   return async({ownerSidHash}={})=>{
     if(!HASH.test(ownerSidHash??''))fail('NATIVE_WORKER_KEY_OWNER_UNAVAILABLE');
     const script=[
       "$ErrorActionPreference='Stop'",
       "$ProgressPreference='SilentlyContinue'",
       "Add-Type -AssemblyName System.Security -ErrorAction Stop | Out-Null",
-      "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop | Out-Null",
+      // Importing an already-present PowerShell 7 WindowsCompatibility module
+      // can fail with remote proxy shadowing even though Get-Acl is usable.
+      // Resolve ONLY the genuine local Security cmdlet first, then conditionally
+      // import the trusted module. Never enable AllowClobber or a user alias.
+      "if(-not(Get-Command -Name Get-Acl -CommandType Cmdlet -ErrorAction SilentlyContinue)){Import-Module Microsoft.PowerShell.Security -ErrorAction Stop | Out-Null}",
       "$path=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+pathB64+"'))",
       "$profile=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+profileB64+"'))",
       "$expectedOwner='"+ownerSidHash+"'",
       "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
       "$sha=[Security.Cryptography.SHA256]::Create()",
-      "try{$sidBytes=[Text.Encoding]::UTF8.GetBytes($sid);$sidDigest=$sha.ComputeHash($sidBytes);$actualOwner=[BitConverter]::ToString($sidDigest).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}",
+      "try{$sidBytes=[Text.Encoding]::UTF8.GetBytes("+sidSource+");$sidDigest=$sha.ComputeHash($sidBytes);$actualOwner=[BitConverter]::ToString($sidDigest).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}",
       "if($actualOwner -cne $expectedOwner){throw 'OWNER_MISMATCH'}",
       "function Assert-PrivateAcl([string]$Target,[string]$OwnerSid,[bool]$Directory){",
       "  $item=Get-Item -LiteralPath $Target -Force",
@@ -190,14 +203,17 @@ export function createWindowsDpapiSeedLoader({
 export function createWindowsDpapiWorkerKeyProvider({
   platform=process.platform,profileId,expectedKeyId,credentialPath,
   resolveOwnerSidHash,readProtectedSeed,execFileImpl=execFileDefault,
-  powershellPath=defaultPowerShellPath(),verifyExecutable=defaultVerifyExecutable
+  powershellPath=defaultPowerShellPath(),verifyExecutable=defaultVerifyExecutable,
+  ownerHashMode='raw-sid-v1'
 }={}){
   if(platform!=='win32'||!PROFILE.test(profileId??'')||!HASH.test(expectedKeyId??'')
+    ||!OWNER_HASH_MODES.has(ownerHashMode)
     ||typeof resolveOwnerSidHash!=='function'
     ||(typeof readProtectedSeed!=='function'&&typeof credentialPath!=='string'))
     fail('NATIVE_WORKER_KEY_PROVIDER_CONFIGURATION_REQUIRED');
   const loadSeed=readProtectedSeed??createWindowsDpapiSeedLoader({
-    platform,credentialPath,profileId,execFileImpl,powershellPath,verifyExecutable
+    platform,credentialPath,profileId,execFileImpl,powershellPath,verifyExecutable,
+    ownerHashMode
   });
   async function loadPrivateKey(){
     let supplied,seed,der,publicDer;

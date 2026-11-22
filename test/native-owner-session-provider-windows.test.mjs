@@ -64,6 +64,8 @@ test('Windows snapshot pins active WTS session, OS SID digest, and no GUI prompt
   assert.equal(await p.observedNativeSession(route()),'windows-wts-2');
   assert.equal(calls.length,3);
   assert.ok(calls.every(x=>x.args.includes('Snapshot')));
+  assert.ok(calls.every(x=>x.options.windowsHide===true),
+    'read-only owner snapshots never create a visible console');
 });
 
 test('Windows owner snapshot fail-closes on service, inactive, forged, unknown or changed token',async t=>{
@@ -104,6 +106,12 @@ test('Windows consent demands fresh typed challenge and rechecks WTS/SID',async(
   assert.equal(await p.requestConsent(approveInput(before)),true);
   assert.deepEqual(calls.map(x=>x.args.at(x.args.indexOf('-Mode')+1)),
     ['Snapshot','Snapshot','Consent','Snapshot']);
+  const dialog=calls.find(x=>x.args.includes('Consent'));
+  assert.equal(dialog.options.windowsHide,false,
+    'typed owner challenge must render visibly on the native WTS desktop');
+  assert.ok(calls.filter(x=>x.args.includes('Snapshot'))
+    .every(x=>x.options.windowsHide===true),
+    'non-interactive owner snapshots must stay hidden');
   const n=calls.length;
   assert.equal(await p.requestConsent({...approveInput(before),
     expectedOwnerSidHash:'f'.repeat(64)}),false);

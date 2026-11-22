@@ -28,10 +28,12 @@ function validWorkerSecurity(s){
     &&typeof s.workerRegistry?.get==='function'
     &&typeof s.receiptStore?.execute==='function';
 }
+// Core's trusted receiptStore is injected by server-v0.3 and is shared with
+// BOTH bootstrap modes; it must not be mistaken for a competing Worker grant.
 const WORKER_CALLBACK_FIELDS=Object.freeze([
   'resolveTrustedToolRoute','resolveCurrentOwnerRoute',
   'resolveCurrentWorkerId','withLease','workerAuthority',
-  'workerRegistry','receiptStore'
+  'workerRegistry'
 ]);
 
 /**
@@ -117,11 +119,17 @@ export function createV012PrivateCoreRuntime({
         hostId:identity.hostId,profileId:identity.profileId,
         principalId:identity.principalId,
         expectedTunnelIdHash:identity.expectedTunnelIdHash,
-        expectedOwnerSidHash:identity.expectedOwnerSidHash
-      })}))
+        expectedOwnerSidHash:identity.expectedOwnerSidHash,
+        // The Worker authority must attest the EXACT same host-pinned
+        // transport as Core, never a separately selected client callback.
+        resolveTransportIdentity:identity.resolveTransportIdentity
+      }),receiptStore:security.receiptStore}))
       :security;
     if(!validWorkerSecurity(worker))
       fail('V012_PRIVATE_CORE_WORKER_BOOTSTRAP_REQUIRED');
+    if(factory&&security.receiptStore!==undefined
+      &&worker.receiptStore!==security.receiptStore)
+      fail('V012_PRIVATE_CORE_RECEIPT_STORE_MISMATCH');
     const verifyExactNativeGrant=createV2PrivateSignedWorkerGrantAdapter({
       hostId:identity.hostId,profileId:identity.profileId,
       principalId:identity.principalId,

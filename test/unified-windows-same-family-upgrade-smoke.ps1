@@ -17,7 +17,7 @@ if((git -C $env:GITHUB_WORKSPACE rev-parse HEAD).Trim() -cne $env:GITHUB_SHA){
 }
 $oldVersion='0.12.0-dev.8'
 $newVersion=(node -p 'require(process.argv[1]).version' (Join-Path $env:GITHUB_WORKSPACE 'package.json')).Trim()
-if($newVersion -cne '0.12.0-dev.9'){throw 'RC012_NSIS_EXPECTED_CANDIDATE_CHANGED'}
+if($newVersion -cne '0.12.0-dev.10'){throw 'RC012_NSIS_EXPECTED_CANDIDATE_CHANGED'}
 $old=Get-Item -LiteralPath $OldInstaller -ErrorAction Stop
 $new=Get-Item -LiteralPath $CandidateInstaller -ErrorAction Stop
 if($old.FullName -ceq $new.FullName -or

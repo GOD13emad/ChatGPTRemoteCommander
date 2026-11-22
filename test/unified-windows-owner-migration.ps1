@@ -9,7 +9,11 @@ $installer=@(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'dist/u
 if($installer.Count -ne 1){throw 'RC012_MIGRATION_ONE_EXACT_INSTALLER_REQUIRED'}
 $exe=$installer[0].FullName
 $sha=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
-$version='0.12.0-dev.9'
+$version=(Get-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'package.json') -Raw | ConvertFrom-Json).version
+$guiVersion=(Get-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'packaging/unified/package.json') -Raw | ConvertFrom-Json).version
+$train=Get-Content -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'docs/release-train-0.12.json') -Raw | ConvertFrom-Json
+if($version -notmatch '^0\.12\.0-dev\.[1-9][0-9]*$' -or $version -cne $guiVersion -or
+   $version -cne $train.sourceVersion){throw 'RC012_WINDOWS_NATIVE_VERSION_DRIFT'}
 $script=Join-Path $env:GITHUB_WORKSPACE 'packaging/unified/owner-windows-legacy-migrate.ps1'
 $legacyKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommander'
 $install=Join-Path $env:LOCALAPPDATA 'Programs\Remote Commander'

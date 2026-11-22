@@ -1,6 +1,6 @@
 {
   "name": "remote-commander-unified",
-  "version": "0.12.0-dev.9",
+  "version": "0.12.0-dev.10",
   "private": true,
   "productName": "Remote Commander",
   "main": "main.cjs",
@@ -15,5 +15,13 @@
   },
   "description": "Cross-platform Remote Commander pilot with source-pinned isolated Core",
   "author": "Aliakbar Emadoddin <94546844+GOD13emad@users.noreply.github.com>",
-  "homepage": "https://github.com/GOD13emad/ChatGPTRemoteCommander"
+  "homepage": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
+  "overrides": {
+    "app-builder-lib": {
+      "minimatch": "11.0.9"
+    },
+    "@electron/universal": {
+      "minimatch": "11.0.9"
+    }
+  }
 }
