@@ -33,7 +33,7 @@ const owner=()=>({
   principalId:'account-a',conversationId:'chat-a',
   bindingId:BINDING,ownerSidHash:OWNER,tunnelIdHash:TUNNEL,expiresAtMs:NOW+30000
 });
-function fixture(t){
+function fixture(t,{beforeLease}={}){
   const dir=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'rc013-signed-sql-integration-'));
   const sink=new Rc013SqliteEffectSink({
     databasePath:path.join(dir,'owner.sqlite'),
@@ -103,7 +103,7 @@ function fixture(t){
       return verifiedGrant(req);
     },
     // DO NOT substitute this test-only lease for a machine-global root lease.
-    withLease:async(_key,effect)=>effect(),
+    withLease:async(_key,effect)=>{if(beforeLease)await beforeLease(state);return effect();},
     receiptStore:receipt,
     execute:async(r,args,tool)=>{
       state.invocations++;
@@ -143,6 +143,32 @@ test('revoked signed worker grant denies even a cached operation receipt',async 
   await assert.rejects(h.call(),{code:'V2_GRANT_REQUIRED'});
   assert.equal(h.state.invocations,1);
   assert.equal(h.sink.inspect('project-a','accepted'),1);
+});
+test('revocation while acquiring the lease denies before reserving a receipt or SQL write',async t=>{
+  const h=fixture(t,{beforeLease:state=>{state.grantActive=false;}});
+  await assert.rejects(h.call(),{code:'V2_GRANT_REQUIRED'});
+  assert.equal(h.state.invocations,0);
+  assert.equal(h.sink.inspect('project-a','accepted'),0);
+  assert.deepEqual(h.receipt.status().states,{});
+});
+test('revocation after PREPARED receipt blocks effect and keeps retry uncertain',async t=>{
+  const h=fixture(t);
+  const originalExecute=h.receipt.execute.bind(h.receipt);
+  let reservations=0;
+  h.receipt.execute=async (details,effect)=>originalExecute(details,async()=>{
+    reservations++;
+    h.state.grantActive=false;
+    return effect();
+  });
+  await assert.rejects(h.call(),{code:'V2_GRANT_REQUIRED'});
+  assert.equal(reservations,1);
+  assert.equal(h.state.invocations,0);
+  assert.equal(h.sink.inspect('project-a','accepted'),0);
+  assert.equal(h.receipt.status().states.UNCERTAIN,1);
+  h.state.grantActive=true;
+  await assert.rejects(h.call(),e=>
+    e?.mutationIdempotencyCode==='MUTATION_OUTCOME_UNCERTAIN');
+  assert.equal(h.sink.inspect('project-a','accepted'),0);
 });
 test('stale native owner epoch fences SQL effect although signed grant remains valid',async t=>{
   const h=fixture(t);
