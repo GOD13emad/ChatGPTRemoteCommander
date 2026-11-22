@@ -382,10 +382,27 @@ export function assessMigration(facts){
     throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
   const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
+  // Windows owner-managed PowerShell deployments need not register either
+  // Inno or NSIS. An observed legacy Router OR an exact live tunnel-target
+  // Core health version proves an existing runtime, not its installer family.
+  // Independent account tunnels can target Core directly, without a Router.
+  // Fail closed before proposing a destructive fresh-install transaction.
+  const liveOldWindowsCore=facts.routerDetected===true
+    ||(facts.tunnelProfileValid===true
+      &&facts.tunnelTargetTls!==true
+      &&typeof facts.tunnelTargetVersion==='string'
+      &&/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(facts.tunnelTargetVersion));
+  const liveUnregisteredWindowsCore=facts.platform==='win32'
+    &&liveOldWindowsCore
+    &&facts.legacyInnoPresent!==true
+    &&facts.nativeUnifiedNsisPresent!==true;
   const oldPresent=facts.platform==='win32'
     ?facts.legacyInnoPresent===true||facts.nativeUnifiedNsisPresent===true
+      ||liveUnregisteredWindowsCore
     :facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
+  if(liveUnregisteredWindowsCore)
+    blocked.push('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED');
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
   if(facts.platform==='win32'&&facts.routerDetected===true
     &&facts.routerMappingMatches!==true)
@@ -419,7 +436,7 @@ export function assessMigration(facts){
         ||!facts.tunnelTargetVersion.startsWith('0.12.')))
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
-  if(facts.platform==='win32' && oldPresent){
+  if(facts.platform==='win32' && oldPresent&&!liveUnregisteredWindowsCore){
     if(facts.nativeUnifiedNsisPresent===true&&facts.legacyInnoPresent!==true){
       if(facts.ownerRegisteredInstallerFamily==='unified-nsis')
         blocked.push('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED');
