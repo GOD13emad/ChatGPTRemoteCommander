@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {inspectLinuxGuiSandbox,planLinuxGuiSandboxPolicy,revalidateLinuxGuiPolicyPlan} from '../tools/universal-install/native-linux-gui-sandbox.mjs';
+import {inspectLinuxGuiSandbox,planLinuxGuiSandboxPolicy,revalidateLinuxGuiPolicyPlan,reconcileLinuxGuiPolicyFailure} from '../tools/universal-install/native-linux-gui-sandbox.mjs';
 import {createNativeOsAdapter} from '../tools/universal-install/native-os-adapters.mjs';
 const ROOT='/opt/Remote Commander';
 const p=ROOT+'/resources/apparmor-profile',gui=ROOT+'/remote-commander-unified';
@@ -331,4 +331,66 @@ test('shared adapter revalidates Linux policy intents without any OS command',()
    run:()=>{throw Error('forbidden native effect')}
  });
  assert.equal(Object.hasOwn(win,'revalidateGuiPolicyPlan'),false);
+});
+
+
+test('failed native effect with identical baseline is observed but never auto-rolled-back',()=>{
+ const f=fixture(),initial=planLinuxGuiSandboxPolicy(f);
+ const state=reconcileLinuxGuiPolicyFailure(initial,f);
+ assert.equal(state.status,'BASELINE_STATE_REOBSERVED');
+ assert.equal(state.baselineMatched,true);
+ assert.equal(state.effectOutcomeKnown,false);
+ assert.equal(state.nativeRollbackAuthorized,false);
+ assert.equal(state.journalReconciliationRequired,true);
+ assert.equal(state.stablePromotionAccepted,false);
+});
+test('foreign post-effect system profile refuses blind rollback',()=>{
+ const f=fixture(),initial=planLinuxGuiSandboxPolicy(f),old=f.stat;
+ f.stat=x=>x==='/etc/apparmor.d/remote-commander-unified'
+   ?fileInfo(Buffer.from(profile),{ino:77}):old(x);
+ const state=reconcileLinuxGuiPolicyFailure(initial,f);
+ assert.equal(state.status,'NEEDS_MANUAL_RECONCILIATION');
+ assert.equal(state.nativeRollbackAuthorized,false);
+});
+test('partial kernel policy load with no profile file cannot be blindly removed',()=>{
+ const f=fixture(),initial=planLinuxGuiSandboxPolicy(f);
+ f.readKernelProfiles=()=>Buffer.from('remote-commander-unified (enforce)\n');
+ const state=reconcileLinuxGuiPolicyFailure(initial,f);
+ assert.equal(state.status,'NEEDS_MANUAL_RECONCILIATION');
+ assert.equal(state.effectOutcomeKnown,false);
+});
+test('native failure changing parent identity disallows automatic restore',()=>{
+ const f=fixture(),initial=planLinuxGuiSandboxPolicy(f),old=f.stat;
+ f.stat=x=>{
+   const stat=old(x);
+   return x===ROOT?{...stat,ino:stat.ino+1}:stat;
+ };
+ const state=reconcileLinuxGuiPolicyFailure(initial,f);
+ assert.equal(state.status,'NEEDS_MANUAL_RECONCILIATION');
+ assert.notEqual(state.baselineFingerprint,state.observedFingerprint);
+});
+test('unknown kernel observation during recovery is journal-reconciliation-only',()=>{
+ const f=fixture(),initial=planLinuxGuiSandboxPolicy(f);
+ f.readKernelProfiles=()=>{throw Object.assign(new Error('denied'),{code:'EACCES'});};
+ const state=reconcileLinuxGuiPolicyFailure(initial,f);
+ assert.equal(state.status,'NEEDS_MANUAL_RECONCILIATION');
+ assert.equal(state.nativeRollbackAuthorized,false);
+});
+test('fake or mismatched recovery plans fail before effects',()=>{
+ const f=fixture(),initial=planLinuxGuiSandboxPolicy(f);
+ assert.throws(()=>reconcileLinuxGuiPolicyFailure({...initial,preEffectStateFingerprint:'x'},f),
+  {code:'RC_GUI_POLICY_RECOVERY_PLAN_INVALID'});
+ assert.throws(()=>reconcileLinuxGuiPolicyFailure(initial,{...f,expectedProfileSha256:'a'.repeat(64)}),
+  {code:'RC_GUI_POLICY_RECOVERY_PLAN_INVALID'});
+});
+test('existing native adapter exposes recovery observation only on Linux',()=>{
+ const linux=createNativeOsAdapter({platform:'linux',architecture:'x64',
+   run:()=>{throw Error('native OS effects forbidden')}});
+ const f=fixture(),initial=linux.planGuiSandboxPolicy(f);
+ const recovered=linux.reconcileGuiPolicyFailure(initial,f);
+ assert.equal(recovered.status,'BASELINE_STATE_REOBSERVED');
+ assert.equal(recovered.nativeRollbackAuthorized,false);
+ const windows=createNativeOsAdapter({platform:'windows',architecture:'x64',
+   run:()=>{throw Error('native OS effects forbidden')}});
+ assert.equal(Object.hasOwn(windows,'reconcileGuiPolicyFailure'),false);
 });
