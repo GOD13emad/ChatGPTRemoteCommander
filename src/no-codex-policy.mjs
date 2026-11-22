@@ -143,12 +143,29 @@ function scriptLaunchesCodex(text) {
   for (const match of text.matchAll(/(?:^|[;\r\n])\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:r|u|f|fr|rf)?["'][^"'\r\n]*(?:codex(?:\.exe)?|codex-cli|@openai[\\/]codex)[^"'\r\n]*["']/ig)) {
     variableNames.add(match[1]);
   }
-  for (const name of variableNames) {
-    const pattern = new RegExp(
-      '(?:subprocess\\.(?:Popen|run|call|check_call|check_output)|spawn|spawnSync|exec|execFile|execSync|execFileSync)\\s*\\([^\\r\\n]{0,700}\\b' + name + '\\b',
-      'i'
-    );
-    if (pattern.test(text)) return true;
+  if (variableNames.size === 0) return false;
+  // This is a policy-denial scanner: overlarge indirect-launch inputs fail
+  // closed instead of creating RegExp patterns from script-controlled names.
+  if (variableNames.size > 256) return true;
+  const maxNameLength = Math.max(...Array.from(variableNames, name => name.length));
+  if (maxNameLength > 256) return true;
+  const knownNames = new Set(Array.from(variableNames, name => name.toLowerCase()));
+  const launchPrefix = /(?:subprocess\.(?:Popen|run|call|check_call|check_output)|spawn|spawnSync|exec|execFile|execSync|execFileSync)\s*\(/ig;
+  const identifier = /\b[A-Za-z_][A-Za-z0-9_]*\b/g;
+  let inspected = 0;
+  for (const call of text.matchAll(launchPrefix)) {
+    if (++inspected > 8192) return true;
+    const argsStart = call.index + call[0].length;
+    // Match the old 700-character pre-variable window and include the whole
+    // longest possible name; never inspect tokens on a later script line.
+    const args = text.slice(argsStart, argsStart + 700 + maxNameLength).split(/[\r\n]/, 1)[0];
+    for (const token of args.matchAll(identifier)) {
+      if (token.index > 700) break;
+      const end = argsStart + token.index + token[0].length;
+      // A clipped identifier is not a complete variable name.
+      if (/^[A-Za-z0-9_]$/.test(text[end] ?? '')) continue;
+      if (knownNames.has(token[0].toLowerCase())) return true;
+    }
   }
   return false;
 }
