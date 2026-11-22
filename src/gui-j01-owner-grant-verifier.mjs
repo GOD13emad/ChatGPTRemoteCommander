@@ -18,7 +18,7 @@ const RECORD = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 // any signature/context field. Proxy/accessor and hidden fields are invalid:
 // validating signed bytes while subsequently reading the mutable source can
 // authorize a different operation with a valid signature for an old operation.
-function ownData(value, fields, code) {
+export function snapshotJ01PlainData(value, fields, code) {
   if (!RECORD(value) || isProxy(value) ||
       ![Object.prototype, null].includes(Object.getPrototypeOf(value)))
     throw new Error(code);
@@ -36,16 +36,16 @@ function ownData(value, fields, code) {
   }
   return Object.freeze(snapshot);
 }
-function grantSnapshot(payload) {
-  const p=ownData(payload,FIELDS,'J01_GRANT_FIELDSET_INVALID');
-  const input=ownData(p.requestedInput,['pointer','keyboard'],
+export function snapshotJ01GrantPayload(payload) {
+  const p=snapshotJ01PlainData(payload,FIELDS,'J01_GRANT_FIELDSET_INVALID');
+  const input=snapshotJ01PlainData(p.requestedInput,['pointer','keyboard'],
     'J01_GRANT_INPUT_SCOPE_INVALID');
   return Object.freeze({...p,requestedInput:input});
 }
-function expectedSnapshot(value) {
-  const e=ownData(value,null,'J01_EXPECTED_CONTEXT_INVALID');
-  const session=ownData(e.session,null,'J01_EXPECTED_CONTEXT_INVALID');
-  const input=ownData(e.requestedInput,['pointer','keyboard'],
+export function snapshotJ01ExpectedContext(value) {
+  const e=snapshotJ01PlainData(value,null,'J01_EXPECTED_CONTEXT_INVALID');
+  const session=snapshotJ01PlainData(e.session,null,'J01_EXPECTED_CONTEXT_INVALID');
+  const input=snapshotJ01PlainData(e.requestedInput,['pointer','keyboard'],
     'J01_EXPECTED_CONTEXT_INVALID');
   return Object.freeze({...e,session,requestedInput:input});
 }
@@ -82,7 +82,7 @@ function canonicalGrantSnapshot(payload) {
 }
 
 export function canonicalJ01Grant(payload) {
-  return canonicalGrantSnapshot(grantSnapshot(payload));
+  return canonicalGrantSnapshot(snapshotJ01GrantPayload(payload));
 }
 
 export function createJ01OwnerGrantVerifier({
@@ -114,13 +114,13 @@ export function createJ01OwnerGrantVerifier({
   return async function verifyJ01OwnerGrant({signedOwnerGrant,expected}={}) {
     let envelope,context;
     try {
-      envelope=ownData(signedOwnerGrant,['payload','signature'],
+      envelope=snapshotJ01PlainData(signedOwnerGrant,['payload','signature'],
         'J01_SIGNED_GRANT_REQUIRED');
-      context=expectedSnapshot(expected);
+      context=snapshotJ01ExpectedContext(expected);
     } catch { return fail('J01_SIGNED_GRANT_REQUIRED'); }
     let payload,bytes;
     try {
-      payload=grantSnapshot(envelope.payload);
+      payload=snapshotJ01GrantPayload(envelope.payload);
       bytes=canonicalGrantSnapshot(payload);
     } catch { return fail('J01_GRANT_SCHEMA_INVALID'); }
     if (bytes.length > 4096) return fail('J01_GRANT_TOO_LARGE');
