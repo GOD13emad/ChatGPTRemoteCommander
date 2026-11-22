@@ -15,11 +15,29 @@ const [command,...args]=process.argv.slice(2);
 const opt=k=>{const i=args.indexOf('--'+k);return i<0?undefined:args[i+1];};
 const assertion=(test,code)=>{if(!test)throw Error(code);};
 const within=(file,base)=>{const rel=path.relative(base,file);return rel===''||(rel!=='..'&&!rel.startsWith('..'+path.sep)&&!path.isAbsolute(rel));};
+// Never follow a symlink inside the app-managed queue/staging/publication
+// tree, even when the peer and transfer ID are valid.
+function assertInternalDirectories(p){
+ const directories=[
+  path.join(root,'jobs'),p.jobDir,
+  path.join(root,'staging'),p.stageDir,
+  path.join(root,'pairs'),path.dirname(path.dirname(p.destination)),
+  path.dirname(p.destination),p.destination
+ ];
+ for(const dir of directories){
+  let st;
+  try{st=fs.lstatSync(dir);}
+  catch(e){if(e?.code==='ENOENT')continue;throw e;}
+  assertion(st.isDirectory()&&!st.isSymbolicLink(),'TRANSFER_DIRECTORY_UNSAFE');
+ }
+}
 function safePaths(peer,id){
  assertion(peers.includes(peer)&&re.test(String(id||'')),'INVALID_TRANSFER_ID_OR_PEER');
  const jobDir=path.join(root,'jobs',peer);
  const stageDir=path.join(root,'staging',peer);
- return {jobDir,stageDir,record:path.join(jobDir,id+'.json'),lock:path.join(jobDir,id+'.lock'),part:path.join(stageDir,id+'.part'),destination:path.join(root,'pairs',peer,'transfers',id)};
+ const p={jobDir,stageDir,record:path.join(jobDir,id+'.json'),lock:path.join(jobDir,id+'.lock'),part:path.join(stageDir,id+'.part'),destination:path.join(root,'pairs',peer,'transfers',id)};
+ assertInternalDirectories(p);
+ return p;
 }
 const recordRead=p=>JSON.parse(fs.readFileSync(p.record,'utf8'));
 function atomicRename(from,to){
@@ -102,6 +120,7 @@ function hash(file){
 }
 function noExistingArtifact(p){assertion(!fs.existsSync(p.destination),'TRANSFER_ALREADY_PUBLISHED');}
 function copyJob(p,j){
+ assertInternalDirectories(p);
  fs.mkdirSync(p.stageDir,{recursive:true});
  const source=checkInput(j);
  const existingPayload=path.join(p.destination,'payload.bin');
@@ -144,6 +163,7 @@ function copyJob(p,j){
  checkInput(j);
  const recent=recordRead(p);
  if(['CANCEL_REQUESTED','CANCELLED'].includes(recent.status)){j.status='CANCELLED';save(p,j);return;}
+ assertInternalDirectories(p);
  fs.mkdirSync(path.dirname(p.destination),{recursive:true});
  if(fs.existsSync(p.destination)){
   const entry=fs.lstatSync(p.destination);
