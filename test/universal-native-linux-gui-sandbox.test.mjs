@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {inspectLinuxGuiSandbox} from '../tools/universal-install/native-linux-gui-sandbox.mjs';
+import {inspectLinuxGuiSandbox,planLinuxGuiSandboxPolicy} from '../tools/universal-install/native-linux-gui-sandbox.mjs';
 import {createNativeOsAdapter} from '../tools/universal-install/native-os-adapters.mjs';
 const ROOT='/opt/Remote Commander';
 const p=ROOT+'/resources/apparmor-profile',gui=ROOT+'/remote-commander-unified';
@@ -33,6 +33,9 @@ function fixture({overrides={},data={},stats={}}={}){
   for(const [k,v] of Object.entries(overrides)) bytes.set(k,Buffer.from(v));
   return {
     platform:'linux',expectedProfileSha256:sha,
+    // A complete synthetic kernel listing with no Commander name.
+    // Production never assumes this when securityfs is inaccessible.
+    readKernelProfiles:()=>Buffer.from('fixture-other (enforce)\n'),
     read:f=>{if(!bytes.has(f))throw Object.assign(new Error('absent'),{code:'ENOENT'});return bytes.get(f);},
     stat:f=>{if(!files.has(f))throw Object.assign(new Error('absent'),{code:'ENOENT'});return files.get(f);}
   };
@@ -119,7 +122,9 @@ test('non-root ancestor refuses admission',()=>{
 
 test('matching existing OS policy is detected but never treated as loaded kernel policy',()=>{
  const active='/etc/apparmor.d/remote-commander-unified';
- const q=check({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ f.readKernelProfiles=()=>{throw Object.assign(new Error('permission denied'),{code:'EACCES'});};
+ const q=inspectLinuxGuiSandbox(f);
  assert.equal(q.status,'OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION');
  assert.equal(q.activeProfileMatchesPinnedRelease,true);
  assert.equal(q.loadedProfileVerified,false);
@@ -177,4 +182,86 @@ test('read-only bounded kernel query cannot be used on invalid platform',()=>{
  const f=fixture();
  f.readKernelProfiles=()=>{throw new Error('should not be called');};
  assert.throws(()=>inspectLinuxGuiSandbox({...f,platform:'win32'}),{code:'RC_GUI_POLICY_PREFLIGHT_ARGUMENT_INVALID'});
+});
+
+
+test('data-only lifecycle intent never issues owner grants or changes OS policy',()=>{
+ const p=planLinuxGuiSandboxPolicy(fixture());
+ assert.equal(p.sourceState,'OWNER_POLICY_REQUIRED');
+ assert.equal(p.status,'OWNER_APPROVAL_AND_NATIVE_SNAPSHOT_REQUIRED');
+ assert.equal(p.requestedEffect,'REGISTER_AND_LOAD_PINNED_PROFILE');
+ assert.equal(p.priorPolicyFile,'ABSENT');
+ assert.equal(p.publisherProvenanceVerified,false);
+ assert.equal(p.ownerApprovalIssued,false);
+ assert.equal(p.nativeEffectAuthorized,false);
+ assert.equal(p.ownerPolicyEffectPerformed,false);
+ assert.equal(p.rollbackReceiptRequired,true);
+ assert.equal(p.stablePromotionAccepted,false);
+});
+test('a fully matching existing policy but absent kernel name plans load only, never rewrite',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ f.readKernelProfiles=()=>Buffer.from('other (enforce)\n');
+ const q=planLinuxGuiSandboxPolicy(f);
+ assert.equal(q.status,'OWNER_APPROVAL_AND_NATIVE_SNAPSHOT_REQUIRED');
+ assert.equal(q.requestedEffect,'LOAD_EXISTING_PINNED_PROFILE');
+ assert.equal(q.priorPolicyFile,'PINNED_EXISTING');
+ assert.equal(q.ownerApprovalIssued,false);
+});
+test('loaded profile name without a content digest must block policy effect',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ f.readKernelProfiles=()=>Buffer.from('remote-commander-unified (unconfined)\n');
+ const q=planLinuxGuiSandboxPolicy(f);
+ assert.equal(q.status,'BLOCKED_KERNEL_POLICY_BYTES_UNVERIFIED');
+ assert.equal(q.requestedEffect,'NONE');
+ assert.equal(q.kernelProfileContentVerified,false);
+ assert.equal(q.nativeOwnerApprovalRequired,false);
+});
+test('unknown active kernel state fails closed even if policy file matches',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ f.readKernelProfiles=()=>{throw Object.assign(new Error('denied'),{code:'EACCES'});};
+ const q=planLinuxGuiSandboxPolicy(f);
+ assert.equal(q.status,'BLOCKED_KERNEL_OBSERVATION_UNAVAILABLE');
+ assert.equal(q.requestedEffect,'NONE');
+});
+test('a foreign or unsafe profile never produces an executable intent',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const f=fixture({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{mode:0o100664})}});
+ const q=planLinuxGuiSandboxPolicy(f);
+ assert.equal(q.status,'BLOCKED_UNVERIFIED_POLICY_STATE');
+ assert.equal(q.requestedEffect,'NONE');
+ assert.equal(q.nativeEffectAuthorized,false);
+});
+test('policy not required emits no native effect and is not GUI-ready',()=>{
+ const q=planLinuxGuiSandboxPolicy(fixture({overrides:{[flags.restricted]:'0'}}));
+ assert.equal(q.status,'NO_POLICY_EFFECT_REQUIRED');
+ assert.equal(q.nativeOwnerApprovalRequired,false);
+ assert.equal(q.guiStarted,false);
+ assert.equal(q.stablePromotionAccepted,false);
+});
+test('native adapter uses the same read-only data-only policy plan and Windows has none',()=>{
+ const linux=createNativeOsAdapter({platform:'linux',architecture:'x64',run:()=>{throw Error('OS command must not be used');}});
+ assert.equal(typeof linux.planGuiSandboxPolicy,'function');
+ const result=linux.planGuiSandboxPolicy(fixture());
+ assert.equal(result.requestedEffect,'REGISTER_AND_LOAD_PINNED_PROFILE');
+ const win=createNativeOsAdapter({platform:'windows',architecture:'x64',run:()=>{throw Error('OS command must not be used');}});
+ assert.equal(Object.hasOwn(win,'planGuiSandboxPolicy'),false);
+});
+
+test('policy absent on disk but orphaned kernel profile blocks new registration',()=>{
+ const f=fixture();
+ f.readKernelProfiles=()=>Buffer.from('remote-commander-unified (enforce)\n');
+ const q=inspectLinuxGuiSandbox(f);
+ assert.equal(q.status,'OWNER_POLICY_ORPHANED_KERNEL_PROFILE');
+ assert.equal(q.nativeOwnerApprovalRequired,false);
+ assert.equal(planLinuxGuiSandboxPolicy(f).requestedEffect,'NONE');
+});
+test('policy file absent and kernel unreadable never authorizes registration',()=>{
+ const f=fixture();
+ f.readKernelProfiles=()=>{throw Object.assign(new Error('denied'),{code:'EACCES'});};
+ const q=inspectLinuxGuiSandbox(f);
+ assert.equal(q.status,'OWNER_POLICY_ABSENT_FILE_KERNEL_UNVERIFIED');
+ assert.equal(planLinuxGuiSandboxPolicy(f).status,'BLOCKED_UNVERIFIED_POLICY_STATE');
 });
