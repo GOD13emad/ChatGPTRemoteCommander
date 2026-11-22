@@ -240,9 +240,11 @@ export function createNativeOsAdapter({
       const script=[
         "$ErrorActionPreference='Stop'",
         "$identity=[Security.Principal.WindowsIdentity]::GetCurrent()",
-        "$isAdmin=[Security.Principal.WindowsPrincipal]::new($identity).IsInRole("+
-          "[Security.Principal.WindowsBuiltInRole]::Administrator)",
-        "if($isAdmin){throw 'WINDOWS_NSIS_ELEVATED_OWNER_REFUSED'}",
+        // GitHub Windows runners can have an already-elevated owner token.
+        // Per-user NSIS has NO elevation request and postcheck mandates HKCU.
+        // Reject SYSTEM/anonymous service contexts, not valid admin owners.
+        "if($identity.IsSystem -or $identity.IsAnonymous)"+
+          "{throw 'WINDOWS_NSIS_OWNER_CONTEXT_REQUIRED'}",
         "$p=Start-Process -FilePath "+shellQuote(p)+
           " -ArgumentList '/S' -PassThru -Wait -ErrorAction Stop",
         "if($p.ExitCode -ne 0){throw 'WINDOWS_NSIS_EXIT_NONZERO'}",
@@ -267,9 +269,8 @@ export function createNativeOsAdapter({
       const script=[
         "$ErrorActionPreference='Stop'",
         "$me=[Security.Principal.WindowsIdentity]::GetCurrent()",
-        "$admin=[Security.Principal.WindowsPrincipal]::new($me).IsInRole("+
-          "[Security.Principal.WindowsBuiltInRole]::Administrator)",
-        "if($admin){throw 'WINDOWS_NSIS_ELEVATED_OWNER_REFUSED'}",
+        "if($me.IsSystem -or $me.IsAnonymous)"+
+          "{throw 'WINDOWS_NSIS_OWNER_CONTEXT_REQUIRED'}",
         "$p=Start-Process -FilePath "+shellQuote(uninstaller)+
           " -ArgumentList '/S' -PassThru -Wait -ErrorAction Stop",
         "if($p.ExitCode -ne 0){throw 'WINDOWS_NSIS_UNINSTALL_NONZERO'}",

@@ -52,8 +52,11 @@ checks only the candidate for a genuine fresh host (schema 2) using the
 same tamper-resistant file fingerprint. The owner must then **manually type
 the exact transaction ID** in an
 interactive local terminal; Linux independently uses polkit for system-package
-effects, and the Windows adapter refuses an elevated owner process. A remote
-noninteractive command cannot silently approve installation. Neither package
+effects, and the Windows adapter rejects SYSTEM/anonymous contexts while preserving
+per-user HKCU NSIS ownership; it never requests elevation and verifies no
+machine-wide duplicate. Administrator account membership alone must not
+block a user-local install. A remote noninteractive command cannot silently
+approve installation. Neither package
 approval nor a successful version change is an OS J01 consent or signed Worker
 grant.
 

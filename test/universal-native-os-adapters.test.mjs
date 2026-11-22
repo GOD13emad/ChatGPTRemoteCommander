@@ -50,7 +50,8 @@ function mockedAdapter(platform,events){
       if(src.includes('Get-ChildItem'))
         return {code:0,stdout:installed,stderr:''};
       if(src.includes('Start-Process')){
-        assert.match(src,/ELEVATED_OWNER_REFUSED/u);
+        assert.match(src,/WINDOWS_NSIS_OWNER_CONTEXT_REQUIRED/u);
+        assert.doesNotMatch(src,/-Verb\s+RunAs|Start-Process\s+-Verb/u);
         installed=src.includes('dev.9')?'0.12.0-dev.9':'0.12.0-dev.8';
         return {code:0,stdout:'NATIVE_NSIS_EXIT_ZERO',stderr:''};
       }
@@ -166,7 +167,8 @@ test('fresh rollback uses OS-native dpkg remove and fixed user-local NSIS uninst
     const script=Buffer.from(actions[0].args.at(-1),'base64')
       .toString('utf16le');
     assert.match(script,/Uninstall Remote Commander\.exe/);
-    assert.match(script,/ELEVATED_OWNER_REFUSED/);
+    assert.match(script,/WINDOWS_NSIS_OWNER_CONTEXT_REQUIRED/);
+    assert.doesNotMatch(script,/-Verb\s+RunAs/);
     assert.match(script,/ArgumentList '\/S'/);
     assert.doesNotMatch(script,/Remove-Item|Set-Acl/);
   }finally{
