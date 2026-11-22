@@ -61,8 +61,12 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Files]
 #ifdef CoreSourceBundle
-  #define CoreBundleName ExtractFileName(CoreSourceBundle)
-Source: "{#CoreSourceBundle}"; DestName: "{#CoreBundleName}"; Flags: dontcopy noencryption notimestamp
+  #error CORE_FULL_HISTORY_BUNDLE_FORBIDDEN
+#endif
+#ifdef CoreSourceSnapshot
+  #define CoreSnapshotName ExtractFileName(CoreSourceSnapshot)
+Source: "{#CoreSourceSnapshot}"; DestName: "{#CoreSnapshotName}"; Flags: dontcopy noencryption notimestamp
+Source: "..\tools\offline-shallow-source.ps1"; DestName: "offline-shallow-source.ps1"; Flags: dontcopy noencryption notimestamp
 #endif
 Source: "{#DesktopPayload}\RemoteCommander.exe"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
 Source: "{#DesktopPayload}\profile-manager-windows.ps1"; DestDir: "{app}"; Components: core; Flags: ignoreversion notimestamp
@@ -280,9 +284,10 @@ begin
     else if ResultCode <> 0 then
       RaiseException('Remote Commander prerequisite inspection failed with exit code ' + IntToStr(ResultCode) + '.');
 
-#ifdef CoreSourceBundle
-    ExtractTemporaryFile('{#CoreBundleName}');
-    CoreBundle := ExpandConstant('{tmp}\{#CoreBundleName}');
+#ifdef CoreSourceSnapshot
+    ExtractTemporaryFile('{#CoreSnapshotName}');
+    ExtractTemporaryFile('offline-shallow-source.ps1');
+    CoreBundle := ExpandConstant('{tmp}\{#CoreSnapshotName}');
 #endif
     ExtractTemporaryFile('install.ps1');
     CoreScript := ExpandConstant('{tmp}\install.ps1');
@@ -290,8 +295,8 @@ begin
       '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + CoreScript + '"' +
       ' -StartServer -SourceRef "{#MySourceRef}" -ExpectedCommit "{#MyCommit}"' +
       ' -WindowsJobRunnerPath "' + WindowsJobRunnerPath + '"';
-#ifdef CoreSourceBundle
-    Params := Params + ' -SourceBundle "' + CoreBundle + '" -SourceBundleSha256 "{#CoreSourceBundleSHA256}"';
+#ifdef CoreSourceSnapshot
+    Params := Params + ' -SourceSnapshot "' + CoreBundle + '" -SourceSnapshotSha256 "{#CoreSourceSnapshotSHA256}"';
 #endif
     if not ExistingCore then Params := Params + ' -StandardMode';
     WizardForm.StatusLabel.Caption := 'Installing and verifying Remote Commander core for this user...';
