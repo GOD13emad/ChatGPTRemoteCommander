@@ -224,3 +224,118 @@ test('actual owner-local SQLite effect rejects stale epoch after protected priva
   assert.equal(h.state.effects,2);
   assert.equal(receipts.status().states.UNCERTAIN,1);
 });
+
+test('Ed25519 Worker + primary pin + private gate + durable receipt + real SQL epoch fence compose as one chain',async t=>{
+  const {createHash,generateKeyPairSync,sign}=await import('node:crypto');
+  const {deriveWorkerId}=await import('../src/worker-identity-authority.mjs');
+  const {createV2PrivateSignedWorkerGrantAdapter}=await import(
+    '../src/v2-private-signed-worker-grant-adapter.mjs');
+  const {MutationIdempotencyStore}=await import('../src/mutation-idempotency.mjs');
+  const {Rc013SqliteEffectSink}=await import('../src/rc013-sqlite-effect-sink.mjs');
+  const {v2OperationKey}=await import('../src/v2-routing-contract.mjs');
+  const fs=await import('node:fs');
+  const os=await import('node:os');
+  const path=await import('node:path');
+  const root=fs.mkdtempSync(path.join(
+    fs.realpathSync.native(os.tmpdir()),'rc013-primary-signed-sql-'));
+  let sink,receipt;
+  t.after(()=>{
+    receipt?.close();sink?.close();
+    fs.rmSync(root,{recursive:true,force:true});
+  });
+  sink=new Rc013SqliteEffectSink({
+    databasePath:path.join(root,'owner.sqlite'),verifyOwner:()=>true
+  });
+  sink.enroll({
+    projectId:'project-a',hostId:'host-a',rootFingerprint:ROOT,epoch:1
+  });
+  receipt=new MutationIdempotencyStore({
+    directory:path.join(root,'receipts'),scope:'rc013-primary-signed-sql'
+  });
+  const keys=generateKeyPairSync('ed25519');
+  const der=keys.publicKey.export({type:'spki',format:'der'});
+  const keyId=createHash('sha256').update(der).digest('hex');
+  const DEVICE='e'.repeat(64),POLICY='f'.repeat(64);
+  const workerId=deriveWorkerId({
+    hostId:'host-a',profileId:'profile-a',ownerSidHash:OWNER,
+    deviceProvider:'native-key-store',deviceIdHash:DEVICE,keyId
+  });
+  const claims={
+    issuer:'commander.local',audience:'remote-commander',
+    hostId:'host-a',profileId:'profile-a',principalId:'principal-a',
+    conversationId:'chat-a',bindingId:BIND,workerId,
+    ownerSidHash:OWNER,deviceProvider:'native-key-store',deviceIdHash:DEVICE,
+    tunnelProvider:'openai-secure-mcp-tunnel',tunnelIdHash:TUNNEL,
+    capabilityPolicyDigest:POLICY,grantRevision:1,
+    issuedAtMs:NOW-1000,expiresAtMs:NOW+20000,nonce:'1'.repeat(32)
+  };
+  const fields=['issuer','audience','hostId','profileId','principalId',
+    'conversationId','bindingId','workerId','ownerSidHash','deviceProvider',
+    'deviceIdHash','tunnelProvider','tunnelIdHash','capabilityPolicyDigest',
+    'grantRevision','issuedAtMs','expiresAtMs','nonce'];
+  const encoded=Buffer.from(JSON.stringify([
+    'commander.worker.identity.v1',keyId,...fields.map(key=>claims[key])
+  ]));
+  const enrolled={
+    schema:1,keyId,publicKey:der.toString('base64url'),claims,
+    signature:sign(null,encoded,keys.privateKey).toString('base64url')
+  };
+  const state={grantActive:true,registryReads:0,workerChecks:0,sqlEffects:0};
+  let currentOwnerRoute=route('host-a');
+  const verified=createV2PrivateSignedWorkerGrantAdapter({
+    hostId:'host-a',profileId:'profile-a',principalId:'principal-a',
+    expectedTunnelIdHash:TUNNEL,expectedOwnerSidHash:OWNER,
+    issuer:'commander.local',audience:'remote-commander',
+    now:()=>NOW,
+    workerRegistry:{get:async()=>{state.registryReads++;return enrolled;}},
+    workerAuthority:{authorizeWorker:async({workerId:id,invocation})=>{
+      state.workerChecks++;
+      if(!state.grantActive||id!==workerId||
+        invocation.tool!=='write_text'||
+        invocation.arguments.text!=='synthetic-no-effect')return null;
+      return {authorized:true,workerId,keyId,bindingId:BIND,
+        capabilityPolicyDigest:POLICY,grantRevision:1,
+        expiresAtMs:NOW+20000};
+    }},
+    resolveCurrentWorkerId:async()=>workerId,
+    resolveCurrentOwnerRoute:async()=>currentOwnerRoute
+  });
+
+  const h=fixture();
+  h.trusted.verifyExactNativeGrant=verified;
+  h.trusted.receiptStore=receipt;
+  h.trusted.execute=async (r,args,tool)=>{
+    state.sqlEffects++;
+    const payloadHash=createHash('sha256')
+      .update(JSON.stringify([tool,args])).digest('hex');
+    return sink.increment({
+      projectId:r.target.id,hostId:r.hostId,
+      rootFingerprint:ROOT,epoch:1,operationKey:v2OperationKey(r),
+      payloadHash,counterKey:'signed'
+    });
+  };
+  assert.deepEqual(await h.run(),{status:'APPLIED',epoch:1});
+  assert.deepEqual(await h.run(),{status:'APPLIED',epoch:1});
+  assert.equal(sink.inspect('project-a','signed'),1);
+  assert.equal(state.sqlEffects,1);
+  assert.ok(state.registryReads>=2);
+  assert.ok(state.workerChecks>=2);
+  assert.deepEqual(receipt.status().states,{SUCCEEDED:1});
+
+  // A revoked native signed grant must block *before* the cached receipt.
+  state.grantActive=false;
+  await assert.rejects(h.run(),denied('V2_GRANT_REQUIRED'));
+  assert.equal(sink.inspect('project-a','signed'),1);
+  state.grantActive=true;
+
+  // A stale native primary epoch must be rejected at the REAL SQL mutation
+  // boundary even if the signed worker grant and old primary pin still pass.
+  sink.rotate({projectId:'project-a',expectedEpoch:1,
+    nextHostId:'host-b',nextRootFingerprint:ROOT});
+  currentOwnerRoute={...route('host-a'),operationId:'op-after-rotation'};
+  await assert.rejects(
+    h.run(currentOwnerRoute),
+    denied('RC013_SINK_AUTHORITY_FENCE_REJECTED'));
+  assert.equal(sink.inspect('project-a','signed'),1);
+  assert.equal(receipt.status().states.UNCERTAIN,1);
+});
