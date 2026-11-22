@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {spawnSync} from 'node:child_process';
+import {spawnSync,execFile} from 'node:child_process';
 import {
   createHash,createPrivateKey,createPublicKey,randomBytes,sign,verify
 } from 'node:crypto';
@@ -55,7 +55,10 @@ function scope(file,mode,owner,key,cert,host=HOST){
 test('isolated DPAPI Windows seed enroll/readback/revocation-like mismatch and no cross-scope grant',{
   skip:process.platform!=='win32',timeout:90000
 },async()=>{
-  const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-owner-dpapi-e2e-'));
+  // The native DPAPI reader deliberately rejects junction/alias ancestors.
+  // Hosted runners often put RUNNER_TEMP on a redirected D: working volume.
+  // Scope this synthetic credential to the actual OS user home instead.
+  const fixture=fs.mkdtempSync(path.join(os.homedir(),'rc012-owner-dpapi-e2e-'));
   const fakeAppData=path.join(fixture,'fake-appdata');
   const pair=path.join(fakeAppData,'ChatGPTRemoteCommander',
     'private-pair','default');
@@ -103,6 +106,7 @@ test('isolated DPAPI Windows seed enroll/readback/revocation-like mismatch and n
       'RC012_WINDOWS_OWNER_DPAPI_WORKER_ENROLL_PASS');
     assert.equal(enrolled.stderr.trim(),'');
     assert.ok(fs.existsSync(digestFile));
+    let readerFailureKind='NOT_OBSERVED';
     const provider=createWindowsDpapiWorkerKeyProvider({
       profileId:PROFILE,expectedKeyId:keyId,credentialPath:digestFile,
       ownerHashMode:'native-j01-v2',
@@ -110,11 +114,34 @@ test('isolated DPAPI Windows seed enroll/readback/revocation-like mismatch and n
       // DPAPI enrollment and verification in this synthetic hosted fixture.
       // This does not alter production's independently pinned key provider.
       powershellPath:POWERSHELL,
+      // Preserve a bounded code-only diagnostic if hosted CI denies the
+      // synthetic credential: no user SID, file path or ciphertext is printed.
+      execFileImpl:(file,args,options,cb)=>execFile(file,args,options,
+        (error,stdout,stderr)=>{
+          if(error){
+            const detail=Buffer.isBuffer(stderr)
+              ?stderr.toString('utf8'):String(stderr??'');
+            readerFailureKind=([
+              'ANCESTOR_REPARSE','INHERITED_ACL','OWNER_ACL',
+              'BROAD_ACL','OWNER_MISMATCH','REPARSE_POINT',
+              'MODULE_IMPORT','BLOB_SIZE','SEED_SIZE'
+            ].find(k=>detail.includes(k))
+              ??(detail.includes('Failed to generate proxies')
+                ?'POWERSHELL_PROXY_SHADOW'
+                :error.killed?'CHILD_TIMEOUT':'CHILD_EXEC_FAILURE'));
+          }
+          cb(error,stdout,stderr);
+        }),
       // QA-only callback, fed by independently sampled current Windows SID.
       // Never reclassify it as production native WTS/J01 owner consent.
       resolveOwnerSidHash:async()=>owner
     });
-    const loaded=await provider.loadPrivateKey();
+    let loaded;
+    try{loaded=await provider.loadPrivateKey();}
+    catch(error){
+      assert.fail('RC012_SYNTHETIC_DPAPI_READBACK_'+readerFailureKind+
+        '_'+String(error?.code??'UNKNOWN').replace(/[^A-Z0-9_]/g,''));
+    }
     const challenge=randomBytes(32);
     const signature=sign(null,challenge,loaded);
     assert.equal(verify(null,challenge,createPublicKey(privateKey),signature),true);
