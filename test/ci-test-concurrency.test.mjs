@@ -754,10 +754,12 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.equal(new Set(files).size,files.length,'no duplicate source fixture');
   assert.ok(ranges.length>=6,'native Windows fixture groups must remain bounded');
   assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
-  assert.ok(runner.includes('timeout: index === 13 ? (part === 0 ? 55000 : 65000) : 30000'),
-    'ordinary processes retain 30s, only isolated owner-credential fixtures get declared 50/60s deadlines plus 5s overhead');
-  assert.ok(runner.includes('index === 13 ? linuxOwnerRecoveryTests.map(name =>'),
-    'only the named native credential tests may use longer bounded deadlines');
+  assert.deepEqual(ranges.slice(12,15),[[20,21],[21,22],[22,23]],
+    'protected Core, Windows DPAPI and Linux owner recovery must not share a short subprocess deadline');
+  assert.match(runner,/timeout: index === 13 \? 100000\s*: index === 14 \? \(part === 0 \? 55000 : 65000\)\s*: 30000/,
+    'ordinary fixtures retain 30s, Windows DPAPI has a bounded 100s aggregate for its declared 30s/60s tests, Linux recovery has isolated 55/65s budgets');
+  assert.ok(runner.includes('index === 14 ? linuxOwnerRecoveryTests.map(name =>'),
+    'only the named Linux native credential tests may use separate bounded deadlines');
   for(const name of ['Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',
     'profile-specific owner recovery capsules never share a Tunnel or private TLS pair'])
     assert.ok(runner.includes(name),'native credential fixture must remain covered: '+name);
