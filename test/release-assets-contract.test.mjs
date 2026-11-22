@@ -29,7 +29,7 @@ if (!windowsUploadParts || windowsUploadParts.length !== 2 ||
       "        if: github.event_name != 'pull_request'\n        with:\n" +
       '          name: remote-commander-windows-setup\n') ||
     !windowsUploadParts[1].includes('          retention-days: 7\n') ||
-    !releaseWorkflowLF.includes("  publish:\n    if: github.event_name != 'pull_request'\n") ||
+    !releaseWorkflowLF.includes("  publish:\n    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')\n") ||
     !releaseWorkflowLF.includes('          name: remote-commander-windows-setup\n          path: dist/windows-setup')) {
   throw new Error('RELEASE_SYNC_PR_MUST_NOT_STORE_WINDOWS_SETUP_OR_BREAK_PUBLICATION');
 }
