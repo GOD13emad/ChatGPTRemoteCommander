@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import {createOwnerWorkspaceProxy} from './owner-workspace-proxy.mjs';
+import {createOwnerWorkspaceProxy} from '../src/owner-workspace-proxy.mjs';
 const conf={ownerWorkspaceDelegation:{enabled:true,port:44212,authFile:path.resolve('/tmp/rc-ownerauth')}};
 const auth='a'.repeat(64);
 test('reply is bounded before the complete oversized stream is buffered',async()=>{
