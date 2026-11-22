@@ -2,6 +2,7 @@
 // The private signing key must remain in an independently enrolled, owner-interactive
 // OS authenticator. This module has no enrollment, key generation or bypass path.
 import {createPublicKey, createHash, verify as cryptoVerify} from 'node:crypto';
+import {isProxy} from 'node:util/types';
 
 const PREFIX = 'COMMANDER-J01-OS-OWNER-GRANT-V1\n';
 const PROTOCOL = 'Commander-J01-OS-OWNER-GRANT-V1';
@@ -13,16 +14,48 @@ const FIELDS = Object.freeze([
   'ownerInteracted'
 ]);
 const RECORD = x => x !== null && typeof x === 'object' && !Array.isArray(x);
+// Freeze a single own-enumerable data snapshot before parsing or using
+// any signature/context field. Proxy/accessor and hidden fields are invalid:
+// validating signed bytes while subsequently reading the mutable source can
+// authorize a different operation with a valid signature for an old operation.
+function ownData(value, fields, code) {
+  if (!RECORD(value) || isProxy(value) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(value)))
+    throw new Error(code);
+  const keys=Reflect.ownKeys(value);
+  if (fields && (keys.length!==fields.length ||
+      keys.some(k=>typeof k!=='string'||!fields.includes(k))))
+    throw new Error(code);
+  const snapshot=Object.create(null);
+  for (const key of keys) {
+    if (typeof key!=='string') throw new Error(code);
+    const d=Object.getOwnPropertyDescriptor(value,key);
+    if (!d || d.enumerable!==true || !Object.hasOwn(d,'value'))
+      throw new Error(code);
+    snapshot[key]=d.value;
+  }
+  return Object.freeze(snapshot);
+}
+function grantSnapshot(payload) {
+  const p=ownData(payload,FIELDS,'J01_GRANT_FIELDSET_INVALID');
+  const input=ownData(p.requestedInput,['pointer','keyboard'],
+    'J01_GRANT_INPUT_SCOPE_INVALID');
+  return Object.freeze({...p,requestedInput:input});
+}
+function expectedSnapshot(value) {
+  const e=ownData(value,null,'J01_EXPECTED_CONTEXT_INVALID');
+  const session=ownData(e.session,null,'J01_EXPECTED_CONTEXT_INVALID');
+  const input=ownData(e.requestedInput,['pointer','keyboard'],
+    'J01_EXPECTED_CONTEXT_INVALID');
+  return Object.freeze({...e,session,requestedInput:input});
+}
 const WORD = x => typeof x === 'string' && x.length > 0 && x.length <= 256 &&
   !/[\x00-\x1f\x7f]/.test(x);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const fail = code => Object.freeze({verified:false,code,grantConsumed:false});
-const equalKeys = (x,keys) => RECORD(x) && Object.keys(x).length === keys.length &&
-  keys.every(k => Object.hasOwn(x,k));
 const REQUESTED_KEYS = ['pointer','keyboard'];
 
-export function canonicalJ01Grant(payload) {
-  if (!equalKeys(payload,FIELDS)) throw new Error('J01_GRANT_FIELDSET_INVALID');
+function canonicalGrantSnapshot(payload) {
   if (payload.protocol !== PROTOCOL || payload.origin !== ORIGIN ||
       payload.ownerInteracted !== true)
     throw new Error('J01_GRANT_NOT_OWNER_INTERACTIVE');
@@ -33,8 +66,7 @@ export function canonicalJ01Grant(payload) {
   if (typeof payload.consentNonce !== 'string' ||
       !UUID.test(payload.consentNonce)) throw new Error('J01_GRANT_NONCE_INVALID');
   const input=payload.requestedInput;
-  if (!equalKeys(input,REQUESTED_KEYS) ||
-      typeof input.pointer !== 'boolean' || typeof input.keyboard !== 'boolean' ||
+  if (typeof input.pointer !== 'boolean' || typeof input.keyboard !== 'boolean' ||
       (!input.pointer && !input.keyboard))
     throw new Error('J01_GRANT_INPUT_SCOPE_INVALID');
   if (!Number.isInteger(payload.ttlSeconds) || payload.ttlSeconds < 10 ||
@@ -47,6 +79,10 @@ export function canonicalJ01Grant(payload) {
   for (const k of FIELDS) ordered[k]=k==='requestedInput'
     ? {pointer:input.pointer,keyboard:input.keyboard}:payload[k];
   return Buffer.from(PREFIX+JSON.stringify(ordered),'utf8');
+}
+
+export function canonicalJ01Grant(payload) {
+  return canonicalGrantSnapshot(grantSnapshot(payload));
 }
 
 export function createJ01OwnerGrantVerifier({
@@ -76,34 +112,36 @@ export function createJ01OwnerGrantVerifier({
   })).digest('hex');
 
   return async function verifyJ01OwnerGrant({signedOwnerGrant,expected}={}) {
-    if (!RECORD(signedOwnerGrant) ||
-        !equalKeys(signedOwnerGrant,['payload','signature']) ||
-        !RECORD(expected)) return fail('J01_SIGNED_GRANT_REQUIRED');
-    const payload=signedOwnerGrant.payload;
-    let bytes;
-    try { bytes=canonicalJ01Grant(payload); }
-    catch { return fail('J01_GRANT_SCHEMA_INVALID'); }
+    let envelope,context;
+    try {
+      envelope=ownData(signedOwnerGrant,['payload','signature'],
+        'J01_SIGNED_GRANT_REQUIRED');
+      context=expectedSnapshot(expected);
+    } catch { return fail('J01_SIGNED_GRANT_REQUIRED'); }
+    let payload,bytes;
+    try {
+      payload=grantSnapshot(envelope.payload);
+      bytes=canonicalGrantSnapshot(payload);
+    } catch { return fail('J01_GRANT_SCHEMA_INVALID'); }
     if (bytes.length > 4096) return fail('J01_GRANT_TOO_LARGE');
 
     // All operation and caller fields come from the independent host-attested
     // context, never from the remote user's requested grant.
     if (payload.signerPrincipal !== signerPrincipal || payload.keyId !== keyId ||
-        !WORD(expected.incidentId) || !WORD(expected.operationId) ||
-        !WORD(expected.callerPrincipal) ||
-        payload.incidentId !== expected.incidentId ||
-        payload.operationId !== expected.operationId ||
-        payload.callerPrincipal !== expected.callerPrincipal ||
-        !RECORD(expected.session) ||
-        payload.ownerPrincipal !== expected.session.ownerPrincipal ||
-        payload.sessionId !== expected.session.sessionId ||
-        payload.seatId !== expected.session.seatId ||
-        payload.displayId !== expected.session.displayId ||
-        payload.consentNonce !== expected.consentNonce ||
-        !UUID.test(expected.consentNonce ?? '') ||
-        payload.ttlSeconds !== expected.ttlSeconds ||
-        !RECORD(expected.requestedInput) ||
-        payload.requestedInput.pointer !== expected.requestedInput.pointer ||
-        payload.requestedInput.keyboard !== expected.requestedInput.keyboard)
+        !WORD(context.incidentId) || !WORD(context.operationId) ||
+        !WORD(context.callerPrincipal) ||
+        payload.incidentId !== context.incidentId ||
+        payload.operationId !== context.operationId ||
+        payload.callerPrincipal !== context.callerPrincipal ||
+        payload.ownerPrincipal !== context.session.ownerPrincipal ||
+        payload.sessionId !== context.session.sessionId ||
+        payload.seatId !== context.session.seatId ||
+        payload.displayId !== context.session.displayId ||
+        payload.consentNonce !== context.consentNonce ||
+        !UUID.test(context.consentNonce ?? '') ||
+        payload.ttlSeconds !== context.ttlSeconds ||
+        payload.requestedInput.pointer !== context.requestedInput.pointer ||
+        payload.requestedInput.keyboard !== context.requestedInput.keyboard)
       return fail('J01_SIGNED_GRANT_CONTEXT_MISMATCH');
 
     const now=clock();
@@ -113,7 +151,7 @@ export function createJ01OwnerGrantVerifier({
         payload.expiresAtMs <= now ||
         payload.expiresAtMs > payload.issuedAtMs+payload.ttlSeconds*1000)
       return fail('J01_GRANT_EXPIRED_OR_TIME_INVALID');
-    const text=signedOwnerGrant.signature;
+    const text=envelope.signature;
     if (typeof text !== 'string' || !/^[A-Za-z0-9_-]{86}$/.test(text))
       return fail('J01_GRANT_SIGNATURE_INVALID');
     const signature=Buffer.from(text,'base64url');
@@ -137,8 +175,8 @@ export function createJ01OwnerGrantVerifier({
     if (claimed?.consumed!==true) return fail('J01_REPLAY_OR_NONCE_NOT_RESERVED');
     try {
       const archived=await archiveExactGrant({
-        grant:signedOwnerGrant,grantSha256:digest,
-        trustedKeyFingerprint:fingerprint,attestedCaller:expected.callerPrincipal
+        grant:Object.freeze({payload,signature:text}),grantSha256:digest,
+        trustedKeyFingerprint:fingerprint,attestedCaller:context.callerPrincipal
       });
       if (archived?.archived!==true)
         return fail('J01_SIGNED_GRANT_ARCHIVE_UNCONFIRMED');
