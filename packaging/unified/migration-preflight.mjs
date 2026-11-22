@@ -500,8 +500,8 @@ export function assessMigration(facts){
       ?facts.ownerRegisteredInstallerFamily??'unknown':null,
     nativeUnifiedNsisDetected:facts.platform==='win32'
       ?facts.nativeUnifiedNsisPresent===true:null,
-    nativeUnifiedNsisIdentityVerified:facts.platform==='win32'
-      ?facts.nativeUnifiedNsisIdentityVerified===true:null,
+    nativeUnifiedNsisRegistryMatched:facts.platform==='win32'
+      ?facts.nativeUnifiedNsisRegistryMatched===true:null,
     ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
     ownerTunnelTargetPort:facts.tunnelProfileValid===true?facts.tunnelTargetPort??null:null,
     ownerTunnelHttpsConfigured:facts.tunnelProfileValid===true&&facts.tunnelTargetTls===true,
@@ -744,7 +744,12 @@ export function classifyWindowsUnifiedNsisRegistryResponse(raw){
   const version=attrs.get('displayversion');
   const title=attrs.get('displayname');
   const command=attrs.get('uninstallstring');
-  if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(version??'')
+  // Same product identity covers 0.12 stable and future releases, without
+  // trusting any uninstaller to execute or interpreting registry as signature.
+  const release=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
+    .exec(version??'');
+  if(!release||version.length>80
+    ||(Number(release[1])===0&&Number(release[2])<12)
     ||title!=='Remote Commander '+version
     ||typeof command!=='string'||command.length>8192
     ||/[\u0000-\u001f]/.test(command)
@@ -820,7 +825,7 @@ function windowsFacts({profileName=null}={}){
   return {platform:'win32',connectionMode:'private-tunnel',
     legacyInnoPresent:checks.some(c=>c.ok),
     nativeUnifiedNsisPresent:nativePresent.length>0,
-    nativeUnifiedNsisIdentityVerified:installerFamily==='unified-nsis',
+    nativeUnifiedNsisRegistryMatched:installerFamily==='unified-nsis',
     ownerRegisteredInstallerFamily:installerFamily,
     inventoryReliable:!bad&&checks.length===3&&native.length===3,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,

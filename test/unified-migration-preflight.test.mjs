@@ -201,10 +201,16 @@ test('one product-wide NSIS registration is detected without interpreting a user
   '    UninstallString    REG_SZ    "C:\\Users\\OWNER\\AppData\\Local\\Programs\\RemoteCommander\\Uninstall Remote Commander.exe" /currentuser'
  ].join('\r\n');
  assert.equal(classifyWindowsUnifiedNsisRegistryResponse(output),'unified-nsis');
+ for(const version of ['0.12.0','0.13.0-beta.1','1.0.0']){
+   const later=output.replaceAll('0.12.0-dev.8',version);
+   assert.equal(classifyWindowsUnifiedNsisRegistryResponse(later),'unified-nsis');
+ }
  for(const invalid of [
    output.replace('Remote Commander 0.12.0-dev.8','Remote Commander Browser'),
    output.replace('DisplayVersion    REG_SZ    0.12.0-dev.8',
      'DisplayVersion    REG_SZ    0.11.0-dev.8'),
+   output.replaceAll('0.12.0-dev.8','0.11.0-dev.8'),
+   output.replaceAll('0.12.0-dev.8','1.00.0'),
    output.replace('Uninstall Remote Commander.exe','unknown.exe'),
    output.replace('Remote Commander 0.12.0-dev.8','Remote Commander 0.12.0-dev.8\r\n    DisplayName    REG_SZ    counterfeit'),
    output.repeat(1000),
@@ -212,11 +218,11 @@ test('one product-wide NSIS registration is detected without interpreting a user
  ])assert.equal(classifyWindowsUnifiedNsisRegistryResponse(invalid),'unverified');
  const report=assessMigration({platform:'win32',connectionMode:'private-tunnel',
    inventoryReliable:true,legacyInnoPresent:false,
-   nativeUnifiedNsisPresent:true,nativeUnifiedNsisIdentityVerified:true,
+   nativeUnifiedNsisPresent:true,nativeUnifiedNsisRegistryMatched:true,
    ownerRegisteredInstallerFamily:'unified-nsis'});
  assert.equal(report.existingInstalled,true);
  assert.equal(report.nativeUnifiedNsisDetected,true);
- assert.equal(report.nativeUnifiedNsisIdentityVerified,true);
+ assert.equal(report.nativeUnifiedNsisRegistryMatched,true);
  assert.equal(report.ownerRegisteredInstallerFamily,'unified-nsis');
  assert.ok(report.blocked.includes('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED'));
  assert.ok(!report.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
