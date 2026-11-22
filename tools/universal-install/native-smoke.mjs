@@ -14,19 +14,21 @@ const SHA=/^[0-9a-f]{40}$/;
 const VERSION=/^0\.12\.0-dev\.[1-9][0-9]*$/;
 const read=name=>JSON.parse(fs.readFileSync(path.join(repo,name),'utf8'));
 
-export function nativeLifecycleSpec(os,version){
+export function nativeLifecycleSpec(os,version,arch=process.arch){
   check(VERSION.test(version),'RC012_NATIVE_VERSION_INVALID');
+  // The current native QA artifacts are x64 only; ARM64 remains a release target.
+  check(arch==='x64','RC012_NATIVE_ARCH_UNSUPPORTED');
   if(os==='linux')return Object.freeze({
     runner:'bash',script:'test/unified-native-upgrade-smoke.sh',
     artifact:'dist/unified/Remote-Commander-Unified-'+version+'-Linux-amd64.deb',
-    ghOs:'Linux',format:'DEB'});
+    ghOs:'Linux',ghArch:'X64',arch:'x64',format:'DEB'});
   if(os==='win32')return Object.freeze({
     runner:'pwsh',script:'test/unified-windows-owner-migration.ps1',
     artifact:'dist/unified/Remote-Commander-Unified-'+version+'-Windows-x64.exe',
-    ghOs:'Windows',format:'NSIS'});
+    ghOs:'Windows',ghArch:'X64',arch:'x64',format:'NSIS'});
   fail('RC012_NATIVE_PLATFORM_UNSUPPORTED');
 }
-export function inspectUnifiedNativeSource({directory=repo,os=process.platform}={}){
+export function inspectUnifiedNativeSource({directory=repo,os=process.platform,arch=process.arch}={}){
   const source=read('package.json'),gui=read('packaging/unified/package.json');
   const train=read('docs/release-train-0.12.json');
   const contract=read('installer/universal-install-contract.json');
@@ -40,7 +42,7 @@ export function inspectUnifiedNativeSource({directory=repo,os=process.platform}=
     &&contract.nativeCandidateRoot==='packaging/unified',
     'RC012_NATIVE_SOURCE_TRAIN_DRIFT');
   check(path.resolve(directory)===repo,'RC012_NATIVE_DIFFERENT_SOURCE_ROOT');
-  return Object.freeze({version:source.version,spec:nativeLifecycleSpec(os,source.version)});
+  return Object.freeze({version:source.version,spec:nativeLifecycleSpec(os,source.version,arch)});
 }
 function gitHead(){
   const r=cp.spawnSync('git',['-C',repo,'rev-parse','HEAD'],{
@@ -48,8 +50,10 @@ function gitHead(){
   check(!r.error&&r.status===0,'RC012_NATIVE_GIT_HEAD_UNAVAILABLE');
   return r.stdout.trim();
 }
-export function admittedDisposableHost({env=process.env,spec,home=repo}={}){
-  return env.CI==='true'&&env.GITHUB_ACTIONS==='true'
+export function admittedDisposableHost({env=process.env,spec,home=repo,arch=process.arch}={}){
+  return arch==='x64'&&spec?.arch==='x64'&&spec?.ghArch==='X64'
+    &&env.RUNNER_ARCH===spec.ghArch
+    &&env.CI==='true'&&env.GITHUB_ACTIONS==='true'
     &&env.RUNNER_ENVIRONMENT==='github-hosted'
     &&env.RUNNER_OS===spec?.ghOs
     &&typeof env.GITHUB_WORKSPACE==='string'
@@ -60,7 +64,7 @@ export function admittedDisposableHost({env=process.env,spec,home=repo}={}){
 function readOnlyPlan(commit,inspection){
   return {status:'RC012_UNIVERSAL_NATIVE_QA_PLAN_READY',
     expectedCommit:commit,version:inspection.version,
-    nativeFormat:inspection.spec.format,
+    nativeArch:inspection.spec.arch,nativeFormat:inspection.spec.format,
     nativeSmokeScript:inspection.spec.script,
     artifact:inspection.spec.artifact,
     sharedTransaction:['install','upgrade','verify','rollback'],
@@ -92,7 +96,7 @@ export function executeCli(args,env=process.env){
     'RC012_NATIVE_DISPOSABLE_LIFECYCLE_FAILED');
   return {status:'RC012_UNIVERSAL_NATIVE_DISPOSABLE_LIFECYCLE_PASS',
     expectedCommit:expected,version:inspected.version,
-    nativeFormat:inspected.spec.format,
+    nativeArch:inspected.spec.arch,nativeFormat:inspected.spec.format,
     nativeSmokeScript:inspected.spec.script,
     realHostedNativeInstallAndRollback:true,
     ownerInstalledAcceptance:false,fullAccessGranted:false,
