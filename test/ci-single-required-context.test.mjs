@@ -27,3 +27,13 @@ test('required Windows and Ubuntu check identities, pinned actions and read-only
  assert.match(text,/node tools\/run-bounded-test-script\.mjs --script test --concurrency 1 --prioritize-sensitive 1/);
  assert.match(text,/npm run audit/);
 });
+
+test('CI supersedes only stale runs of the same PR and never cancels main or tag releases',()=>{
+ assert.equal((text.match(/\nconcurrency:/g)||[]).length,1);
+ const start=text.indexOf('\nconcurrency:\n'),end=text.indexOf('\njobs:\n',start);
+ assert.ok(start>=0&&end>start);
+ const policy=text.slice(start,end);
+ assert.ok(policy.includes("group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"));
+ assert.ok(policy.includes("cancel-in-progress: ${{ github.event_name == 'pull_request' }}"));
+ assert.doesNotMatch(policy,/cancel-in-progress:\s*true\b/);
+});
