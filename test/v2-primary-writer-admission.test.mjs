@@ -105,3 +105,26 @@ test('existing V2 policy only permits workflow-root target for this adapter',asy
     denied('V2_PRIMARY_WORKFLOW_ROOT_REQUIRED'));
   assert.equal(h.events.execute,0);
 });
+
+test('synthetic getter-bearing native owner record must never be evaluated or admitted',async()=>{
+  const h=harness();let getterCalls=0;
+  const forged=safePin();
+  Object.defineProperty(forged,'rootFingerprint',{enumerable:true,configurable:true,
+    get(){getterCalls++;return 'a'.repeat(64);}});
+  h.services.readNativePrimary=async()=>forged;
+  await assert.rejects(admission(mkRoute(),h.services,'write_text'),
+    denied('V2_PRIMARY_HOST_NOT_AUTHORIZED'));
+  assert.equal(getterCalls,0);
+  assert.equal(h.events.execute,0);
+});
+test('a Proxy native owner record must fail closed without invoking its traps',async()=>{
+  const h=harness();let traps=0;
+  const forged=new Proxy(safePin(),{
+    get(target,key){if(key!=='then')traps++;return Reflect.get(target,key);}
+  });
+  h.services.readNativePrimary=async()=>forged;
+  await assert.rejects(admission(mkRoute(),h.services,'write_text'),
+    denied('V2_PRIMARY_HOST_NOT_AUTHORIZED'));
+  assert.equal(traps,0);
+  assert.equal(h.events.execute,0);
+});
