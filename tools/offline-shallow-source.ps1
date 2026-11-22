@@ -2,7 +2,7 @@
 # Git parents/history; no service, registry, profile or installer effects.
 [CmdletBinding()]
 param(
-  [ValidateSet('Create','Verify','Import','VerifyRepo')][string]$Mode,
+  [ValidateSet('Create','Verify','Import','VerifyRepo','Preflight')][string]$Mode,
   [string]$SourceRoot = '',
   [string]$SourceRef = '',
   [string]$ExpectedCommit = '',
@@ -107,7 +107,11 @@ function Report([string]$Status,[string]$Repo=''){
    archive=$Archive;repoRoot=$Repo;sha256=(Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()} |
    ConvertTo-Json -Compress -Depth 4)
 }
-if($Mode -eq 'VerifyRepo'){
+if($Mode -eq 'Preflight'){
+  if($ArchiveSha256 -notmatch '^[0-9a-fA-F]{64}$'){throw 'SHALLOW_SOURCE_SHA_REQUIRED'}
+  Check-Archive $Archive
+  Report 'SHALLOW_SOURCE_ARCHIVE_PREFLIGHT_PASS'
+}elseif($Mode -eq 'VerifyRepo'){
   if(-not [IO.Path]::IsPathFullyQualified($RepoRoot)){throw 'SHALLOW_SOURCE_REPO_ROOT_REQUIRED'}
   [void](Verify-Bare $RepoRoot)
   ([ordered]@{status='SHALLOW_SOURCE_REPOSITORY_VERIFIED';head=$ExpectedCommit;sourceRef=$SourceRef;repoRoot=[IO.Path]::GetFullPath($RepoRoot)} | ConvertTo-Json -Compress)
@@ -144,6 +148,7 @@ if($Mode -eq 'VerifyRepo'){
     Report 'SHALLOW_SOURCE_SNAPSHOT_VERIFIED'
   }finally{if(Test-Path -LiteralPath $temporary){Remove-Item -LiteralPath $temporary -Recurse -Force}}
 }elseif($Mode -eq 'Import'){
+  if($ArchiveSha256 -notmatch '^[0-9a-fA-F]{64}$'){throw 'SHALLOW_SOURCE_SHA_REQUIRED'}
   Check-Archive $Archive
   if(-not $StoreRoot -or -not [IO.Path]::IsPathFullyQualified($StoreRoot)){throw 'SHALLOW_SOURCE_STORE_PATH_INVALID'}
   $store=[IO.Path]::GetFullPath($StoreRoot)

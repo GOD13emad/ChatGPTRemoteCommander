@@ -52,6 +52,10 @@ test('actual Windows Shallow Git ZIP preserves pinned offline commit but exclude
       assert.equal(created.head,sha);
       const checksum=created.sha256;
       assert.match(checksum,/^[0-9a-f]{64}$/);
+      assert.equal(helperCall(['-Mode','Preflight',...base,'-ArchiveSha256',checksum]).status,
+        'SHALLOW_SOURCE_ARCHIVE_PREFLIGHT_PASS');
+      assert.notEqual(helperCall(['-Mode','Preflight',...base],
+        {allowFailure:true}).status,0,'missing archive SHA must fail before prerequisites');
       assert.equal(helperCall(['-Mode','Verify',...base,'-ArchiveSha256',checksum]).status,
         'SHALLOW_SOURCE_SNAPSHOT_VERIFIED');
       const store=path.join(root,'store');

@@ -37,18 +37,8 @@ if ($SourceRef -notmatch '^[A-Za-z0-9._/-]{1,128}$') {
 if ($ExpectedCommit -and $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$') {
   throw 'Invalid -ExpectedCommit SHA.'
 }
-# Reject a tampered offline source archive before provisioning any prerequisites.
-if($SourceSnapshot){
-  if($SourceSnapshotSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
-     $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$'){throw 'SHALLOW_SOURCE_PROVENANCE_REQUIRED'}
-  $sourceItem=Get-Item -LiteralPath $SourceSnapshot -Force -ErrorAction Stop
-  if($sourceItem.PSIsContainer -or
-     ($sourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
-     [IO.Path]::GetExtension($sourceItem.FullName) -ne '.zip'){throw 'SHALLOW_SOURCE_PATH_UNTRUSTED'}
-  if((Get-FileHash -LiteralPath $sourceItem.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne
-      $SourceSnapshotSha256.ToLowerInvariant()){throw 'SHALLOW_SOURCE_ARCHIVE_SHA256_MISMATCH'}
-}elseif($SourceSnapshotSha256){throw 'SHALLOW_SOURCE_SHA_WITHOUT_ARCHIVE'}
-
+# Verify SHA and archive paths before prerequisites; helper owns the detail.
+if($SourceSnapshot){if($SourceBundle){throw 'SHALLOW_SOURCE_AND_BUNDLE_MUTUALLY_EXCLUSIVE'};$sourceHelper=Join-Path $PSScriptRoot 'offline-shallow-source.ps1';if(-not(Test-Path -LiteralPath $sourceHelper -PathType Leaf)){$sourceHelper=Join-Path $PSScriptRoot 'tools\offline-shallow-source.ps1'};& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $sourceHelper -Mode Preflight -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot -ArchiveSha256 $SourceSnapshotSha256 | Out-Null;if($LASTEXITCODE -ne 0){throw 'SHALLOW_SOURCE_PREFLIGHT_FAILED'}}elseif($SourceSnapshotSha256){throw 'SHALLOW_SOURCE_SHA_WITHOUT_ARCHIVE'}
 # Persist an exact-commit source bundle at one stable per-user path. The installer
 # temp directory is ephemeral; the Git remote must remain usable for later updates.
 if($SourceBundle){
@@ -93,26 +83,6 @@ if($SourceBundle){
   $Repo=$persistentBundle
   Write-Host ('SOURCE_BUNDLE_PERSISTED path='+$Repo+' sha256='+$digest)
 }elseif($SourceBundleSha256){throw 'SOURCE_BUNDLE_SHA_WITHOUT_FILE'}
-function Import-SourceSnapshot {
-  if($SourceSnapshot){
-  if($SourceBundle){throw 'SHALLOW_SOURCE_AND_BUNDLE_MUTUALLY_EXCLUSIVE'}
-  if($SourceSnapshotSha256 -notmatch '^[0-9a-fA-F]{64}$' -or
-     $ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$'){throw 'SHALLOW_SOURCE_PROVENANCE_REQUIRED'}
-  $helper=Join-Path $PSScriptRoot 'tools\offline-shallow-source.ps1'
-  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){
-    $helper=Join-Path $PSScriptRoot 'offline-shallow-source.ps1'
-  }
-  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'SHALLOW_SOURCE_HELPER_REQUIRED'}
-  $sourceStore=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\source-snapshots'
-  $receipt=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $helper -Mode Import -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot -ArchiveSha256 $SourceSnapshotSha256 -StoreRoot $sourceStore)
-  if($LASTEXITCODE -ne 0){throw 'SHALLOW_SOURCE_IMPORT_FAILED'}
-  $record=($receipt|Select-Object -Last 1|ConvertFrom-Json)
-  if($record.status -notin @('SHALLOW_SOURCE_IMPORTED','SHALLOW_SOURCE_ALREADY_IMPORTED') -or
-     -not $record.repoRoot){throw 'SHALLOW_SOURCE_IMPORT_RECEIPT_INVALID'}
-  $script:Repo=[string]$record.repoRoot
-  Write-Host ('SHALLOW_SOURCE_OFFLINE_IMPORTED commit='+$ExpectedCommit)
-}elseif($SourceSnapshotSha256){throw 'SHALLOW_SOURCE_SHA_WITHOUT_ARCHIVE'}
-}
 function Refresh-Path {
   $machine = [Environment]::GetEnvironmentVariable('Path','Machine')
   $user = [Environment]::GetEnvironmentVariable('Path','User')
@@ -600,7 +570,7 @@ $InstallDir = Resolve-InstallDir
 $canonicalLiveInstall=[IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\app'))
 $isCanonicalLiveInstall=([IO.Path]::GetFullPath($InstallDir).TrimEnd('\') -ieq $canonicalLiveInstall.TrimEnd('\'))
 Ensure-Prerequisites
-if($SourceSnapshot -or $SourceSnapshotSha256){Import-SourceSnapshot}
+if($SourceSnapshot){$store=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander\source-snapshots';$receipt=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $sourceHelper -Mode Import -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot -ArchiveSha256 $SourceSnapshotSha256 -StoreRoot $store);if($LASTEXITCODE -ne 0){throw 'SHALLOW_SOURCE_IMPORT_FAILED'};$record=$receipt|Select-Object -Last 1|ConvertFrom-Json;if($record.status -notin @('SHALLOW_SOURCE_IMPORTED','SHALLOW_SOURCE_ALREADY_IMPORTED') -or -not $record.repoRoot){throw 'SHALLOW_SOURCE_IMPORT_RECEIPT_INVALID'};$Repo=[string]$record.repoRoot}
 
 $existingInstall = Test-Path -LiteralPath (Join-Path $InstallDir '.git')
 if ($existingInstall -and $isCanonicalLiveInstall) {
