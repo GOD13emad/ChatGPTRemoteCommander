@@ -109,7 +109,10 @@ jobs:
       - name: Merge native Core, Tunnel and GUI into a single DEB
         if: runner.os == 'Linux'
         shell: bash
-        run: bash packaging/unified/merge-native-deb.sh
+        run: |
+          # Verify the reusable Native/GUI mode policy under restrictive builder defaults.
+          umask 077
+          bash packaging/unified/merge-native-deb.sh
       - name: Build package (Windows)
         if: runner.os == 'Windows'
         working-directory: packaging/unified

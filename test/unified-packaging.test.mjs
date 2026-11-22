@@ -70,6 +70,27 @@ test('Linux native package uses the shared positive runtime Core allowlist, neve
  assert.ok(hosted.includes('python3 - "$OLD" "$NEW"'));
 });
 
+test('merged Linux GUI files stay publicly readable under restrictive builder umask',()=>{
+ const script=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ assert.match(script,/dest\.chmod\(0o755 if src_mode & 0o111 else 0o644\)/);
+ if(process.platform!=='linux')return;
+ const version=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8')).version;
+ const p=path.join(repo,'dist/unified',`Remote-Commander-Unified-${version}-Linux-amd64.deb`);
+ if(!fs.existsSync(p))return; // Source-only test before the CI packaging stage.
+ const result=spawnSync('dpkg-deb',['--contents',p],{encoding:'utf8',maxBuffer:16*1024*1024});
+ assert.equal(result.status,0,result.stderr);
+ const paths=['./opt/Remote Commander/resources/app.asar',
+  './opt/Remote Commander/resources/apparmor-profile',
+  './usr/share/applications/remote-commander-unified.desktop',
+  './usr/share/doc/chatgpt-remote-commander/changelog.gz',
+  './usr/share/icons/hicolor/128x128/apps/remote-commander-unified.png'];
+ for(const rel of paths){
+  const row=result.stdout.split('\n').find(x=>x.endsWith(' '+rel));
+  assert.ok(row,`missing packaged GUI asset: ${rel}`);
+  assert.match(row,/^-rw-r--r-- /,`GUI asset must be usable by nonroot desktop owner: ${rel}`);
+ }
+});
+
 test('one installer definition uses Windows NSIS per user and Linux DEB, not old host repairs',()=>{
  const y=fs.readFileSync(path.join(repo,'packaging/unified/electron-builder.yml'),'utf8');
  assert.match(y,/target: nsis/);
