@@ -31,6 +31,25 @@ export function isLinuxMigrationUnit(unit,profileName=null){
     &&profileName!=='.'&&profileName!=='..'
     &&unit===profileName+'-tunnel.service';
 }
+// Discover *observed* legacy owner Tunnel units by their own service/executable
+// identity. This is inventory only: a legacy Tunnel is never accepted as a
+// package-native executable or authorized for cutover.
+export function isLinuxOwnerCommanderLegacyTunnelUnit({
+  unit,execStart,fragmentPath,home
+}={}){
+  if(typeof unit!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}-tunnel\.service$/.test(unit)
+    ||typeof home!=='string'||!path.posix.isAbsolute(home)
+    ||typeof execStart!=='string'||typeof fragmentPath!=='string')return false;
+  if(fragmentPath!==path.posix.join(home,'.config','systemd','user',unit))return false;
+  const command=/^\{ path=([^ ;]+) ; argv\[\]=([^;]+) ;/.exec(execStart);
+  if(!command)return false;
+  const root=path.posix.join(home,'.local','share','ChatGPTRemoteCommander','tools')+'/';
+  const executable=command[1];
+  if(!executable.startsWith(root)||!/^tunnel-client-v[0-9]+\.[0-9]+\.[0-9]+-linux-[a-z0-9_-]+\/tunnel-client$/
+    .test(executable.slice(root.length)))return false;
+  const name=unit.slice(0,-'-tunnel.service'.length);
+  return command[2].trim()===executable+' run --profile '+name;
+}
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
 // The owner-selected tunnel profile is input, not a ChatGPT identity proof.
 // Never print/retain the YAML: it may contain the runtime API key.
@@ -363,7 +382,9 @@ export function assessMigration(facts){
     throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
   const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
-  const oldPresent=facts.platform==='win32'?facts.legacyInnoPresent===true:facts.nativePackageInstalled===true;
+  const oldPresent=facts.platform==='win32'
+    ?facts.legacyInnoPresent===true||facts.nativeUnifiedNsisPresent===true
+    :facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
   if(facts.platform==='win32'&&facts.routerDetected===true
@@ -399,7 +420,11 @@ export function assessMigration(facts){
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
   if(facts.platform==='win32' && oldPresent){
-    if(facts.ownerRegisteredInstallerFamily==='owner-managed-powershell')
+    if(facts.nativeUnifiedNsisPresent===true&&facts.legacyInnoPresent!==true){
+      if(facts.ownerRegisteredInstallerFamily==='unified-nsis')
+        blocked.push('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED');
+      else blocked.push('OWNER_INSTALLER_IDENTITY_UNVERIFIED');
+    }else if(facts.ownerRegisteredInstallerFamily==='owner-managed-powershell')
       blocked.push('OWNER_MANAGED_TO_UNIFIED_NSIS_TRANSACTION_MISSING');
     else {
       blocked.push('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING');
@@ -473,6 +498,10 @@ export function assessMigration(facts){
     connectionMode:facts.connectionMode??'managed-oauth',
     ownerRegisteredInstallerFamily:facts.platform==='win32'
       ?facts.ownerRegisteredInstallerFamily??'unknown':null,
+    nativeUnifiedNsisDetected:facts.platform==='win32'
+      ?facts.nativeUnifiedNsisPresent===true:null,
+    nativeUnifiedNsisRegistryMatched:facts.platform==='win32'
+      ?facts.nativeUnifiedNsisRegistryMatched===true:null,
     ownerTunnelProfileDetected:facts.tunnelProfilePresent===true,
     ownerTunnelTargetPort:facts.tunnelProfileValid===true?facts.tunnelTargetPort??null:null,
     ownerTunnelHttpsConfigured:facts.tunnelProfileValid===true&&facts.tunnelTargetTls===true,
@@ -551,35 +580,48 @@ function linuxFacts({profileName=null}={}){
     &&(!exists||(higher?.status===0||higher?.status===1)
       &&(equal?.status===0||equal?.status===1));
   const units=[];
-  const profileTunnelUnit=typeof profileName==='string'
-    &&isLinuxMigrationUnit(profileName+'-tunnel.service',profileName)
-      ?profileName+'-tunnel.service':null;
-  const selectors=['chatgpt-remote-commander*.service',
-    ...(profileTunnelUnit?[profileTunnelUnit]:[])];
-  const listing=exec('systemctl',['--user','list-units','--all','--no-legend','--plain',...selectors]);
-  const files=exec('systemctl',['--user','list-unit-files','--no-legend','--plain',...selectors]);
-  if(listing.ok&&files.ok){
-    const names=new Set();
-    const enabled=new Set();
+  // List service names only. Inspect at most 48 scoped candidates and never
+  // expose ExecStart, profile IDs, or credential-bearing arguments in output.
+  const listing=exec('systemctl',['--user','list-units','--all','--type=service','--no-legend','--plain']);
+  const files=exec('systemctl',['--user','list-unit-files','--type=service','--no-legend','--plain']);
+  let discoveryComplete=listing.ok&&files.ok;
+  if(discoveryComplete){
+    const candidate=new Set(),enabled=new Set();
+    const consider=unit=>{
+      // Template definitions are not installed service instances: systemctl
+      // show returns nonzero for them on Linux. Don't invent a fleet blocker.
+      if(unit.endsWith('@.service'))return;
+      if(isLinuxMigrationUnit(unit,profileName)||/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}-tunnel\.service$/.test(unit))
+        candidate.add(unit);
+    };
     for(const line of listing.stdout.split(/\r?\n/)){
       const unit=line.trim().split(/\s+/)[0];
-      if(unit&&isLinuxMigrationUnit(unit,profileName))names.add(unit);
+      if(unit)consider(unit);
     }
     for(const line of files.stdout.split(/\r?\n/)){
       const [unit,state]=line.trim().split(/\s+/);
-      if(!unit||!isLinuxMigrationUnit(unit,profileName))continue;
-      names.add(unit);
+      if(!unit)continue;
+      consider(unit);
       if(['enabled','enabled-runtime','linked','linked-runtime'].includes(state))enabled.add(unit);
     }
-    for(const name of [...names].sort().slice(0,48)){
-      const result=exec('systemctl',['--user','show',name,'-p','ActiveState','-p','ExecStart']);
+    if(candidate.size>48)discoveryComplete=false;
+    for(const name of [...candidate].sort().slice(0,48)){
+      const result=exec('systemctl',['--user','show',name,'-p','ActiveState','-p','ExecStart','-p','FragmentPath']);
+      if(!result.ok){discoveryComplete=false;continue;}
       const execStart=result.stdout.match(/^ExecStart=(.*)$/m)?.[1]||'';
+      const fragmentPath=result.stdout.match(/^FragmentPath=(.*)$/m)?.[1]||'';
+      const oldUnit=isLinuxMigrationUnit(name,profileName);
+      const legacyTunnel=!oldUnit&&isLinuxOwnerCommanderLegacyTunnelUnit({
+        unit:name,execStart,fragmentPath,home:process.env.HOME
+      });
+      if(!oldUnit&&!legacyTunnel)continue;
       const active=result.stdout.includes('ActiveState=active');
       const nativeTunnel=execStart.includes('/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh');
       const nativeCore=execStart.includes('/usr/lib/chatgpt-remote-commander/runtime/node');
-      units.push({id:sha(name),kind:name.includes('-tunnel')?'tunnel':'core',active,
-        enabled:enabled.has(name),knownExecutable:!!result.ok&&(nativeTunnel||nativeCore),
-        nativeTunnelCompatible:nativeTunnel});
+      units.push({id:sha(name),kind:legacyTunnel||name.includes('-tunnel')?'tunnel':'core',
+        active,enabled:enabled.has(name),
+        knownExecutable:(nativeTunnel||nativeCore)&&!legacyTunnel,
+        nativeTunnelCompatible:nativeTunnel&&!legacyTunnel});
     }
   }
   const nativeVersionOK=exists&&/^0\.12\.0~dev/.test(version||'');
@@ -595,7 +637,7 @@ function linuxFacts({profileName=null}={}){
   const targetVersion=tunnel.valid&&!tunnel.tls
     ?probeLoopbackCoreVersion(tunnel.port):null;
   return {platform:'linux',connectionMode:'private-tunnel',
-    inventoryReliable:packageQuery.ok&&listing.ok&&files.ok,
+    inventoryReliable:packageQuery.ok&&discoveryComplete,
     nativePackageInstalled:exists,
     candidateNativePackageVersionVerified,
     candidateNativePackageDowngrade:higher?.status===0,
@@ -686,6 +728,35 @@ export function classifyWindowsUninstallRegistryResponse(raw){
     return 'inno-unverified';
   return 'unverified';
 }
+// electron-builder appId io.tandemvector.commander has one product-wide NSIS
+// uninstall registration (not a device-specific key). An owner-registry entry
+// is inventory evidence only, NEVER publisher trust or upgrade authorization.
+export function classifyWindowsUnifiedNsisRegistryResponse(raw){
+  if(typeof raw!=='string'||Buffer.byteLength(raw,'utf8')>32768)return 'unverified';
+  const attrs=new Map();
+  for(const line of raw.split(/\r?\n/)){
+    const m=/^\s*(DisplayName|DisplayVersion|UninstallString)\s+REG_(?:SZ|EXPAND_SZ)\s+(.+?)\s*$/i.exec(line);
+    if(!m)continue;
+    const key=m[1].toLowerCase();
+    if(attrs.has(key))return 'unverified';
+    attrs.set(key,m[2]);
+  }
+  const version=attrs.get('displayversion');
+  const title=attrs.get('displayname');
+  const command=attrs.get('uninstallstring');
+  // Same product identity covers 0.12 stable and future releases, without
+  // trusting any uninstaller to execute or interpreting registry as signature.
+  const release=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/
+    .exec(version??'');
+  if(!release||version.length>80
+    ||(Number(release[1])===0&&Number(release[2])<12)
+    ||title!=='Remote Commander '+version
+    ||typeof command!=='string'||command.length>8192
+    ||/[\u0000-\u001f]/.test(command)
+    ||!/(?:^|[\\/])Uninstall Remote Commander\.exe(?:["\s]|$)/i.test(command))
+    return 'unverified';
+  return 'unified-nsis';
+}
 export function windowsOwnerDpapiVerifyOutputAccepted(status,stdout){
   return status===0 && typeof stdout==='string'
     && stdout.trim()==='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
@@ -725,12 +796,26 @@ function windowsFacts({profileName=null}={}){
     'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander'
   ];
   const checks=paths.map(p=>exec('reg.exe',['query',p,'/v','UninstallString']));
-  // reg.exe exit 1 means precisely that a fixed key/value is absent.
-  const bad=checks.some(c=>c.stdout.length>50000);
+  // Fixed product identity from the unified electron-builder appId, the SAME
+  // identifier on every Windows owner host. No registry-wide fuzzy scan.
+  const nativeNsisId='e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
+  const nativePaths=[
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+nativeNsisId,
+    'HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+nativeNsisId,
+    'HKLM\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'+nativeNsisId
+  ];
+  const native= nativePaths.map(p=>exec('reg.exe',['query',p]));
+  // reg.exe exit 1 is an absent fixed key, not evidence about other apps.
+  const bad=[...checks,...native].some(c=>c.stdout.length>50000);
   const present=checks.filter(c=>c.ok);
-  const installerFamily=present.length===1
-    ?classifyWindowsUninstallRegistryResponse(present[0].stdout)
-    :present.length===0?'none':'multiple-or-unverified';
+  const nativePresent=native.filter(c=>c.ok);
+  const installerFamily=present.length&&nativePresent.length
+    ?'multiple-or-unverified'
+    :nativePresent.length===1
+      ?classifyWindowsUnifiedNsisRegistryResponse(nativePresent[0].stdout)
+      :nativePresent.length>1?'multiple-or-unverified'
+      :present.length===1?classifyWindowsUninstallRegistryResponse(present[0].stdout)
+      :present.length===0?'none':'multiple-or-unverified';
   const tunnel=readWindowsOwnerTunnelBinding({profileName:selectedProfile});
   const targetVersion=tunnel.valid?probeLoopbackCoreVersion(tunnel.port):null;
   const routerReport=tunnel.valid?probeLoopbackRouterStatus(tunnel.port):null;
@@ -739,8 +824,10 @@ function windowsFacts({profileName=null}={}){
   const route=classifyObservedRouterStatus(routerReport,tunnel.port,backendVersion);
   return {platform:'win32',connectionMode:'private-tunnel',
     legacyInnoPresent:checks.some(c=>c.ok),
+    nativeUnifiedNsisPresent:nativePresent.length>0,
+    nativeUnifiedNsisRegistryMatched:installerFamily==='unified-nsis',
     ownerRegisteredInstallerFamily:installerFamily,
-    inventoryReliable:!bad&&checks.length===3,
+    inventoryReliable:!bad&&checks.length===3&&native.length===3,
     tunnelProfilePresent:tunnel.profilePresent,tunnelProfileValid:tunnel.valid,
     tunnelTargetPort:tunnel.port??null,tunnelTargetTls:tunnel.tls===true,
     tunnelTargetVersion:targetVersion,
