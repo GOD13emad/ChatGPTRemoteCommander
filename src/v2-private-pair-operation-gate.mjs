@@ -4,7 +4,8 @@
 // owner bootstrap, never MCP parameters, remote headers or model-supplied IDs.
 import {isProxy} from 'node:util/types';
 import {normalizeV2Route} from './v2-routing-contract.mjs';
-import {executeV2BoundOperation} from './v2-authorized-operation.mjs';
+import {executeV2BoundOperation,
+  executeV2PinnedPrimaryWorkflowOperation} from './v2-authorized-operation.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH=/^[a-f0-9]{64}$/;
@@ -86,7 +87,8 @@ function strictRoute(value){
 export function createV2PrivatePairOperationGate({
   hostId,profileId,principalId,expectedTunnelIdHash,expectedOwnerSidHash,
   attestTransport,resolveOwnerContext,readCurrentOwnerSidHash,
-  verifyExactNativeGrant,withLease,receiptStore,execute,now=Date.now
+  verifyExactNativeGrant,withLease,receiptStore,execute,now=Date.now,
+  requirePrimaryWriter=false,primaryAuthority
 }={}){
   if(![hostId,profileId,principalId].every(v=>typeof v==='string'
     &&ID.test(v)&&v!=='.'&&v!=='..')
@@ -96,6 +98,18 @@ export function createV2PrivatePairOperationGate({
       verifyExactNativeGrant,withLease,execute,now].some(f=>typeof f!=='function')
     ||typeof receiptStore?.execute!=='function')
     fail('V2_PRIVATE_OPERATION_BOOTSTRAP_REQUIRED');
+  // Explicit, fail-closed multi-host activation. The trusted native bootstrap
+  // must provide ALL four primary admission callbacks, never MCP JSON.
+  // A partial or unused authority config is an error, not local fallback.
+  if(typeof requirePrimaryWriter!=='boolean'
+    ||requirePrimaryWriter!==(primaryAuthority!==undefined))
+    fail('V2_PRIVATE_OPERATION_PRIMARY_BOOTSTRAP_REQUIRED');
+  const primary=requirePrimaryWriter?exact(primaryAuthority,
+    ['nativeHostId','readNativePrimary','verifyNativePrimary',
+      'withEffectSinkFence'],'V2_PRIVATE_OPERATION_PRIMARY_BOOTSTRAP_REQUIRED')
+    :null;
+  if(primary&&Object.values(primary).some(value=>typeof value!=='function'))
+    fail('V2_PRIVATE_OPERATION_PRIMARY_BOOTSTRAP_REQUIRED');
 
   async function verify(request,route){
     // A known TLS peer is not proof of human authority; require both the
@@ -143,7 +157,7 @@ export function createV2PrivatePairOperationGate({
       // Do not run any caller-selected tool until the exact pair and native
       // owner seat are reverified; a grant is *per action*, not per socket.
       await verify(request,r);
-      return executeV2BoundOperation(r,{
+      const services={
         observedCaller:async()=>{
           await verify(request,r);
           return Object.freeze({hostId,profileId,principalId,
@@ -165,7 +179,14 @@ export function createV2PrivatePairOperationGate({
         // after admission; a mutable shared "currentTool" is never authority.
         // Third argument preserves existing (route,args) callbacks.
         execute:r=>execute(r,frozenArgs,tool)
-      },tool);
+      };
+      // One canonical admission path: primary/epoch/sink fencing wraps the
+      // EXISTING pair grant, lease and receipt checks. A missing native sink
+      // fence fails closed; no per-host SQLite/local execution fallback.
+      // This does not itself implement an atomic external-effect sink.
+      if(primary)return executeV2PinnedPrimaryWorkflowOperation(
+        r,{...services,...primary},tool);
+      return executeV2BoundOperation(r,services,tool);
     }
   });
 }
