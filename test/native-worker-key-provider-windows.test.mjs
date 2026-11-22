@@ -117,6 +117,7 @@ test('DPAPI loader uses a fixed PowerShell executable, encoded non-shell script 
       assert.match(script,/ProtectedData\]::Unprotect/);
       assert.match(script,/actualLegacyOwner/);
       assert.match(script,/actualJ01Owner/);
+      assert.match(script,/ToLowerInvariant\(\);\$j01Bytes=/);
       assert.match(script,/commander[.]os-owner[.]sid[.]v1/);
       assert.match(script,/OWNER_MISMATCH/);
       assert.match(script,/DataProtectionScope\]::CurrentUser/);

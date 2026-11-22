@@ -148,7 +148,7 @@ export function createWindowsDpapiSeedLoader({
       "$expectedOwner='"+ownerSidHash+"'",
       "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
       "$sha=[Security.Cryptography.SHA256]::Create()",
-      "try{$sidBytes=[Text.Encoding]::UTF8.GetBytes($sid);$sidDigest=$sha.ComputeHash($sidBytes);$actualLegacyOwner=[BitConverter]::ToString($sidDigest).Replace('-','').ToLowerInvariant()$j01Bytes=[Text.Encoding]::UTF8.GetBytes('commander.os-owner.sid.v1'+[char]0+'win32'+[char]0+'sid='+$sid);$j01Digest=$sha.ComputeHash($j01Bytes);$actualJ01Owner=[BitConverter]::ToString($j01Digest).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}",
+      "try{$sidBytes=[Text.Encoding]::UTF8.GetBytes($sid);$sidDigest=$sha.ComputeHash($sidBytes);$actualLegacyOwner=[BitConverter]::ToString($sidDigest).Replace('-','').ToLowerInvariant();$j01Bytes=[Text.Encoding]::UTF8.GetBytes('commander.os-owner.sid.v1'+[char]0+'win32'+[char]0+'sid='+$sid);$j01Digest=$sha.ComputeHash($j01Bytes);$actualJ01Owner=[BitConverter]::ToString($j01Digest).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}",
       // Both digests correspond to the SAME CURRENT native SID. Keep existing
       // raw-SID CurrentUser DPAPI blobs valid; new J01 owner pairs use the
       // canonical domain-separated hash, never a caller-supplied identity.
