@@ -19,14 +19,43 @@ test('one package contract covers both operating systems and all nine accepted c
   assert.deepEqual(contract.commonActions,['package','verify','install','upgrade','rollback','status']);
   assert.equal(contract.nativeCandidateRoot,'packaging/unified');
   assert.equal(contract.qaTransactionHelper,'tools/universal-install/engine.mjs');
+  const auth=contract.nativeTransactionalEngine;
+  assert.equal(contract.nativeInstallAuthority,'tools/universal-install/native-cli.mjs');
+  assert.equal(auth.entrypoint,contract.nativeInstallAuthority);
+  assert.equal(auth.commonCoordinator,'tools/universal-install/native-transaction.mjs');
+  assert.equal(auth.osAdapter,'tools/universal-install/native-os-adapters.mjs');
+  assert.equal(auth.journal,'tools/universal-install/native-journal.mjs');
+  assert.equal(auth.manifestGenerator,'tools/universal-install/native-manifest.mjs');
+  assert.equal(auth.provenanceModule,'packaging/unified/owner-pinned-provenance.mjs');
+  assert.equal(auth.initialInstallNeedsHistoricalPackage,false);
+  assert.equal(auth.initialInstallManifestSchema,2);
+  assert.equal(auth.hostedNativeEffectProof,'test/universal-native-coordinator-hosted.mjs');
+  assert.ok(fs.existsSync(path.join(root,auth.hostedNativeEffectProof)));
+  assert.equal(auth.ownerIndependentProvenanceRequired,true);
+  assert.equal(auth.coreCutoverAllowed,false);
+  assert.equal(auth.initialInstallIsLiveOwnerHostAccepted,false);
+  for(const p of [auth.entrypoint,auth.commonCoordinator,auth.osAdapter,
+    auth.journal,auth.manifestGenerator,auth.provenanceModule]){
+    assert.ok(contract.requiredEmbeddedCoreFiles.includes(p),p);
+    assert.ok(contract.requiredSourceFiles.includes(p),p);
+  }
   for(const f of contract.requiredEmbeddedCoreFiles)
     assert.ok(contract.requiredSourceFiles.includes(f) || f==='config.json',f);
   const native=read('packaging/unified/prepare.mjs');
   assert.match(native,/requiredEmbeddedCoreFiles/u);
   assert.match(native,/UNIFIED_CANDIDATE_CONTRACT_INVALID/u);
+  assert.match(native,/unifiedContract\.nativeInstallAuthority/u);
+  assert.match(native,/unifiedContract\.nativeTransactionalEngine\?\.commonCoordinator/u);
+  assert.match(native,/packaging\/unified\/owner-pinned-provenance\.mjs/u);
   assert.match(native,/unifiedContract\.presentation\?\.crossOsVisualParityAccepted/u);
   for(const p of contract.requiredSourceFiles)
     assert.ok(fs.existsSync(path.join(root,p)),p);
+});
+
+test('immutable public Core tar omits optional extension bundle path',()=>{
+ const native=read('packaging/unified/prepare.mjs');
+ assert.match(native,/'archive','--format=tar','--output',tar,head,\s*'src','tools','vendor','assets','config\.json','package\.json'/u);
+ assert.doesNotMatch(native,/'archive','--format=tar','--output',tar,head,\s*'src','tools','vendor','assets','extensions'/u);
 });
 
 test('an exact-source installer QA pass cannot authorize v0.12 stable or all-account Full Power',()=>{

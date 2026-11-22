@@ -39,7 +39,13 @@ export function inspectUnifiedNativeSource({directory=repo,os=process.platform,a
     &&train.publishApproved===false&&train.installedPromotionApproved===false
     &&train.isStable===false&&train.releaseTag===null
     &&contract.schema==='rc-unified-installer-v1'
-    &&contract.nativeCandidateRoot==='packaging/unified',
+    &&contract.nativeCandidateRoot==='packaging/unified'
+    &&contract.nativeInstallAuthority==='tools/universal-install/native-cli.mjs'
+    &&contract.nativeTransactionalEngine?.entrypoint===contract.nativeInstallAuthority
+    &&contract.nativeTransactionalEngine?.ownerIndependentProvenanceRequired===true
+    &&contract.nativeTransactionalEngine?.provenanceModule==='packaging/unified/owner-pinned-provenance.mjs'
+    &&contract.nativeTransactionalEngine?.initialInstallNeedsHistoricalPackage===false
+    &&contract.nativeTransactionalEngine?.coreCutoverAllowed===false,
     'RC012_NATIVE_SOURCE_TRAIN_DRIFT');
   check(path.resolve(directory)===repo,'RC012_NATIVE_DIFFERENT_SOURCE_ROOT');
   return Object.freeze({version:source.version,spec:nativeLifecycleSpec(os,source.version,arch)});

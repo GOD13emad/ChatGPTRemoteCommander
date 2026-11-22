@@ -126,7 +126,8 @@ function validateTrainInNode(minor,version){
 // its independent runtime admission check.
 for (const [minor,version,accepted] of [
   ['11','0.11.0-dev.105',true],
-  ['12','0.12.0-dev.9',true],
+  ['12','0.12.0-dev.10',true],
+  ['12','0.12.0-dev.9',false],
   ['12','0.12.0-dev.8',false],
   ['12','0.12.0-dev.2',false],
   ['11','0.12.0-dev.1',false]

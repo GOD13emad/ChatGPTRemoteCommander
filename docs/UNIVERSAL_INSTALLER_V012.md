@@ -1,11 +1,19 @@
-# v0.12 one-install engine — current QA boundary
+# Commander — one universal native installer authority (v0.12; NoPromote)
 
-The ONE native installer candidate remains packaging/unified: shared Electron
-frontend, Windows NSIS and Linux composed DEB. The disposable
-tools/universal-install/engine.mjs is its common QA source-transaction verifier,
-not another public installer. The native source-preparation code validates the
-shared installer/universal-install-contract.json before any staging.
-Technical account profile/Tunnel identities are never rewritten.
+**Accepted architectural authority:** ONE native installation contract and
+ONE shared transaction coordinator across all Commander owner hosts and future
+releases. Native packages still come from `packaging/unified`: shared Electron
+frontend, Windows user-local NSIS, Linux composed DEB. The single native
+effects entrypoint is `tools/universal-install/native-cli.mjs`, implemented by
+`native-transaction.mjs`, `native-journal.mjs`, `native-manifest.mjs` and
+`native-os-adapters.mjs`. `tools/universal-install/engine.mjs` stays as a
+disposable source-only QA verifier, not an alternate native effects controller.
+The packager validates the authority and includes all five engine modules in
+the exact source-pinned embedded Core manifest. Technical ChatGPT account and
+exclusive Tunnel identities cannot change through installation.
+
+**Scope:** adoption of code and architecture, not owner-host promotion,
+accepted Full Access/J01 Worker authority or five-host replacement.
 
 ## Evidence standard / DoD
 
@@ -42,14 +50,71 @@ It never replaces installed Commander Core/Browser/UI, starts native service,
 alters live routing, grants Full Power, or publishes a release. Test success
 is not live installation, feature parity or visual parity proof.
 
-v0.12.0-dev.9 remains INTEGRATION_CANDIDATE_NOT_FINAL; the existing
+v0.12.0-dev.10 remains INTEGRATION_CANDIDATE_NOT_FINAL; the existing
 tools/verify-v012-publish-readiness.mjs explicitly rejects unapproved
 stable promotion. Historical tools/one-install in other branches is design
-provenance, not a competing active installer. Next integration milestone:
-both OS launchers must route to the same engine, then exact native
-per-host canary/rollback and matching screen/action inventories must pass
-with real owner approval before deployment.
+provenance, not a competing active installer. The new shared transaction
+and declarative manifest are code-tested across both OSes; OS-native
+installation still requires independent owner approval. Next gate:
+disposable native effect/rollback with this coordinator, followed by
+owner-controlled release provenance, J01, verified protected Worker ingress,
+single-Tunnel Core cutover, login/reboot and fleet recovery. Until these
+conditions actually pass, all existing operational services are preserved.
 
+
+## One host-independent native lifecycle is the installation standard
+
+The shared lifecycle is
+`manifest → inspect native package and installed baseline → independently
+pinned release provenance → owner OS consent → exclusive journal lock →
+native package effect → independent version, integrity and runtime checks →
+commit / verified rollback or stop`. Windows uses the existing per-user
+NSIS appId; Linux uses the same dpkg identity and polkit for owner-visible
+privileged package operations. `--fresh` accepts only actual package absence
+with no owner profile/legacy state. Upgrade uses exact previous native
+binary; rollback from a clean install requires native absence. Unknown
+effects are reconciled before retry; a failed check is never a release PASS.
+For a clean initial installation, the manifest includes the single candidate
+package and independent owner-pinned release provenance schema 2; the owner
+does not need an older package. Upgrades still require the old native package
+and independently pinned schema 1. Only real OS-native uninstall with
+independent absence readback can prove first-install rollback. The packaged
+Core must include the canonical provenance verifier at
+`packaging/unified/owner-pinned-provenance.mjs`; source preparation refuses
+an incomplete native engine or unshipped verifier.
+
+The one active authority is `installer/universal-install-contract.json`
+and native effects coordinator `tools/universal-install/native-cli.mjs`.
+`packaging/unified/prepare.mjs` enforces the complete shared engine inventory.
+`native-smoke.mjs` still qualifies disposable hosted native OS scripts; its
+QA PASS alone does NOT prove the new coordinator performed a real
+owner-machine effect. See [PR #521](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/521).
+
+**Measured read-only fleet baseline (2026-11-22):** Emad Laptop Linux and
+Emad PC Windows dev.9; MMZ Laptop Linux, Emad Server and Amirreza Server
+dev.8. One unified NSIS registration per Windows Commander installation;
+Remote Commander Browser registrations are a *different* application,
+not a duplicate Core. A stale a982 Windows preflight incorrectly reported
+no NSIS; the exact dba0 source correctly identifies installed unified NSIS.
+Linux and Windows preflight still say `NO_PROMOTE`: authenticated
+private pair ingress, real native J01 signed Worker grant/revocation,
+full operational rollback and fleet cutover are unaccepted. No other
+chat's active migration branch is modified by this design adoption.
+
+## Disposable native effect acceptance through the shared coordinator
+
+The hosted source-pinned Windows/Linux installer matrix now has a separate,
+runner-only native-effects step BEFORE the older OS-specific lifecycle
+smoke. It executes the exact native-transaction coordinator using a
+single fresh native package, verifies registered installation, invokes the
+native OS uninstaller and checks absence with the same shared policy and
+journal. On the temporary Linux runner alone, polkit is substituted by
+the runner's existing noninteractive sudo dpkg permission; no live user
+sudo/polkit bypass or new production adapter permission is added. The test
+refuses non-hosted owner machines. It proves OS package effects only after
+the matching exact SHA GitHub workflow completes successfully, not owner
+J01 consent, signed Worker admission, boot persistence or operational
+fleet rollback.
 
 ## Exact cross-OS native Core artifact parity (automated)
 
@@ -78,6 +143,20 @@ native J01 consent over pinned mTLS. The prompt is never shown by default.
 Denial or timeout does not pass. Even an approved binding is rechecked by a
 denied Core tool call. No live Tunnel, service, OS privilege, credential or
 installed Core is replaced by this diagnostic.
+
+**Real three-profile owner-native admission evidence (2026-11-22):** On the
+existing Emad Laptop, the SAME source-pinned no-grant canary invoked the
+native J01 owner-visible consent separately for (Core profile, owner Tunnel):
+(`default`, `chatgpt-remote-commander`, 48965), (`MMZ`,
+`mmz-emad-laptop`, 48966) and (`saeed-emad`, `saeed-emad-laptop`,
+48967). All three signed owner-pair admissions returned HTTP 200 over
+client-authenticated TLS 1.3; anonymous clients were denied, and
+`tools/call` without a Worker grant continued to fail 503
+`PRIVATE_OWNER_ADMISSION_UNAVAILABLE`. Each source QA script confirmed
+the preexisting service MainPID unchanged, and all temporary broker/Core
+units were collected. The installed 0.11 Core and all active Tunnels were
+not replaced. These are three actual, **ephemeral J01 consent
+events for isolated canaries**, not three persistent production grants.
 
 This proves only the native owner-pair binding seam, not a signed Worker,
 live privileged tool effect, full Core restoration, or production cutover.

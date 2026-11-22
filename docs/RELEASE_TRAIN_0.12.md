@@ -1,4 +1,11 @@
-# Release Train 0.12 — `0.12.0-dev.9` candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.10` candidate (NoPromote)
+
+## Dev.10 source preparation (22 November 2026)
+
+Candidate derived from independently approved/merged universal installer engine, merge commit `194c5e46229704273c465bd5e4d9fbc158b0c5de`. Monotonic dev.10 version aligns Core, desktop, unified NSIS/DEB, package lock and plugin template metadata. This branch remains **INTEGRATION_CANDIDATE_NOT_FINAL**: this source edit is not a built/pinned native artifact, owner-approved installation, positive J01/Signed Worker, live mTLS Cutover, package rollback, stable publication or fleet acceptance. Historical dev.9 evidence below remains scoped to its original source.
+
+## Historical dev.9 checkpoint
+
 
 ## Current candidate checkpoint — 2026-11-22
 
