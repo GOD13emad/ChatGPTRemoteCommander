@@ -14,6 +14,7 @@ param(
   [switch]$NoPromote,
   [string]$SourceBundle = '',
   [string]$SourceBundleSha256 = '',
+  [string]$SourceSnapshotRepo = '',
   [string]$WindowsJobRunnerPath = '',
   [switch]$PinnedLegacyRunnerOverlay,
   [ValidateRange(5,300)][int]$DrainTimeoutSeconds = 60
@@ -39,6 +40,17 @@ if($SourceBundle){
   if($digest -ne $SourceBundleSha256.ToLowerInvariant()){throw 'SOURCE_BUNDLE_SHA256_MISMATCH'}
   $Repo=$file.FullName
 }elseif($SourceBundleSha256){throw 'SOURCE_BUNDLE_SHA_WITHOUT_FILE'}
+if($SourceSnapshotRepo){
+  if($SourceBundle){throw 'SHALLOW_SOURCE_AND_BUNDLE_MUTUALLY_EXCLUSIVE'}
+  if($ExpectedCommit -notmatch '^[0-9a-fA-F]{40}$'){throw 'SHALLOW_SOURCE_EXPECTED_COMMIT_REQUIRED'}
+  $helper=Join-Path $PSScriptRoot 'tools\offline-shallow-source.ps1'
+  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'SHALLOW_SOURCE_VERIFIER_REQUIRED'}
+  $receipt=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $helper -Mode VerifyRepo -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -RepoRoot $SourceSnapshotRepo)
+  if($LASTEXITCODE -ne 0){throw 'SHALLOW_SOURCE_REPOSITORY_VERIFICATION_FAILED'}
+  $record=($receipt|Select-Object -Last 1|ConvertFrom-Json)
+  if($record.status -ne 'SHALLOW_SOURCE_REPOSITORY_VERIFIED'){throw 'SHALLOW_SOURCE_REPOSITORY_RECEIPT_INVALID'}
+  $Repo=[string]$record.repoRoot
+}
 $StateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
 $PauseFile=Join-Path $StateRoot 'maintenance\auto-update-paused.json'
 if(-not $Force -and (Test-Path -LiteralPath $PauseFile -PathType Leaf)){
