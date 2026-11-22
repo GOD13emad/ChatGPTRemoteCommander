@@ -69,16 +69,39 @@ function installedNativeVersion(){
   }
   fail('RC012_AUTO_UPDATE_PLATFORM_UNSUPPORTED');
 }
-function ghApi(endpoint){return json(exec('gh',['api',endpoint]));}
-function signedSourceTrain(tag,majorMinor){
-  const loc='repos/'+REPO+'/contents/docs/release-train-'+majorMinor+
-    '.json?ref='+encodeURIComponent(tag);
+// Public, read-only release discovery works on un-enrolled hosts: gh api
+// requires account sign-in even for public repositories. Candidate signature
+// verification remains a separate mandatory gate and is NOT replaced by HTTPS.
+export async function publicGitHubJson(endpoint,{fetcher=fetch}={}){
+  if(!/^(?:releases\?per_page=30|commits\/v[0-9]+\.[0-9]+\.[0-9]+|contents\/docs\/release-train-[0-9]+\.[0-9]+\.json\?ref=[a-f0-9]{40})$/.test(endpoint))
+    fail('RC012_AUTO_UPDATE_PUBLIC_API_ROUTE_DENIED');
+  let response;
   try{
-    const res=ghApi(loc);
-    if(res.type!=='file'||res.encoding!=='base64')return null;
-    const text=Buffer.from(res.content.replace(/\s/g,''),'base64').toString('utf8');
-    return json(text);
-  }catch{return null;}
+    response=await fetcher('https://api.github.com/repos/'+REPO+'/'+endpoint,{
+      headers:{Accept:'application/vnd.github+json',
+        'User-Agent':'ChatGPTCommander-SignedStableUpdate/0.12'},
+      signal:AbortSignal.timeout(15000)
+    });
+  }catch{fail('RC012_AUTO_UPDATE_PUBLIC_API_UNAVAILABLE');}
+  if(response?.status===404)return null;
+  if(response?.status!==200)fail('RC012_AUTO_UPDATE_PUBLIC_API_REJECTED');
+  let content;
+  try{content=await response.text();}
+  catch{fail('RC012_AUTO_UPDATE_PUBLIC_API_UNAVAILABLE');}
+  if(content.length<2||content.length>3*1024*1024)
+    fail('RC012_AUTO_UPDATE_PUBLIC_API_RESPONSE_INVALID');
+  return json(content);
+}
+async function signedSourceTrain(sourceHead,majorMinor,api){
+  const res=await api('contents/docs/release-train-'+majorMinor+
+    '.json?ref='+sourceHead);
+  if(!res)return null;
+  if(res.type!=='file'||res.encoding!=='base64'
+    ||typeof res.content!=='string'||res.content.length>1024*1024)
+    fail('RC012_AUTO_UPDATE_TRAIN_SOURCE_INVALID');
+  const text=Buffer.from(res.content.replace(/\s/g,''),'base64').toString('utf8');
+  if(text.length>100*1024)fail('RC012_AUTO_UPDATE_TRAIN_SOURCE_INVALID');
+  return json(text);
 }
 export function expectedArtifact(release,platform,architecture='x64'){
   // Match the signed release version, not merely a filename pattern.
@@ -104,20 +127,39 @@ function stageDirectory(){
     :path.join(os.homedir(),'.cache','chatgpt-remote-commander',
       'native-auto-update-staging');
 }
-export function discoverApprovedUpdate(){
-  const current=installedNativeVersion();
-  const releases=ghApi('repos/'+REPO+'/releases?per_page=30');
-  const selected=approvedRelease({current,releases,trainFor:signedSourceTrain});
-  return {current,selected};
+export async function discoverApprovedUpdate({
+  api=publicGitHubJson,readInstalled=installedNativeVersion
+}={}){
+  const current=readInstalled();
+  const releases=await api('releases?per_page=30');
+  if(!Array.isArray(releases)||releases.length>30)
+    fail('RC012_AUTO_UPDATE_RELEASE_INDEX_INVALID');
+  const sorted=releases.filter(r=>r&&!r.draft&&!r.prerelease&&TAG.test(r.tag_name||''))
+    .sort((a,b)=>compareReleaseVersions(b.tag_name.slice(1),a.tag_name.slice(1)));
+  for(const release of sorted){
+    const tag=release.tag_name,version=tag.slice(1);
+    if(compareReleaseVersions(version,current)<=0)continue;
+    const target=await api('commits/'+tag);
+    const sourceHead=target?.sha;
+    if(typeof sourceHead!=='string'||!COMMIT.test(sourceHead))
+      fail('RC012_AUTO_UPDATE_SOURCE_HEAD_UNAVAILABLE');
+    // Read train from the resolved *immutable commit*, never a moving tag.
+    const train=await signedSourceTrain(sourceHead,
+      version.split('.').slice(0,2).join('.'),api);
+    const selected=approvedRelease({current,releases:[release],
+      trainFor:()=>train});
+    if(selected)return {current,selected:{...selected,sourceHead}};
+  }
+  return {current,selected:null};
 }
-export function stageApprovedUpdate({run=exec,api=ghApi}={}){
-  const {current,selected}=discoverApprovedUpdate();
+export async function stageApprovedUpdate({run=exec,api=publicGitHubJson}={}){
+  const {current,selected}=await discoverApprovedUpdate({api});
   if(!selected)return {status:'NO_APPROVED_NEW_RELEASE',current,installed:false};
   const platform=process.platform;
   const asset=expectedArtifact(selected.release,platform,os.arch());
   if(!asset||!/^sha256:[a-f0-9]{64}$/.test(asset.digest||''))
     fail('RC012_AUTO_UPDATE_SIGNED_ASSET_MISSING');
-  const commit=api('repos/'+REPO+'/commits/'+encodeURIComponent(selected.tag)).sha;
+  const commit=selected.sourceHead;
   if(typeof commit!=='string'||!COMMIT.test(commit))
     fail('RC012_AUTO_UPDATE_SOURCE_HEAD_UNAVAILABLE');
   const root=stageDirectory();
@@ -154,8 +196,8 @@ export function stageApprovedUpdate({run=exec,api=ghApi}={}){
 async function main(args){
   if(args.length!==1||!['--check','--stage'].includes(args[0]))
     fail('RC012_AUTO_UPDATE_USAGE');
-  const result=args[0]==='--stage'?stageApprovedUpdate():
-    (()=>{const v=discoverApprovedUpdate();return {
+  const result=args[0]==='--stage'?await stageApprovedUpdate():
+    await (async()=>{const v=await discoverApprovedUpdate();return {
       status:v.selected?'APPROVED_UPDATE_DISCOVERED':'NO_APPROVED_NEW_RELEASE',
       current:v.current,next:v.selected?.version??null,installed:false
     };})();

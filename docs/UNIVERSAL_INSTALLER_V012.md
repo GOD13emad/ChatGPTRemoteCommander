@@ -184,6 +184,16 @@ No installed package has been promoted by this code path.
 
 **Source-stage implementation**: `tools/universal-install/managed-updates.mjs`
 and `managed-update-scheduler.mjs` are the *same code on both OSes*.
+The `--check` path queries the public GitHub REST API over HTTPS **without
+GitHub account sign-in or `gh api`**, resolves tags to immutable SHA-1 commit
+identities and only accepts the train from that exact commit. A missing or
+unavailable release-train never counts as approval. This public discovery is
+not itself cryptographic attestation or permission to install; the current
+`--stage` path still invokes the official `gh attestation verify` client and
+therefore needs a valid local GitHub CLI authentication. Systems lacking it
+can check versions but must not claim `SIGNED_UPDATE_STAGED` until an
+independent signature verifier is available. No login or privilege bypass
+is attempted.
 The owner-local scheduler runs `--stage` every 6 hours through systemd user
 timer (Linux) or a least-privilege Task Scheduler task (Windows). For each new
 **published stable release**, the update manager checks the source-tagged

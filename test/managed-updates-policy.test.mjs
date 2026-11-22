@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compareReleaseVersions,approvedRelease,expectedArtifact}
+import {compareReleaseVersions,approvedRelease,expectedArtifact,discoverApprovedUpdate,publicGitHubJson}
  from '../tools/universal-install/managed-updates.mjs';
 const valid=(tag,extra={})=>({
  schema:'rc-suite-release-train-v1',train:'0.12',sourceVersion:tag.slice(1),
@@ -68,4 +68,43 @@ test('auto-stage enforces exact signed asset version and OS architecture',()=>{
   assert.equal(expectedArtifact({...released,assets:[
     released.assets[1],released.assets[1]
   ]},'linux'),null,'duplicate assets must fail closed');
+});
+
+test('public GitHub discovery uses immutable source digest with no gh account',async()=>{
+ const head='f'.repeat(40),calls=[];
+ const result=await discoverApprovedUpdate({
+   readInstalled:()=> '0.12.0-dev.9',
+   api:async endpoint=>{
+     calls.push(endpoint);
+     if(endpoint==='releases?per_page=30')return [r('v0.12.0')];
+     if(endpoint==='commits/v0.12.0')return {sha:head};
+     if(endpoint==='contents/docs/release-train-0.12.json?ref='+head)
+       return {type:'file',encoding:'base64',
+         content:Buffer.from(JSON.stringify(valid('v0.12.0'))).toString('base64')};
+     throw Error('Unexpected lookup '+endpoint);
+   }
+ });
+ assert.equal(result.selected.sourceHead,head);
+ assert.deepEqual(calls,['releases?per_page=30','commits/v0.12.0',
+   'contents/docs/release-train-0.12.json?ref='+head]);
+ assert.equal(result.selected.tag,'v0.12.0');
+});
+test('public updater never queries train from mutable tag or unsupported API',async()=>{
+ const head='e'.repeat(40),seen=[];
+ const discovered=await discoverApprovedUpdate({
+   readInstalled:()=> '0.12.0-dev.9',
+   api:async endpoint=>{
+     seen.push(endpoint);
+     if(endpoint==='releases?per_page=30')return [r('v0.12.0')];
+     if(endpoint==='commits/v0.12.0')return {sha:head};
+     if(endpoint==='contents/docs/release-train-0.12.json?ref='+head)return null;
+     throw Error('Unexpected');
+   }
+ });
+ assert.equal(discovered.selected,null);
+ assert.equal(seen.length,3);
+ await assert.rejects(()=>publicGitHubJson('https://attacker.invalid/path'),
+   /PUBLIC_API_ROUTE_DENIED/);
+ await assert.rejects(()=>publicGitHubJson('releases?per_page=30',{
+   fetcher:async()=>({status:401})}),/PUBLIC_API_REJECTED/);
 });
