@@ -59,7 +59,11 @@ test('profile bytes different from signed pin rejected',()=>{
  assert.equal(check({data:{[p]:profile+'# changed'}}).status,'INSTALLED_PROFILE_SHA_MISMATCH');
 });
 test('foreign preexisting policy never overwritten implicitly',()=>{
- assert.equal(check({stats:{'/etc/apparmor.d/remote-commander-unified':fileInfo(Buffer.alloc(100),{ino:90})}}).status,'OWNER_POLICY_EXISTING_REQUIRES_RECONCILIATION');
+ const path='/etc/apparmor.d/remote-commander-unified';
+ const foreign='profile "foreign" "/opt/Remote Commander/remote-commander-unified" flags=(unconfined) {\\n  userns,\\n}\\n';
+ const q=check({data:{[path]:foreign},stats:{[path]:fileInfo(Buffer.from(foreign),{ino:90})}});
+ assert.equal(q.status,'OWNER_POLICY_EXISTING_REQUIRES_RECONCILIATION');
+ assert.equal(q.osPolicyModified,false);
 });
 test('non-root and world-writable source rejected',()=>{
  const f=fixture();const badStat=fileInfo(Buffer.from(profile),{uid:1000});
@@ -111,4 +115,25 @@ test('missing system policy parent fails closed',()=>{
 test('non-root ancestor refuses admission',()=>{
  const q=check({stats:{[ROOT]:dirInfo({uid:1000})}});
  assert.equal(q.status,'OWNER_POLICY_PATH_UNTRUSTED');
+});
+
+test('matching existing OS policy is detected but never treated as loaded kernel policy',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const q=check({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{ino:73})}});
+ assert.equal(q.status,'OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION');
+ assert.equal(q.activeProfileMatchesPinnedRelease,true);
+ assert.equal(q.loadedProfileVerified,false);
+ assert.equal(q.nativeOwnerApprovalRequired,false);
+ assert.equal(q.stablePromotionAccepted,false);
+});
+test('group-writable active system policy is not treated as reusable',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const q=check({data:{[active]:profile},stats:{[active]:fileInfo(Buffer.from(profile),{mode:0o100664,ino:73})}});
+ assert.equal(q.status,'OWNER_POLICY_EXISTING_UNTRUSTED');
+});
+test('active system policy symlink is rejected even if bytes match',()=>{
+ const active='/etc/apparmor.d/remote-commander-unified';
+ const st={...fileInfo(Buffer.from(profile),{ino:73}),isSymbolicLink:()=>true};
+ const q=check({data:{[active]:profile},stats:{[active]:st}});
+ assert.equal(q.status,'OWNER_POLICY_EXISTING_UNTRUSTED');
 });
