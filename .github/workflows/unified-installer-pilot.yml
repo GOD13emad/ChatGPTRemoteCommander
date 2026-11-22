@@ -250,3 +250,51 @@ jobs:
               --signer-workflow "$GH_REPO/.github/workflows/unified-installer-pilot.yml" >/dev/null
           done
           echo "RC012_NATIVE_QA_PROVENANCE_VERIFIED_NO_PROMOTE sha=$GITHUB_SHA"
+
+
+  native-windows-same-family-cycle:
+    # Exact real dev.8/dev.9 native binaries; no owner host affected.
+    name: Windows NSIS old-to-candidate-to-old rollback (NoPromote)
+    if: github.event_name == 'workflow_dispatch'
+    needs: [qa-provenance]
+    runs-on: windows-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # official v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # official v7
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # official v8
+        with:
+          name: rc-unified-windows-nsis-qa
+          path: ${{ runner.temp }}/rc012-new-nsis
+      - name: Fetch old exact-source built NSIS from previous qualified run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $run=44910083231
+          $oldCommit='d7b1251f8d6c8ce48bca675bc624d5c7643b33ae'
+          $record=gh run view $run --repo $env:GITHUB_REPOSITORY --json headSha,conclusion | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0 -or $record.headSha -cne $oldCommit -or $record.conclusion -ne 'success'){
+            throw 'RC012_NSIS_OLD_NATIVE_SOURCE_UNVERIFIED'
+          }
+          gh run download $run --repo $env:GITHUB_REPOSITORY --name rc-unified-windows-nsis-qa --dir (Join-Path $env:RUNNER_TEMP 'rc012-old-nsis')
+          if($LASTEXITCODE -ne 0){throw 'RC012_NSIS_OLD_ASSET_UNAVAILABLE'}
+      - name: Prove actual same-family NSIS upgrade and rollback without live owner effects
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=(node -p 'require("./package.json").version').Trim()
+          $old=Join-Path $env:RUNNER_TEMP 'rc012-old-nsis/Remote-Commander-Unified-0.12.0-dev.8-Windows-x64.exe'
+          $new=Join-Path $env:RUNNER_TEMP ('rc012-new-nsis/Remote-Commander-Unified-'+$version+'-Windows-x64.exe')
+          & ./test/unified-windows-same-family-upgrade-smoke.ps1 -OldInstaller $old -CandidateInstaller $new
+          if($LASTEXITCODE -ne 0){throw 'RC012_NSIS_SAME_FAMILY_NATIVE_QA_FAILED'}
