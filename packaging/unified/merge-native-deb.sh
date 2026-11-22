@@ -34,7 +34,7 @@ mkdir "$WORK/native" "$WORK/gui"
 dpkg-deb --raw-extract "$NATIVE" "$WORK/native"
 dpkg-deb --raw-extract "$GUI" "$WORK/gui"
 python3 - "$WORK/native" "$WORK/gui" <<'PY'
-import hashlib, json, os, pathlib, shutil, sys
+import hashlib, json, os, pathlib, shutil, stat, sys
 native=pathlib.Path(sys.argv[1])
 gui=pathlib.Path(sys.argv[2])
 runtime=native/'usr/lib/chatgpt-remote-commander'
@@ -87,16 +87,27 @@ for src,rel in iter_entries(gui):
             dest.parent.mkdir(parents=True,exist_ok=True)
             dest.symlink_to(target)
     elif src.is_dir():
-        if dest.exists() and (not dest.is_dir() or dest.is_symlink()):
+        existed=dest.exists()
+        if existed and (not dest.is_dir() or dest.is_symlink()):
             raise SystemExit('RC012_MERGE_DIR_CONFLICT '+str(rel))
         dest.mkdir(parents=True,exist_ok=True)
+        # A Commander worker may build under umask 077. Packaged GUI paths
+        # must remain traversable by the unprivileged owning desktop user.
+        if not existed:dest.chmod(0o755)
     elif src.is_file():
         if dest.exists():
             if not dest.is_file() or dest.is_symlink() or src.read_bytes()!=dest.read_bytes():
                 raise SystemExit('RC012_MERGE_FILE_CONFLICT '+str(rel))
         else:
             dest.parent.mkdir(parents=True,exist_ok=True)
+            src_mode=stat.S_IMODE(src.stat().st_mode)
+            if src_mode & 0o7000:
+                raise SystemExit('RC012_MERGE_GUI_PRIVILEGED_MODE_REVIEW_REQUIRED '+str(rel))
             shutil.copy2(src,dest)
+            # copy2 retains restrictive GUI build modes such as 0600, which
+            # render root-owned .asar, icons and desktop launchers unusable.
+            # All these files are static distributable GUI assets, never keys.
+            dest.chmod(0o755 if src_mode & 0o111 else 0o644)
     else:
         raise SystemExit('RC012_MERGE_SPECIAL_FILE '+str(rel))
 native_control=(native/'DEBIAN/control').read_text()
