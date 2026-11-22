@@ -43,6 +43,11 @@ test('native Linux and Electron builder derive one exact prerelease version from
  assert.match(merged,/RC012_GUI_MAINTAINER_SCRIPT_OMITTED/);
  assert.match(merged,/RC012_MERGE_UNEXPECTED_GUI_CONTROL/);
  assert.match(merged,/RC012_MERGE_NATIVE_CONTROL_UNEXPECTED/);
+ assert.match(merged,/RC012_MERGE_SOURCE_HEAD_MISMATCH/);
+ assert.match(merged,/RC012_MERGE_SOURCE_PIN_VERIFIED/);
+ assert.match(merged,/--source-preflight/);
+ assert.match(merged,/dpkg-deb --fsys-tarfile "\$GUI"/);
+ assert.match(merged,/git -C "\$BASE" rev-parse HEAD\^\{tree\}/);
  assert.match(merged,/RC012_MERGED_PACKAGE_UNEXPECTED_MAINTAINER/);
  assert.doesNotMatch(merged,/shutil\.copy2\(p,native\/'DEBIAN'\/p\.name\)/);
  assert.match(upgrade,/VERSION.*==.*GUI_VERSION/);

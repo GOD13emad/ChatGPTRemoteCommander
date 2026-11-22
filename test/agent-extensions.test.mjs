@@ -237,3 +237,107 @@ test('multiword project trigger matches when its words are separated and layers 
     assert.ok(routed.items[1].route.matchedTriggers.includes('continue project'));
   } finally { fs.rmSync(base,{recursive:true,force:true}); }
 });
+
+
+test('opt-in project intent guard filters dictionary translation but preserves actual execution',()=>{
+  const base=tempRoot();
+  try {
+    const brain=manifest('project-execution-brain');
+    brain.triggers=['ادامه بده','ادامه پروژه','continue project','audit project'];
+    brain.description='Project execution and evidence-based continuation.';
+    brain.metadata={contextGateRequired:true};
+    writeExtension(base,'project-execution-brain',brain);
+    const writing=manifest('universal-writing');
+    writing.triggers=['ترجمه','translate','meaning'];
+    writing.description='Translation and plain writing.';
+    writeExtension(base,'universal-writing',writing);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    for (const task of [
+      'فقط ترجمه کن: «ادامه بده» به انگلیسی چه می‌شود؟',
+      'ترجمه جمله ادامه بده چیست؟',
+      'What does "continue project" mean?',
+      'How do you say "audit project" in Persian?',
+      '«ادامه بده» به انگلیسی چه می‌شود؟',
+      'به انگلیسی بگو «ادامه بده»',
+      '«ادامه بده» را به آلمانی برگردان',
+      'What is the English for "continue project"?',
+      'How do you say continue project in Persian?',
+      'در جمله «ادامه بده پروژه» فعل کدام است؟',
+      'عبارت «ادامه بده» رو توضیح بده',
+      'برای عبارت «ادامه بده» یک مترادف بنویس',
+      'ترجمه جمله ادامه بده پروژه چیست؟',
+      'What is the English for continue project?',
+      'Explain the phrase "continue project"'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(!routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+    for (const task of [
+      'ادامه بده پروژه شبیه‌سازی COMSOL را',
+      'پروژه ترجمه متون را ادامه بده',
+      'Translate the status memo, then continue project',
+      'ترجمه کن و سپس پروژه را ادامه بده',
+      'ترجمه کن و پروژه را ادامه بده',
+      'ترجمه مقاله را ادامه بده',
+      'ادامه بده کار ترجمه مقاله را',
+      'Continue the project translation task',
+      'Please translate the draft and also audit the project'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+    assert.equal(registry.execute('agent_extension_list',{}).diagnostics.length,0);
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});
+
+test('non-opt-in extensions retain their declared literal triggers',()=>{
+  const base=tempRoot();
+  try {
+    const literal=manifest('literal-phrase-tool');
+    literal.triggers=['continue project'];
+    literal.metadata={contextGateRequired:false};
+    writeExtension(base,'literal-phrase-tool',literal);
+    const items=createAgentExtensionRegistry({directories:[base]})
+      .execute('agent_extension_route',{task:'Translate "continue project" to Persian'}).items;
+    assert.deepEqual(items.map(x=>x.id),['literal-phrase-tool']);
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});
+
+
+test('context-gated project agents exclude story and literal-copy requests',()=>{
+  const base=tempRoot();
+  try {
+    const brain=manifest('project-execution-brain');
+    brain.triggers=['ادامه بده','continue project'];
+    brain.description='Project execution from accepted state.';
+    brain.metadata={contextGateRequired:true};
+    writeExtension(base,'project-execution-brain',brain);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    for(const task of [
+      'ادامه بده این داستان کودکانه را',
+      'داستان قبلی را ادامه بده',
+      'ادامه بده شعر را',
+      'Continue this short story',
+      'عبارت ادامه بده را عیناً کپی کن',
+      'فقط خود عبارت «ادامه بده» را تایپ کن',
+      'منظور از «ادامه بده» چیست؟',
+      'چطوری عبارت ادامه بده را تایپ کنم؟',
+      'Copy the phrase "continue project" exactly',
+      'Write the words continue project exactly'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(!routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+    for(const task of [
+      'ادامه بده',
+      'ادامه بده پروژه رباتیک را',
+      'پروژه داستان‌نویسی من را ادامه بده',
+      'Continue the project of writing this short story',
+      'ترجمه کن و سپس پروژه را ادامه بده',
+      'دستور پروژه را تایپ کن و بعد پروژه را ادامه بده'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});

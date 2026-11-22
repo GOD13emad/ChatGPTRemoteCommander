@@ -63,3 +63,13 @@ test('native Windows/Linux matrix requires exact-file equality before installer 
   const deps=read('package.json');
   assert.ok(deps.includes('test/universal-native-parity.test.mjs'));
 });
+
+test('source regression owner-recovery batches respect native test deadlines without dropping coverage',()=>{
+  const source=read('tools/run-v012-source-regression.mjs');
+  assert.match(source,/files\.slice\(20, 21\).*Protected Core/);
+  assert.match(source,/files\.slice\(21, 22\).*Windows DPAPI recovery/);
+  assert.match(source,/files\.slice\(22, 23\).*Linux encrypted recovery/);
+  assert.match(source,/index === 13 \? 100000/);
+  assert.match(source,/index === 14 \? \(part === 0 \? 55000 : 65000\)/);
+  assert.match(source,/new Set\(batches\.flat\(\)\)\.size!==files\.length/);
+});
