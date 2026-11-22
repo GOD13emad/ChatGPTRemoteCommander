@@ -12,6 +12,8 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 > **Giving this repository to ChatGPT for installation? Start with [START_HERE.md](START_HERE.md).** It is the single current source of truth for Standard/Full mode selection, install/update, Secure MCP Tunnel, persistent enrollment, ChatGPT custom app creation, Plugin packaging/install, icon use, real tool testing, autostart, stop/start, and FINAL PASS. For ChatGPT Work/Codex orchestration, also use [WORK_SETUP.md](WORK_SETUP.md).
 
+**Code signing policy (proposal, NOT signed):** [review draft](docs/CODE_SIGNING_POLICY.md) · [privacy and network notice (draft)](docs/PRIVACY_NOTICE.md). SignPath Foundation enrollment, Windows Authenticode and Stable acceptance are still open.
+
 **Setup guides in 10 languages:** [English](docs/SETUP.en.md) · [فارسی](docs/SETUP.fa.md) · [العربية](docs/SETUP.ar.md) · [Türkçe](docs/SETUP.tr.md) · [Español](docs/SETUP.es.md) · [Français](docs/SETUP.fr.md) · [Deutsch](docs/SETUP.de.md) · [Русский](docs/SETUP.ru.md) · [简体中文](docs/SETUP.zh-CN.md) · [日本語](docs/SETUP.ja.md)
 
 [Unified product architecture (accepted design; runtime gates open)](docs/COMMANDER_ARCHITECTURE.md) · [Documentation index](docs/README.md) · [Server install](docs/SERVER_INSTALL.md) · [Current release: v0.10.20](docs/RELEASE_0.10.20.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
