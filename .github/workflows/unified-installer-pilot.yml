@@ -55,6 +55,8 @@ jobs:
         run: node packaging/unified/prepare.mjs
       - name: Reject mutated native Core manifests and extraction paths (synthetic negatives)
         run: node --test test/verify-compiled-core.test.mjs
+      - name: Verify native owner/Worker denial and DPAPI custody on both OSes
+        run: npm run test:v012-owner-worker-admission
       - name: Preserve exact native Core inventory for cross-OS byte comparison
         uses: actions/upload-artifact@v4
         with:
@@ -102,10 +104,6 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: bash packaging/unified/merge-native-deb.sh
-      - name: Upgrade same-name native package, test GUI, then rollback on disposable Ubuntu
-        if: runner.os == 'Linux'
-        shell: bash
-        run: bash test/unified-native-upgrade-smoke.sh
       - name: Build package (Windows)
         if: runner.os == 'Windows'
         working-directory: packaging/unified
@@ -114,10 +112,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./test/unified-nsis-migration-guard.ps1
-      - name: Transactionally migrate legacy GUI to single Windows NSIS and restore original
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./test/unified-windows-owner-migration.ps1
+      - name: One common native install/upgrade/rollback lifecycle on both hosted OSes (NoPromote)
+        shell: bash
+        run: node tools/universal-install/native-smoke.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Test exact source, privilege boundaries and embedded runtime
         run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs test/unified-migration-preflight.test.mjs test/unified-profile-recovery.test.mjs
       - name: Real Windows Electron GUI and restricted Core Start/Stop

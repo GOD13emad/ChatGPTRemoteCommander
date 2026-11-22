@@ -749,8 +749,13 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       security:{
         directory:path.join(root,'owner-grants'),
         issuer:'commander.local',audience:'remote-commander',
+        // server-v0.3 supplies this trusted receipt store in production.
+        // Source before the factory-mode fix rejected this as "ambiguous".
+        receiptStore,
         resolveOwnerRoute:async handle=>route(handle),
-        bindWorkerToNativeOwner:({ownerStack,identity})=>{
+        bindWorkerToNativeOwner:({ownerStack,identity,receiptStore:boundReceipts})=>{
+          assert.equal(boundReceipts,receiptStore);
+          assert.equal(typeof identity.resolveTransportIdentity,'function');
           assert.equal(ownerStack.nativeSessionBindings.size,0);
           assert.equal(typeof ownerStack.grantRegistry.readWorkerGrant,'function');
           assert.equal(identity.hostId,'host-1');

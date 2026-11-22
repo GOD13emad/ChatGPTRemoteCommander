@@ -35,8 +35,10 @@ const files = [
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
 // and the Linux owner-credential tests use exact name-filtered processes.
-// Ordinary batches keep a 30-second deadline; owner recovery gets its own
-// declared test timeout plus bounded spawn overhead.
+// Ordinary batches keep a 30-second deadline. Windows DPAPI recovery has
+// independent test-declared 30s/60s limits, so it must not share a 30s batch
+// with protected Core. Linux recovery likewise has bounded per-fixture budgets.
+// Do not skip tests or disable timeouts when a hosted Windows worker is slow.
 const batches = [
   files.slice(0, 2),
   files.slice(2, 4),
@@ -50,8 +52,8 @@ const batches = [
   files.slice(15, 17),
   files.slice(17, 18), // Canonical G1/WorkflowStore composition and mTLS denial
   files.slice(18, 20), // NoPromote and owner-pinned provenance
-  files.slice(20, 21), // Protected Core: separate cold 30s process
-  files.slice(21, 22), // Windows encrypted recovery: separate cold 30s process
+  files.slice(20, 21), // Protected Core: separate bounded cold-boot subprocess
+  files.slice(21, 22), // Windows DPAPI recovery: two tests with explicit 30s/60s deadlines
   files.slice(22, 23), // Linux encrypted recovery: two expensive fixtures
   files.slice(23, 30) // Native owner, dialogs, Tunnel, Worker, sealed key, hostname
 ];
@@ -100,9 +102,12 @@ for (let index = range.first-1; index < range.last; index++) {
     ], {
       stdio: 'inherit',
       windowsHide: true,
-      // Native owner recovery declares 50s/60s test timeouts and must not
-      // share one 30s wall-time budget with unrelated test files.
-      timeout: index === 14 ? (part === 0 ? 55000 : 65000) : 30000
+      // Windows DPAPI owner-key tests have individual 30s/60s deadlines;
+      // allow bounded aggregate overhead, preserving the declared test budgets.
+      // Linux owner recovery has two independently bounded 50s/60s fixtures.
+      timeout: index === 13 ? 100000
+        : index === 14 ? (part === 0 ? 55000 : 65000)
+        : 30000
     });
     if (result.error) {
       process.stderr.write('V012_SOURCE_REGRESSION_RUNNER_FAILED batch=' + (index + 1) +

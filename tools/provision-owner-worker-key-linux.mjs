@@ -13,7 +13,7 @@ import {
 import {fileURLToPath} from 'node:url';
 import {createLinuxNativeOwnerSessionProvider}
   from '../src/native-owner-session-provider-linux.mjs';
-import {createPinnedLinuxPrivateTunnelIdentity}
+import {createPinnedLinuxPrivateTunnelIdentity,readLinuxOwnerTunnelPin}
   from '../src/linux-private-tunnel-owner-pin.mjs';
 import {assertTrustedLinuxMappedRootExecutable}
   from '../src/native-linux-host-owner-identity.mjs';
@@ -240,6 +240,32 @@ function sameTunnel(a,b){
     &&a?.controlPlanePollOk===true&&b?.controlPlanePollOk===true
     &&['profileId','tunnelIdHash','ownerSidHash'].every(k=>a[k]===b[k]);
 }
+// A pinned owner's technical profile may already be enrolled in the historical
+// 'default' pair directory. Only select it when the exact owner-private pin
+// names the requested profile; never infer authorization from directory names.
+export function resolvePinnedOwnerTunnelDirectory({home,profile,ownerUid=process.getuid?.()}={}){
+  if(typeof home!=='string'||!path.isAbsolute(home)
+    ||typeof profile!=='string'||!PROFILE.test(profile)
+    ||profile==='.'||profile==='..'
+    ||!Number.isSafeInteger(ownerUid)||ownerUid<1)
+    fail('RC012_WORKER_KEY_OWNER_ARGS_REQUIRED');
+  const root=path.join(home,'.config','chatgpt-remote-commander','private-pair');
+  const named=path.join(root,
+    profile==='chatgpt-remote-commander'?'default':profile);
+  // lstat also sees dangling/unsafe symlinks: they must NOT trigger fallback.
+  let namedPresent=false;
+  try{fs.lstatSync(named);namedPresent=true;}
+  catch(e){if(e.code!=='ENOENT')throw e;}
+  if(namedPresent||profile==='chatgpt-remote-commander')return named;
+  const fallback=path.join(root,'default');
+  let fallbackPresent=false;
+  try{fs.lstatSync(fallback);fallbackPresent=true;}
+  catch(e){if(e.code!=='ENOENT')throw e;}
+  if(!fallbackPresent)return named;
+  const pin=readLinuxOwnerTunnelPin({directory:fallback,ownerUid});
+  if(pin.profileId!==profile)fail('RC012_WORKER_KEY_PINNED_TUNNEL_REQUIRED');
+  return fallback;
+}
 async function main(){
   if(process.platform!=='linux'||typeof process.getuid!=='function'
     ||process.getuid()===0||process.argv.length!==4
@@ -251,9 +277,9 @@ async function main(){
     'chatgpt-remote-commander');
   const security=path.join(base,'private-pair-security-'+profile);
   privateDir(base,uid);privateDir(security,uid);
-  const pinnedDirectory=path.join(home,'.config',
-    'chatgpt-remote-commander','private-pair',
-    profile==='chatgpt-remote-commander'?'default':profile);
+  const pinnedDirectory=resolvePinnedOwnerTunnelDirectory({
+    home,profile,ownerUid:uid
+  });
   const native=createLinuxNativeOwnerSessionProvider({
     ownerIdentityMode:'host-uid-v2'
   });
