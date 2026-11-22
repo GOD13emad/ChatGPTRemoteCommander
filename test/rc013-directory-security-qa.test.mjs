@@ -46,3 +46,14 @@ test('RC013 existing group-readable directory must fail closed BEFORE SQLite ope
   assert.equal(fs.existsSync(path.join(directory,'project-conversations.sqlite')),false);
  });
 });
+
+test('RC013 rejects broadly readable existing SQLite file without chmod side effects',{skip:process.platform==='win32'},()=>{
+ fixture(({directory,make})=>{
+   const first=make();first.close();
+   const db=path.join(directory,'project-conversations.sqlite');
+   fs.chmodSync(db,0o644);
+   assert.throws(()=>{const second=make();second.close();},
+     err=>err?.projectHubCode==='PROJECT_HUB_DATABASE_ACL_UNSAFE');
+   assert.equal(fs.statSync(db).mode&0o077,0o044);
+ });
+});

@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
+import {windowsPrivateAcl,isPosixOwnerPrivate} from './owner-private-storage.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -29,8 +30,16 @@ function privateDirectory(directory){
     cursor=path.join(cursor,part);
     if(fs.existsSync(cursor)&&fs.lstatSync(cursor).isSymbolicLink())fail('CONVERSATION_STATE_ALIAS');
   }
+  const existed=fs.existsSync(directory);
   fs.mkdirSync(directory,{recursive:true,mode:0o700});
-  return fs.realpathSync.native(directory);
+  const real=fs.realpathSync.native(directory);
+  if(process.platform==='win32'){
+    try{windowsPrivateAcl(real,{directory:true,initializeNew:!existed});}
+    catch{fail('CONVERSATION_PRIVATE_DIRECTORY_UNSAFE');}
+  }else if(!isPosixOwnerPrivate(real,{directory:true})){
+    fail('CONVERSATION_PRIVATE_DIRECTORY_UNSAFE');
+  }
+  return real;
 }
 function safeId(value,code='CONVERSATION_INVALID_ID'){
   if(typeof value!=='string'||!ID.test(value))fail(code);
@@ -79,13 +88,38 @@ export class ConversationStore{
     this.scope=scope;
     this.directory=privateDirectory(directory);
     this.location=path.join(this.directory,'conversation.sqlite');
+    // Avoid a transient world-readable SQLite file on POSIX even before
+    // the database driver opens it. O_EXCL is atomic against races.
+    if(process.platform!=='win32'&&!fs.existsSync(this.location)){
+      try{
+        const fd=fs.openSync(this.location,
+          fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR,0o600);
+        fs.closeSync(fd);
+      }catch(error){
+        if(error?.code!=='EEXIST')fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');
+      }
+    }
     for(const suffix of ['','-journal','-wal','-shm']){
-      if(!fs.existsSync(this.location+suffix))continue;
-      const stat=fs.lstatSync(this.location+suffix);
-      if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)fail('CONVERSATION_STATE_ALIAS');
+      const storageFile=this.location+suffix;
+      if(!fs.existsSync(storageFile))continue;
+      const stat=fs.lstatSync(storageFile);
+      if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)
+        fail('CONVERSATION_STATE_ALIAS');
+      if(process.platform==='win32'){
+        try{windowsPrivateAcl(storageFile);}
+        catch{fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');}
+      }else if(!isPosixOwnerPrivate(storageFile)){
+        fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');
+      }
     }
     this.db=new DatabaseSync(this.location,{allowExtension:false});
-    try{fs.chmodSync(this.location,0o600);}catch{}
+    if(process.platform==='win32'){
+      try{windowsPrivateAcl(this.location);}
+      catch{this.db.close();fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');}
+    }else if(!isPosixOwnerPrivate(this.location)){
+      this.db.close();
+      fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');
+    }
     this.db.exec('PRAGMA busy_timeout=3000; PRAGMA trusted_schema=OFF; PRAGMA synchronous=EXTRA;');
     if(this.db.prepare('PRAGMA journal_mode').get().journal_mode!=='delete'){this.db.close();fail('CONVERSATION_JOURNAL_MODE');}
     const version=this.db.prepare('PRAGMA user_version').get().user_version;

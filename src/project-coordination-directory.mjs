@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {windowsPrivateAcl,isPosixOwnerPrivate} from './owner-private-storage.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const PROJECT=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -21,56 +21,6 @@ function id(value,label,re=ID){
 // Reuse the native Windows worker-key provider's protected-DACL/owner-SID
 // policy; no chmod-based assumption about NTFS security. Operates only on
 // exact local paths, and initializes the ACL ONLY for newly made directories.
-function windowsPrivateAcl(file,{directory=false,initializeNew=false}={}){
-  const failCode=directory?'PROJECT_HUB_DIRECTORY_UNSAFE':'PROJECT_HUB_DATABASE_ACL_UNSAFE';
-  if(process.platform!=='win32'||typeof file!=='string'||!path.win32.isAbsolute(file)
-    ||file.includes('\0')||! /^[A-Za-z]:\\/.test(file)||file.length>2048)
-    fail(failCode);
-  const root=process.env.SystemRoot||'C:\\Windows';
-  const ps=path.win32.join(root,'System32','WindowsPowerShell','v1.0','powershell.exe');
-  try{
-    const exe=fs.lstatSync(ps);
-    if(!exe.isFile()||exe.isSymbolicLink())fail(failCode);
-    const base64=Buffer.from(file,'utf8').toString('base64');
-    const script=[
-      "$ErrorActionPreference='Stop'",
-      "$target=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+base64+"'))",
-      "$directory="+(directory?'$true':'$false'),
-      "$initialize="+(initializeNew?'$true':'$false'),
-      "$user=[Security.Principal.WindowsIdentity]::GetCurrent().User",
-      "if(([IO.File]::GetAttributes($target) -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'REPARSE'}",
-      "if($directory){if(![IO.Directory]::Exists($target)){throw 'TYPE'};$acl=[IO.Directory]::GetAccessControl($target)}else{if(![IO.File]::Exists($target)){throw 'TYPE'};$acl=[IO.File]::GetAccessControl($target)}",
-      "if($initialize){",
-      " if(!$directory){throw 'INIT_TYPE'}",
-      " if($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -cne $user.Value){throw 'INITIAL_OWNER_MISMATCH'}",
-      " $acl.SetAccessRuleProtection($true,$false)",
-      " foreach($rule in @($acl.GetAccessRules($true,$false,[Security.Principal.SecurityIdentifier]))){$acl.RemoveAccessRuleAll($rule)|Out-Null}",
-      " $acl.SetOwner($user)",
-      " $flags=[Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit",
-      " $rule=[Security.AccessControl.FileSystemAccessRule]::new($user,[Security.AccessControl.FileSystemRights]::FullControl,$flags,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow)",
-      " $acl.AddAccessRule($rule)",
-      " [IO.Directory]::SetAccessControl($target,$acl)",
-      " $acl=[IO.Directory]::GetAccessControl($target)",
-      "}",
-      "if($directory -and !$acl.AreAccessRulesProtected){throw 'INHERITED_DIRECTORY_ACL'}",
-      "if($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -cne $user.Value){throw 'OWNER_MISMATCH'}",
-      "$allowed=@($user.Value,'S-1-5-18','S-1-5-32-544')",
-      "foreach($rule in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])){",
-      " if($rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and $allowed -notcontains $rule.IdentityReference.Value){throw 'BROAD_ALLOW'}",
-      "}",
-      "[Console]::Out.Write('RC013_ACL_OK')"
-    ].join('\n');
-    const env={
-      SystemRoot:root,WINDIR:root,
-      PATH:[path.win32.join(root,'System32'),root,
-        path.win32.join(root,'System32','WindowsPowerShell','v1.0')].join(';')
-    };
-    const result=execFileSync(ps,['-NoLogo','-NoProfile','-NonInteractive',
-      '-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
-    {windowsHide:true,encoding:'utf8',timeout:7000,maxBuffer:4096,env,stdio:['ignore','pipe','pipe']});
-    if(result.trim()!=='RC013_ACL_OK')fail(failCode);
-  }catch{fail(failCode);}
-}
 
 function privateDir(d){
   if(typeof d!=='string'||!path.isAbsolute(d))fail('PROJECT_HUB_DIRECTORY_INVALID');
@@ -83,15 +33,15 @@ function privateDir(d){
   const existed=fs.existsSync(d);
   fs.mkdirSync(d,{recursive:true,mode:0o700});
   const real=fs.realpathSync.native(d);
-  if(process.platform==='win32')windowsPrivateAcl(real,{directory:true,initializeNew:!existed});
+  if(process.platform==='win32'){
+    try{windowsPrivateAcl(real,{directory:true,initializeNew:!existed});}
+    catch{fail('PROJECT_HUB_DIRECTORY_UNSAFE');}
+  }
   // Existing directories do not inherit mkdir's requested mode.
   // Match the owner-only POSIX verification used by native Tunnel pins;
   // a Windows native ACL witness remains a separate release gate.
   if(process.platform!=='win32'){
-    const st=fs.lstatSync(real);
-    if(!st.isDirectory()||st.isSymbolicLink()
-      ||typeof process.getuid!=='function'||st.uid!==process.getuid()
-      ||(st.mode&0o077)!==0)
+    if(!isPosixOwnerPrivate(real,{directory:true}))
       fail('PROJECT_HUB_DIRECTORY_UNSAFE');
   }
   return real;
@@ -140,23 +90,41 @@ export class ProjectCoordinationDirectory{
     this.authorizeProject=authorizeProject;
     this.directory=privateDir(directory);
     this.location=path.join(this.directory,'project-conversations.sqlite');
+    // The SQLite file must be private from its first byte on POSIX.
+    if(process.platform!=='win32'&&!fs.existsSync(this.location)){
+      try{
+        const fd=fs.openSync(this.location,
+          fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR,0o600);
+        fs.closeSync(fd);
+      }catch(error){
+        if(error?.code!=='EEXIST')fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');
+      }
+    }
     for(const suffix of ['','-journal','-wal','-shm']){
       if(!fs.existsSync(this.location+suffix))continue;
       const s=fs.lstatSync(this.location+suffix);
       if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1)
         fail('PROJECT_HUB_DATABASE_ALIAS');
+      if(process.platform!=='win32'&&!isPosixOwnerPrivate(this.location+suffix))
+        fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');
     }
     if(process.platform==='win32'){
       for(const suffix of ['','-journal','-wal','-shm']){
         const p=this.location+suffix;
-        if(fs.existsSync(p))windowsPrivateAcl(p);
+        if(fs.existsSync(p)){
+          try{windowsPrivateAcl(p);}catch{fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');}
+        }
       }
     }
     this.db=new DatabaseSync(this.location,{allowExtension:false});
     if(process.platform==='win32'){
-      try{windowsPrivateAcl(this.location);}catch(error){this.db.close();throw error;}
+      try{windowsPrivateAcl(this.location);}
+      catch{this.db.close();fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');}
     }
-    try{fs.chmodSync(this.location,0o600);}catch{}
+    if(process.platform!=='win32'&&!isPosixOwnerPrivate(this.location)){
+      this.db.close();
+      fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');
+    }
     this.db.exec('PRAGMA busy_timeout=2500; PRAGMA trusted_schema=OFF; PRAGMA synchronous=EXTRA; PRAGMA foreign_keys=ON;');
     const version=this.db.prepare('PRAGMA user_version').get().user_version;
     if(version>1){this.db.close();fail('PROJECT_HUB_SCHEMA_TOO_NEW');}
