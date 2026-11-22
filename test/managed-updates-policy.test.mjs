@@ -108,3 +108,11 @@ test('public updater never queries train from mutable tag or unsupported API',as
  await assert.rejects(()=>publicGitHubJson('releases?per_page=30',{
    fetcher:async()=>({status:401})}),/PUBLIC_API_REJECTED/);
 });
+
+test('a host without native installation needs an explicit first-install manifest',async()=>{
+ const selected=await discoverApprovedUpdate({
+   readInstalled:()=>null,
+   api:async()=>{throw Error('Should not make promotion request for absent native');}
+ });
+ assert.deepEqual(selected,{current:null,selected:null,needsFirstInstall:true});
+});

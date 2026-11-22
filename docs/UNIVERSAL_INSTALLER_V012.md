@@ -192,8 +192,12 @@ not itself cryptographic attestation or permission to install; the current
 `--stage` path still invokes the official `gh attestation verify` client and
 therefore needs a valid local GitHub CLI authentication. Systems lacking it
 can check versions but must not claim `SIGNED_UPDATE_STAGED` until an
-independent signature verifier is available. No login or privilege bypass
-is attempted.
+independent signature verifier is available. If the native package is **absent**
+(as on the Saeid Windows owner account in the measured inventory), discovery
+returns `NATIVE_FIRST_INSTALL_REQUIRED` instead of treating missing native
+version as a broken updater. It must use the separately verified first-install
+native manifest and explicit owner consent, not an update or automatic grant.
+No login or privilege bypass is attempted.
 The owner-local scheduler runs `--stage` every 6 hours through systemd user
 timer (Linux) or a least-privilege Task Scheduler task (Windows). For each new
 **published stable release**, the update manager checks the source-tagged

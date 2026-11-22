@@ -58,14 +58,24 @@ export function approvedRelease({current,releases,trainFor}={}){
 }
 function installedNativeVersion(){
   if(process.platform==='linux'){
-    const r=exec('dpkg-query',['-W','-f=${Version}','chatgpt-remote-commander']);
-    // dpkg: 0.12.0~dev.9 -> comparable 0.12.0-dev.9
-    return r.trim().replace('~dev.','-dev.');
+    const result=spawnSync('dpkg-query',
+      ['-W','-f=${Version}','chatgpt-remote-commander'],{
+        encoding:'utf8',timeout:15000,windowsHide:true});
+    if(result.status===1&&typeof result.stderr==='string'
+      &&/no packages found/i.test(result.stderr))return null;
+    if(result.error||result.signal||result.status!==0
+      ||typeof result.stdout!=='string')
+      fail('RC012_AUTO_UPDATE_NATIVE_INVENTORY_UNAVAILABLE');
+    return result.stdout.trim().replace('~dev.','-dev.');
   }
   if(process.platform==='win32'){
-    const reg='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
-    return exec('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-Command',
-      "(Get-ItemProperty -LiteralPath '"+reg+"').DisplayVersion"]).trim();
+    const reg='HKCU:\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
+    const script="$ErrorActionPreference='Stop';"+
+      "$v=Get-ItemProperty -LiteralPath '"+reg+"' -ErrorAction SilentlyContinue;"+
+      "if($null -ne $v){[Console]::Write($v.DisplayVersion)}";
+    const result=exec('pwsh',
+      ['-NoLogo','-NoProfile','-NonInteractive','-Command',script]);
+    return result.trim()||null;
   }
   fail('RC012_AUTO_UPDATE_PLATFORM_UNSUPPORTED');
 }
@@ -131,6 +141,8 @@ export async function discoverApprovedUpdate({
   api=publicGitHubJson,readInstalled=installedNativeVersion
 }={}){
   const current=readInstalled();
+  if(current===null)return {current:null,selected:null,
+    needsFirstInstall:true};
   const releases=await api('releases?per_page=30');
   if(!Array.isArray(releases)||releases.length>30)
     fail('RC012_AUTO_UPDATE_RELEASE_INDEX_INVALID');
@@ -154,7 +166,9 @@ export async function discoverApprovedUpdate({
 }
 export async function stageApprovedUpdate({run=exec,api=publicGitHubJson}={}){
   const {current,selected}=await discoverApprovedUpdate({api});
-  if(!selected)return {status:'NO_APPROVED_NEW_RELEASE',current,installed:false};
+  if(!selected)return {status:current===null
+    ?'NATIVE_FIRST_INSTALL_REQUIRED':'NO_APPROVED_NEW_RELEASE',
+    current,installed:false};
   const platform=process.platform;
   const asset=expectedArtifact(selected.release,platform,os.arch());
   if(!asset||!/^sha256:[a-f0-9]{64}$/.test(asset.digest||''))
@@ -198,7 +212,8 @@ async function main(args){
     fail('RC012_AUTO_UPDATE_USAGE');
   const result=args[0]==='--stage'?await stageApprovedUpdate():
     await (async()=>{const v=await discoverApprovedUpdate();return {
-      status:v.selected?'APPROVED_UPDATE_DISCOVERED':'NO_APPROVED_NEW_RELEASE',
+      status:v.needsFirstInstall?'NATIVE_FIRST_INSTALL_REQUIRED'
+        :v.selected?'APPROVED_UPDATE_DISCOVERED':'NO_APPROVED_NEW_RELEASE',
       current:v.current,next:v.selected?.version??null,installed:false
     };})();
   console.log(JSON.stringify(result));
