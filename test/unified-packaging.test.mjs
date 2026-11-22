@@ -59,13 +59,20 @@ test('native Linux and Electron builder derive one exact prerelease version from
 test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{
  const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
  const shared='src tools vendor assets config.json package.json';
- assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
+ const provenance='packaging/unified/owner-pinned-provenance.mjs';
+ assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' '+provenance+' | tar -xf - -C "$APP"'));
+ assert.ok(!native.includes(shared+' extensions'));
+
  assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
  const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
  assert.ok(prepare.includes("'src','tools','vendor','assets','config.json','package.json'"));
  const hosted=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
  assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/);
  assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/);
+ assert.ok(hosted.includes('provenance_dirs={"packaging","packaging/unified"}'));
+ assert.ok(hosted.includes('provenance_file="packaging/unified/owner-pinned-provenance.mjs"'));
+ assert.ok(hosted.includes('relative in provenance_dirs and row.startswith("d")'));
+ assert.ok(hosted.includes('relative==provenance_file and row.startswith("-")'));
  assert.ok(hosted.includes('python3 - "$OLD" "$NEW"'));
 });
 

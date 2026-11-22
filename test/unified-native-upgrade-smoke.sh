@@ -36,6 +36,11 @@ import subprocess, sys
 prefix="./usr/lib/chatgpt-remote-commander/app/"
 allowed_dirs={"src","tools","vendor","assets"}
 allowed_files={"config.json","package.json"}
+# The one explicitly pinned provenance module is shared between GUI and
+# Native source archives. Its parents are directories only; never allow
+# arbitrary packaging/ files or symlinks into the public Native Core.
+provenance_dirs={"packaging","packaging/unified"}
+provenance_file="packaging/unified/owner-pinned-provenance.mjs"
 for pkg in sys.argv[1:]:
     listing=subprocess.check_output(["dpkg-deb","--contents",pkg],text=True)
     seen=set()
@@ -46,6 +51,11 @@ for pkg in sys.argv[1:]:
         if not relative: continue
         head=relative.split("/",1)[0]
         if relative in allowed_files or head in allowed_dirs:
+            seen.add(relative)
+            continue
+        if relative in provenance_dirs and row.startswith("d"):
+            continue
+        if relative==provenance_file and row.startswith("-"):
             seen.add(relative)
             continue
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
