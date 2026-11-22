@@ -136,17 +136,27 @@ function taskTokens(value) {
 // A declarative trigger is not a user intent grant. Some project Skills explicitly
 // require context-sensitive activation; do not suggest them for word/phrase translation.
 // Keep this scoped to opt-in extensions and preserve unrelated language agents.
-function translationOnlyContext(task) {
+function nonProjectContext(task) {
   // The quoted command is subject matter, not a project request. Guard only
   // metadata opt-ins; other extensions keep their declared routing semantics.
   const outside=String(task??'').trim().toLowerCase().replace(
     /«[^»]{0,512}»|“[^”]{0,512}”|"[^"]{0,512}"|'[^']{0,512}'|\x60[^\x60]{0,512}\x60/gu, ' ');
-  const languageCue=/(?:\b(?:translate|translation|meaning|mean|define|explain|synonym|paraphrase|grammar|grammatical)\b|\bwhat does\b|\bhow do you say\b|\bwhat is(?: the)? (?:english|persian|german|arabic|french|translation) for\b|ترجمه|معنی|معنا|تعریف|تلفظ|مترادف|برگردان|توضیح\s+بده|فعل\s+(?:کدام|چیست)|به\s+(?:انگلیسی|فارسی|آلمانی|عربی|فرانسوی))/iu;
-  if(!languageCue.test(outside)) return false;
+  const languageCue=/(?:\b(?:translate|translation|meaning|mean|define|explain|synonym|paraphrase|grammar|grammatical)\b|\bwhat does\b|\bhow do you say\b|\bwhat is(?: the)? (?:english|persian|german|arabic|french|translation) for\b|ترجمه|معنی|معنا|تعریف|تلفظ|مترادف|منظور\s+از|یعنی|برگردان|توضیح\s+بده|فعل\s+(?:کدام|چیست)|به\s+(?:انگلیسی|فارسی|آلمانی|عربی|فرانسوی))/iu;
+  // A literal continuation trigger in a story, poem or exact copy request
+  // is subject matter rather than authorization to resume a project.
+  const creativeCue=/(?:\b(?:story|poem|novel|fiction|fairy[ -]tale)\b|داستان|قصه|شعر|رمان|افسانه)/iu;
+  const literalCopyCue=/(?:\b(?:copy|type|repeat|recite|print|write the words)\b|عیناً|عینا|کپی|تایپ|رونوشت|دوباره بنویس)/iu;
+  if(!languageCue.test(outside) && !creativeCue.test(outside) && !literalCopyCue.test(outside)) return false;
   const projectAction=/(?:\b(?:resume|continue|audit|execute|finish|run|fix|deploy)\b[\s\S]{0,100}\b(?:project|workflow|task)\b|\b(?:project|workflow|task)\b[\s\S]{0,100}\b(?:resume|continue|audit|execute|finish|run|fix|deploy)\b|(?:پروژه|کار|رساله|شبیه‌سازی)[\s\S]{0,100}(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|تحلیل کن|بررسی کن|تحقیق کن|انجام بده|شروع کن)|(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|انجام بده)[\s\S]{0,100}(?:پروژه|کار|رساله|شبیه‌سازی))/iu;
   // Preserve a separately requested project action after a translation.
   const nextProjectAction=/(?:\b(?:then|and then|and(?: also)?|afterwards|next)\b[\s\S]{0,100}\b(?:continue|resume|audit|execute|finish|run|fix|deploy)\b|(?:سپس|بعد(?:ش| از آن)?|و\s+سپس|و\s+پروژه)[\s\S]{0,100}(?:ادامه بده|ادامه دهید|نهایی کن|اجرا کن|انجام بده))/iu;
   if(nextProjectAction.test(outside)) return false;
+  // An unquoted literal ('write the words continue project') can resemble an
+  // executable imperative; the explicit text-object plus copy cue wins unless
+  // an independent subsequent project action was detected above.
+  const literalTextObject=/(?:\b(?:the words|the phrase|the sentence|literal)\b|عبارت|کلمه|جمله|عیناً|عینا)/iu;
+  if(literalCopyCue.test(outside) && literalTextObject.test(outside)) return true;
+  if((creativeCue.test(outside) || literalCopyCue.test(outside)) && !projectAction.test(outside)) return true;
   // Explicit language requests must not be misread as project verbs even if
   // the phrase being translated is not surrounded by quotation marks.
   const explicitLanguageRequest=/(?:\b(?:translate|define|explain|what does|how do you say|what is(?: the)? (?:english|persian|german|arabic|french|translation) for|synonym|paraphrase)\b|(?:^|[.!?؟؛،:]\s*)(?:فقط\s*)?(?:ترجمه\s+(?:کن|کنید|جمله|عبارت|کلمه|این جمله|این عبارت)|معنی|معنا|مترادف|تعریف)|به\s+(?:انگلیسی|فارسی|آلمانی|عربی|فرانسوی)\s+(?:بگو|چه می‌شود|برگردان)|توضیح\s+بده|فعل\s+(?:کدام|چیست)|برگردان)/iu;
@@ -160,7 +170,7 @@ function translationOnlyContext(task) {
 function routeScore(ext, task) {
   const text=String(task??'').trim().toLowerCase();
   if(!text)return {score:0,matchedTriggers:[],matchedTokens:[]};
-  if(ext.metadata?.contextGateRequired===true && translationOnlyContext(task))
+  if(ext.metadata?.contextGateRequired===true && nonProjectContext(task))
     return {score:0,matchedTriggers:[],matchedTokens:[]};
   const tokens=taskTokens(text);
   const tokenSet=new Set(tokens);

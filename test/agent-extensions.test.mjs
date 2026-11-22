@@ -302,3 +302,42 @@ test('non-opt-in extensions retain their declared literal triggers',()=>{
     assert.deepEqual(items.map(x=>x.id),['literal-phrase-tool']);
   } finally { fs.rmSync(base,{recursive:true,force:true}); }
 });
+
+
+test('context-gated project agents exclude story and literal-copy requests',()=>{
+  const base=tempRoot();
+  try {
+    const brain=manifest('project-execution-brain');
+    brain.triggers=['ادامه بده','continue project'];
+    brain.description='Project execution from accepted state.';
+    brain.metadata={contextGateRequired:true};
+    writeExtension(base,'project-execution-brain',brain);
+    const registry=createAgentExtensionRegistry({directories:[base]});
+    for(const task of [
+      'ادامه بده این داستان کودکانه را',
+      'داستان قبلی را ادامه بده',
+      'ادامه بده شعر را',
+      'Continue this short story',
+      'عبارت ادامه بده را عیناً کپی کن',
+      'فقط خود عبارت «ادامه بده» را تایپ کن',
+      'منظور از «ادامه بده» چیست؟',
+      'چطوری عبارت ادامه بده را تایپ کنم؟',
+      'Copy the phrase "continue project" exactly',
+      'Write the words continue project exactly'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(!routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+    for(const task of [
+      'ادامه بده',
+      'ادامه بده پروژه رباتیک را',
+      'پروژه داستان‌نویسی من را ادامه بده',
+      'Continue the project of writing this short story',
+      'ترجمه کن و سپس پروژه را ادامه بده',
+      'دستور پروژه را تایپ کن و بعد پروژه را ادامه بده'
+    ]) {
+      const routed=registry.execute('agent_extension_route',{task,limit:5});
+      assert.ok(routed.items.some(x=>x.id==='project-execution-brain'),task);
+    }
+  } finally { fs.rmSync(base,{recursive:true,force:true}); }
+});
