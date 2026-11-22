@@ -6,6 +6,7 @@ import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import { expandPathValue } from './platform.mjs';
+import {isPosixOwnerPrivate,windowsPrivateAcl} from './owner-private-storage.mjs';
 
 export const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 export const DELIVERY_STATES = Object.freeze(['COMPLETED_UNDELIVERED', 'DELIVERY_PENDING', 'DELIVERED', 'TRANSPORT_RECEIPT', 'DEAD_LETTER']);
@@ -126,6 +127,16 @@ export function deliveryLocation(config, configPath) {
   return { directory: base, scope, legacyScope, forbiddenRoots: config.allowedRoots ?? [] };
 }
 
+// Fail closed on existing state. Never silently chmod or repair another owner's
+// SQLite directory/files; a migration needs separate owner-approved evidence.
+function requireOwnerPrivate(target,{directory=false,newlyCreated=false}={}) {
+  if(process.platform==='win32') {
+    windowsPrivateAcl(target,{directory,initializeNew:newlyCreated});
+  } else if(!isPosixOwnerPrivate(target,{directory})) {
+    fail(directory?'DELIVERY_PRIVATE_DIRECTORY_UNSAFE':'DELIVERY_PRIVATE_FILE_UNSAFE');
+  }
+}
+
 export class DeliveryStore {
   constructor({ directory, scope = 'default', forbiddenRoots = [] }) {
     opaqueId(scope);
@@ -136,16 +147,30 @@ export class DeliveryStore {
     for (const root of forbiddenRoots) {
       if (within(path.resolve(root), path.resolve(directory))) fail('DELIVERY_STORE_INSIDE_PROJECT');
     }
+    const directoryExisted=fs.existsSync(directory);
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+    requireOwnerPrivate(directory,{directory:true,newlyCreated:!directoryExisted});
     this.directory = fs.realpathSync.native(directory);
     this.scope = scope;
     this.closed = false;
     const location = path.join(this.directory, 'delivery.sqlite');
+    const databaseExisted=fs.existsSync(location);
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
-      if (fs.existsSync(location + suffix)) regular(location + suffix);
+      if (!fs.existsSync(location + suffix)) continue;
+      regular(location + suffix);
+      requireOwnerPrivate(location + suffix);
     }
+    // Exclusive precreation allows Windows default-token owner correction only
+    // for a proven NEW file inside an already private directory.
+    if (!databaseExisted) {
+      let fd;
+      try { fd=fs.openSync(location,'wx',0o600); }
+      catch (e) { if (e.code !== 'EEXIST') throw e; }
+      finally { if (fd !== undefined) fs.closeSync(fd); }
+      if (fd === undefined) fail('DELIVERY_DATABASE_CREATION_RACE');
+    }
+    requireOwnerPrivate(location,{newlyCreated:!databaseExisted});
     this.db = new DatabaseSync(location, { allowExtension: false });
-    fs.chmodSync(location, 0o600);
     this.db.exec('PRAGMA busy_timeout=3000; PRAGMA trusted_schema=OFF; PRAGMA synchronous=EXTRA;');
     if (this.db.prepare('PRAGMA journal_mode').get().journal_mode !== 'delete') {
       this.db.close();
@@ -309,8 +334,14 @@ export class DeliveryStore {
   }
   artifactPaths(id) {
     if (!/^[a-f0-9]{64}$/.test(id)) fail('DELIVERY_INVALID_ARTIFACT');
-    const dir = path.join(this.directory, 'artifacts', this.scope);
-    noLinks(dir); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const root = path.join(this.directory, 'artifacts');
+    const dir = path.join(root, this.scope);
+    for (const target of [root,dir]) {
+      noLinks(target);
+      const existed=fs.existsSync(target);
+      if(!existed) fs.mkdirSync(target,{mode:0o700});
+      requireOwnerPrivate(target,{directory:true,newlyCreated:!existed});
+    }
     return {
       plain: path.join(dir, id + '.json'),
       archive: path.join(dir, id + '.json.gz')
@@ -321,6 +352,7 @@ export class DeliveryStore {
   }
   readArchivedArtifact(target, ref) {
     const archived = regular(target);
+    requireOwnerPrivate(target);
     if (archived.size > MAX_ARTIFACT_BYTES + 1024 * 1024) fail('DELIVERY_ARTIFACT_CHANGED');
     let bytes;
     try { bytes = gunzipSync(fs.readFileSync(target), { maxOutputLength: MAX_ARTIFACT_BYTES + 1 }); }
@@ -334,6 +366,7 @@ export class DeliveryStore {
     const sha256 = digest(bytes), targets = this.artifactPaths(sha256);
     if (fs.existsSync(targets.plain)) {
       const stat = regular(targets.plain);
+      requireOwnerPrivate(targets.plain);
       if (stat.size !== bytes.length || digest(fs.readFileSync(targets.plain)) !== sha256) fail('DELIVERY_ARTIFACT_CHANGED');
       return { id: sha256, sha256, bytes: bytes.length };
     }
@@ -343,6 +376,7 @@ export class DeliveryStore {
     }
     const fd = fs.openSync(targets.plain, 'wx', 0o600);
     try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    requireOwnerPrivate(targets.plain,{newlyCreated:true});
     if (process.platform !== 'win32') {
       const parent = fs.openSync(path.dirname(targets.plain), 'r');
       try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
@@ -359,6 +393,7 @@ export class DeliveryStore {
     const targets = this.artifactPaths(ref.id);
     if (fs.existsSync(targets.plain)) {
       const before = regular(targets.plain);
+      requireOwnerPrivate(targets.plain);
       if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
       const fd = fs.openSync(targets.plain, 'r');
       try {
@@ -384,10 +419,16 @@ export class DeliveryStore {
     };
   }
   artifactStorage() {
-    const dir = path.join(this.directory, 'artifacts', this.scope);
+    const root = path.join(this.directory, 'artifacts');
+    const dir = path.join(root, this.scope);
     let plainBytes = 0, archivedBytes = 0, plainCount = 0, archivedCount = 0;
     try {
       noLinks(dir);
+      // Read-only health must not trust a public artifacts directory either.
+      // Do not create directories or change ACLs during a status query.
+      for (const target of [root, dir]) {
+        if (fs.existsSync(target)) requireOwnerPrivate(target, { directory: true });
+      }
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (!entry.isFile()) continue;
         const target = path.join(dir, entry.name);
@@ -450,6 +491,7 @@ export class DeliveryStore {
       if (scanned >= limit) break;
       scanned += 1;
       const before = regular(targets.plain);
+      requireOwnerPrivate(targets.plain);
       if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
       const bytes = fs.readFileSync(targets.plain);
       if (digest(bytes) !== ref.sha256) fail('DELIVERY_ARTIFACT_CHANGED');
@@ -457,6 +499,7 @@ export class DeliveryStore {
       const temp = targets.archive + '.tmp-' + process.pid + '-' + randomUUID();
       const fd = fs.openSync(temp, 'wx', 0o600);
       try { fs.writeFileSync(fd, compressed); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      requireOwnerPrivate(temp,{newlyCreated:true});
       try {
         const verify = gunzipSync(fs.readFileSync(temp), { maxOutputLength: MAX_ARTIFACT_BYTES + 1 });
         if (verify.length !== ref.bytes || digest(verify) !== ref.sha256) fail('DELIVERY_ARTIFACT_CHANGED');
