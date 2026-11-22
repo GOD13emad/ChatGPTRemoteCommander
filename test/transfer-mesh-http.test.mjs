@@ -43,7 +43,7 @@ test('privileged MCP transfer tools reject anonymous and forged transport before
   assert.equal(healthy,true,`transfer-mesh fixture did not become healthy within 30000ms; last=${lastHealthError}; stderr=${stderr}`);
   assert.equal(child.exitCode,null,'transfer-mesh fixture exited after health readiness');
   const health=await (await fetch('http://127.0.0.1:'+serverPort+'/health',{signal:AbortSignal.timeout(1000)})).json();
-  assert.equal(health.version,'0.12.0-dev.9');
+  assert.equal(health.version,'0.12.0-dev.10');
   assert.equal(health.instance.profile,'transfer-mesh-http-test');
   assert.equal(health.instance.isolated,true);
   assert.equal(health.privilegedLegacyHttpQuarantined,true);
