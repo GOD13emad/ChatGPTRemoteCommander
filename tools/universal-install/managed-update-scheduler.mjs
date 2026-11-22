@@ -56,24 +56,67 @@ export function linuxUnitFiles({nodeBinary,ghBinary,runner}){
   ].join('\n');
   return {service,timer};
 }
-function deploy(){
-  const dst=targetRoot();
-  if(fs.existsSync(dst)&&fs.lstatSync(dst).isSymbolicLink())
+function ownerRegularFile(file,{privateMode=true}={}){
+  const st=fs.lstatSync(file,{throwIfNoEntry:false});
+  if(!st||!st.isFile()||st.isSymbolicLink()||st.nlink!==1
+    ||st.size>256*1024
+    ||(typeof process.getuid==='function'
+      &&(st.uid!==process.getuid()
+        ||(privateMode&&(st.mode&0o077)!==0))))
+    fail('RC012_AUTO_UPDATE_TIMER_INSTALLED_SOURCE_UNTRUSTED');
+}
+function atomicOwnerReplace(target,raw){
+  const staged=target+'.next-'+process.pid;
+  if(fs.existsSync(staged))
+    fail('RC012_AUTO_UPDATE_TIMER_PARTIAL_SOURCE_PRESENT');
+  let done=false;
+  try{
+    fs.writeFileSync(staged,raw,{flag:'wx',mode:0o600});
+    ownerRegularFile(staged);
+    if(sha(fs.readFileSync(staged))!==sha(raw))
+      fail('RC012_AUTO_UPDATE_TIMER_INSTALL_DRIFT');
+    fs.renameSync(staged,target);
+    done=true;
+  }finally{
+    if(!done&&fs.existsSync(staged))fs.rmSync(staged);
+  }
+}
+export function deployManagedUpdaterSources({
+  sourceDir=me,destinationDir=targetRoot()
+}={}){
+  if(!path.isAbsolute(sourceDir)||!path.isAbsolute(destinationDir))
+    fail('RC012_AUTO_UPDATE_TIMER_ROOT_INVALID');
+  const root=fs.lstatSync(destinationDir,{throwIfNoEntry:false});
+  if(root&&(root.isSymbolicLink()||!root.isDirectory()
+    ||(typeof process.getuid==='function'&&root.uid!==process.getuid())))
     fail('RC012_AUTO_UPDATE_TIMER_ALIAS_DENIED');
-  fs.mkdirSync(dst,{recursive:true,mode:0o700});
-  for(const name of sourceNames){
-    const src=path.join(me,name),target=path.join(dst,name);
+  fs.mkdirSync(destinationDir,{recursive:true,mode:0o700});
+  // Preflight all source files before changing either dependency.
+  const files=sourceNames.map(name=>{
+    const src=path.join(sourceDir,name),target=path.join(destinationDir,name);
+    ownerRegularFile(src,{privateMode:false});
     const raw=fs.readFileSync(src);
+    if(raw.length<100)fail('RC012_AUTO_UPDATE_TIMER_SOURCE_TOO_SHORT');
+    const st=fs.lstatSync(target,{throwIfNoEntry:false});
+    if(st)ownerRegularFile(target);
+    return {name,target,raw};
+  });
+  for(const {target,raw} of files){
     if(fs.existsSync(target)){
-      if(sha(fs.readFileSync(target))!==sha(raw))
-        fail('RC012_AUTO_UPDATE_TIMER_DIFFERENT_INSTALLED_SOURCE');
-      continue;
+      const original=fs.readFileSync(target);
+      if(sha(original)===sha(raw))continue;
+      // A SINGLE owner-local previous source is retained for recovery,
+      // rather than creating a new competing updater on every revision.
+      const previous=target+'.previous';
+      if(fs.existsSync(previous))ownerRegularFile(previous);
+      atomicOwnerReplace(previous,original);
     }
-    fs.writeFileSync(target,raw,{flag:'wx',mode:0o600});
+    atomicOwnerReplace(target,raw);
+    ownerRegularFile(target);
     if(sha(fs.readFileSync(target))!==sha(raw))
       fail('RC012_AUTO_UPDATE_TIMER_INSTALL_DRIFT');
   }
-  return path.join(dst,'managed-updates.mjs');
+  return path.join(destinationDir,'managed-updates.mjs');
 }
 function linuxEnable(runner){
   const node=located('node'),gh=located('gh');
@@ -111,16 +154,24 @@ export function enableScheduledUpdates(){
     fail('RC012_AUTO_UPDATE_TIMER_NO_ROOT');
   if(!['linux','win32'].includes(process.platform))
     fail('RC012_AUTO_UPDATE_TIMER_OS_UNSUPPORTED');
-  const runner=deploy();
+  const runner=deployManagedUpdaterSources();
   if(process.platform==='linux')linuxEnable(runner);
   else windowsEnable(runner);
   return {status:'OWNER_LOCAL_SIGNED_UPDATE_TIMER_ENABLED',platform:process.platform,
     installed:false,ownerApprovalBypassed:false,runner};
 }
 function main(){
-  if(process.argv.length!==3||process.argv[2]!=='--enable')
+  if(process.argv.length!==3||!['--enable','--refresh-source'].includes(process.argv[2]))
     fail('RC012_AUTO_UPDATE_TIMER_USAGE');
-  console.log(JSON.stringify(enableScheduledUpdates()));
+  if(process.argv[2]==='--refresh-source'){
+    if(typeof process.getuid==='function'&&process.getuid()===0)
+      fail('RC012_AUTO_UPDATE_TIMER_NO_ROOT');
+    if(!['linux','win32'].includes(process.platform))
+      fail('RC012_AUTO_UPDATE_TIMER_OS_UNSUPPORTED');
+    const runner=deployManagedUpdaterSources();
+    console.log(JSON.stringify({status:'OWNER_LOCAL_UPDATE_SOURCE_REFRESHED',
+      installed:false,ownerApprovalBypassed:false,runner}));
+  }else console.log(JSON.stringify(enableScheduledUpdates()));
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))
   try{main();}

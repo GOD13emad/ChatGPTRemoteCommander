@@ -204,10 +204,18 @@ It never treats a PR or NoPromote workflow artifact as an auto-promoted release.
 node tools/universal-install/managed-updates.mjs --check
 node tools/universal-install/managed-updates.mjs --stage
 node tools/universal-install/managed-update-scheduler.mjs --enable
+# For a later reviewed source revision, on an existing owner seat:
+node tools/universal-install/managed-update-scheduler.mjs --refresh-source
 ```
 
 The scheduler deploys only small user-local manager code from the **reviewed
 source**, never starts an installer or claims a J01/Worker authorization.
+`--refresh-source` is an owner-local, rerunnable atomic replacement of those
+same two reviewed source files. It refuses alien/symlinked or group-writable
+Linux installs, retains one `*.previous` recovery copy, and does not alter the
+installed native package, Timer/Task Scheduler definitions, or privileged grants.
+This replaces the old per-machine manual updater-source patches; source origin
+must first be verified in the common GitHub branch/signed release.
 The result `SIGNED_UPDATE_STAGED_AWAITING_OWNER` means installation must
 still use the common owner-visible `--attested-gui-approval` path with a
 reversible native manifest, baseline and OS privileges where applicable.
