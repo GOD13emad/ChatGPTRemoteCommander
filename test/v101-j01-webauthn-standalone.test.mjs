@@ -190,3 +190,44 @@ test('verified WebAuthn UV grant returns unique archived binding epochs across o
  assert.equal(failed.verified,false);
  assert.equal(Object.hasOwn(failed,'bindingId'),false);
 });
+test('WebAuthn archive retains immutable signed identity across awaited nonce side-effects',async()=>{
+ const db=store(),p=payload(),grant=signedGrant(p),trusted=expected();
+ const verify=createJ01WebAuthnVerifier({
+  enrolledPublicKey:keys.publicKey,enrolledCredentialId:credentialId,rpId,origin,
+  signerPrincipal,keyId,
+  consumeNonce:async input=>{
+   // A caller-owned record may mutate while an external nonce registry awaits.
+   p.operationId='operation-swapped-after-crypto';
+   trusted.callerPrincipal='caller-swapped-after-crypto';
+   return db.consumeNonce(input);
+  },
+  archiveExactGrant:db.archiveExactGrant.bind(db)
+ });
+ const result=await verify({signedOwnerGrant:grant,expected:trusted});
+ assert.equal(result.verified,true);
+ assert.equal(db.archived.length,1);
+ assert.equal(db.archived[0].grant.payload.operationId,'task-93');
+ assert.equal(db.archived[0].attestedCaller,'trusted-mock-host-caller');
+ assert.equal(Object.isFrozen(db.archived[0].grant),true);
+ assert.equal(Object.isFrozen(db.archived[0].grant.payload),true);
+ assert.equal(Object.isFrozen(db.archived[0].grant.webAuthnAssertion),true);
+ assert.equal(db.nonces.size,1);
+});
+test('WebAuthn assertion Proxy and accessor must be rejected before semantic reads',async()=>{
+ const p=payload(),original=signedGrant(p),expectedOwner=expected();
+ let calls=0;
+ const proxy=new Proxy(original.webAuthnAssertion,{
+  get(target,key,receiver){calls++;return Reflect.get(target,key,receiver);}
+ });
+ const a=await verifier()({signedOwnerGrant:{
+  payload:p,webAuthnAssertion:proxy},expected:expectedOwner});
+ assert.equal(a.verified,false);
+ assert.equal(calls,0);
+ const second=signedGrant(payload()),nested=second.webAuthnAssertion;
+ Object.defineProperty(nested,'credentialId',{
+   enumerable:true,get(){calls++;return credentialId;}
+ });
+ const b=await verifier()({signedOwnerGrant:second,expected:expectedOwner});
+ assert.equal(b.verified,false);
+ assert.equal(calls,0);
+});
