@@ -10,8 +10,7 @@ import {spawnSync} from 'node:child_process';
 import {
   createHash,createPrivateKey,createPublicKey,randomBytes,sign,verify
 } from 'node:crypto';
-import {createWindowsDpapiWorkerKeyProvider,
-  createWindowsNativeOwnerSidHashResolver}
+import {createWindowsDpapiWorkerKeyProvider}
   from '../src/native-worker-key-provider-windows.mjs';
 
 const ps=path.join(path.dirname(fileURLToPath(import.meta.url)),
@@ -26,6 +25,27 @@ function runPs(args,env,input){
     env:env??process.env,input:input??Buffer.alloc(0),
     encoding:'utf8',timeout:22000,maxBuffer:8192,windowsHide:true
   });
+}
+// Hosted Windows CI has no guaranteed interactive WTS/J01 seat or Windows
+// PowerShell 5.1 helper. This QA proves *actual* DPAPI CurrentUser custody,
+// using the independently sampled current OS SID through the available pwsh.
+// Production J01 acceptance is a separate native-owner test, never inferred
+// from this synthetic fixture or its injectable owner-SID callback.
+function currentUserJ01DomainHash(){
+  const script=[
+    "$ErrorActionPreference='Stop'",
+    "$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+    "$bytes=[Text.Encoding]::UTF8.GetBytes("+
+      "'commander.os-owner.sid.v1'+[char]0+'win32'+[char]0+'sid='+$sid)",
+    "$hash=[Security.Cryptography.SHA256]::HashData($bytes)",
+    "[Console]::Out.Write([Convert]::ToHexString($hash).ToLowerInvariant())"
+  ].join('\n');
+  const r=runPs(['-NoLogo','-NoProfile','-NonInteractive',
+    '-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')]);
+  assert.equal(r.status,0,'actual current-user SID proof failed');
+  assert.match(r.stdout.trim(),/^[a-f0-9]{64}$/);
+  assert.equal(r.stderr.trim(),'');
+  return r.stdout.trim();
 }
 function scope(file,mode,owner,key,cert,host=HOST){
   return ['-NoLogo','-NoProfile','-NonInteractive','-File',file,
@@ -66,9 +86,7 @@ test('isolated DPAPI Windows seed enroll/readback/revocation-like mismatch and n
     const acl=runPs(['-NoProfile','-NonInteractive','-EncodedCommand',
       Buffer.from(privateAclScript,'utf16le').toString('base64')]);
     assert.equal(acl.status,0,'synthetic owner ACL must be created before QA');
-    const owner=await createWindowsNativeOwnerSidHashResolver({
-      ownerHashMode:'native-j01-v2'
-    })();
+    const owner=currentUserJ01DomainHash();
     seed=randomBytes(32);
     der=Buffer.concat([PREFIX,seed]);
     privateKey=createPrivateKey({key:der,format:'der',type:'pkcs8'});
@@ -88,9 +106,9 @@ test('isolated DPAPI Windows seed enroll/readback/revocation-like mismatch and n
     const provider=createWindowsDpapiWorkerKeyProvider({
       profileId:PROFILE,expectedKeyId:keyId,credentialPath:digestFile,
       ownerHashMode:'native-j01-v2',
-      resolveOwnerSidHash:createWindowsNativeOwnerSidHashResolver({
-        ownerHashMode:'native-j01-v2'
-      })
+      // QA-only callback, fed by independently sampled current Windows SID.
+      // Never reclassify it as production native WTS/J01 owner consent.
+      resolveOwnerSidHash:async()=>owner
     });
     const loaded=await provider.loadPrivateKey();
     const challenge=randomBytes(32);
