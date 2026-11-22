@@ -119,3 +119,24 @@ test('Windows hardlinked content-addressed artifact is ineligible', {skip:!onWin
  assert.equal(result.hardlinkAliases,1);
  assert.equal(fs.statSync(artifact).nlink,2);
 });
+
+test('Windows preflight ignores an untrusted SystemRoot for native fsutil resolution', {skip:!onWindows},t=>{
+ const dir=path.join(fixture(t),'systemroot');const store=new DeliveryStore({directory:dir,scope:'qa'});
+ try{store.writeArtifact({status:'COMPLETED',source:'qa'});}finally{store.close();}
+ const baseline=audit(dir);
+ assert.equal(baseline.eligible,true);
+ // Launch PowerShell with a genuine OS environment, then alter SystemRoot
+ // inside its live process; a poisoned parent environment can prevent Windows
+ // PowerShell itself from starting, unrelated to this preflight's behavior.
+ const q=v=>"'"+v.replaceAll("'","''")+"'";
+ const inline="$env:SystemRoot='C:\\fake-windows-system-root'; & "+
+   q(script)+" -Directory "+q(dir)+" -Scope qa -MaxArtifactFiles 10";
+ const child=spawnSync(ps,['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',
+   Buffer.from(inline,'utf16le').toString('base64')],{
+   encoding:'utf8',windowsHide:true,timeout:30000,maxBuffer:8192
+ });
+ assert.equal(child.status,0,'child PowerShell must start with unmodified launch environment');
+ const spoofed=JSON.parse(child.stdout.trim());
+ assert.equal(spoofed.eligible,true,'redacted OS system directory audit: '+JSON.stringify(spoofed));
+ assert.deepEqual(spoofed,baseline);
+});
