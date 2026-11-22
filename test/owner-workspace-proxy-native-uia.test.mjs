@@ -77,3 +77,15 @@ test('native UIA cannot be forwarded when owner credential or loopback transport
   explicitUserAuthorization:'Owner permits this exact write'
  },{requestId:'outer-native-failure-0001'}),/WORKSPACE_OWNER_AGENT_UNAVAILABLE/);
 });
+
+test('owner workspace rejects alternate loopback ports before any credential read or network send',()=>{
+ for(const port of [0,48837,48839,65535,'48838']){
+  let effects=0;
+  assert.throws(()=>createOwnerWorkspaceProxy({
+   config:{ownerWorkspaceDelegation:{enabled:true,port,authFile:'/owner/session/auth.key'}},
+   readFileImpl:async()=>{effects++;return secret;},
+   fetchImpl:async()=>{effects++;throw Error('unexpected fetch');}
+  }),/WORKSPACE_OWNER_PROXY_CONFIG_INVALID/);
+  assert.equal(effects,0);
+ }
+});

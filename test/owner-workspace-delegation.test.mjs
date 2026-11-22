@@ -26,6 +26,10 @@ test('off by default and Windows only, with strict explicit loopback endpoint co
  assert.throws(()=>createOwnerWorkspaceReadOnlyProxy({config:cfg(),platform:'linux'}),/WINDOWS_ONLY/);
  const c=cfg();c.ownerWorkspaceDelegation.port=0;
  assert.throws(()=>createOwnerWorkspaceReadOnlyProxy({config:c,platform:'win32'}),/PORT_INVALID/);
+ for(const port of [48837,48839,65535,'48838']){
+  const incompatible=cfg();incompatible.ownerWorkspaceDelegation.port=port;
+  assert.throws(()=>createOwnerWorkspaceReadOnlyProxy({config:incompatible,platform:'win32',primaryStatus:healthyDenied}),/PORT_INVALID/);
+ }
 });
 test('authorized, native owner CUA list is sanitized and precisely Firefox filtered',async()=>{
  const {broker,calls}=fixture();
