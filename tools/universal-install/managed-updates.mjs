@@ -69,11 +69,15 @@ function installedNativeVersion(){
     return result.stdout.trim().replace('~dev.','-dev.');
   }
   if(process.platform==='win32'){
-    const reg='HKCU:\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
+    const reg=String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\e8b3b1a5-66f7-5b0b-b5ed-ddf867067934`;
     const script="$ErrorActionPreference='Stop';"+
       "$v=Get-ItemProperty -LiteralPath '"+reg+"' -ErrorAction SilentlyContinue;"+
       "if($null -ne $v){[Console]::Write($v.DisplayVersion)}";
-    const result=exec('pwsh',
+    // The Windows Store may expose a non-launchable pwsh.exe app alias.
+    // Use the built-in Windows PowerShell executable on every Windows host.
+    const shell=path.join(process.env.SystemRoot||String.raw`C:\Windows`,
+      'System32','WindowsPowerShell','v1.0','powershell.exe');
+    const result=exec(shell,
       ['-NoLogo','-NoProfile','-NonInteractive','-Command',script]);
     return result.trim()||null;
   }
