@@ -301,3 +301,63 @@ test('an upgrade with no previous artifact must fail before native effect',async
     {code:'UNIVERSAL_NATIVE_UPGRADE_PREVIOUS_REQUIRED'});
   assert.equal(f.invocations.length,0);
 });
+
+
+test('same scoped approval cannot be replayed for rollback on either OS',async()=>{
+  for(const platform of ['windows','linux']){
+    const f=fixture(platform);
+    const first=await executeNativeTransaction({
+      action:'plan',input:f.input,adapter:f.adapter
+    });
+    assert.equal(first.status,'READY_TO_APPLY');
+    const applied=await executeNativeTransaction({action:'apply',...f});
+    assert.equal(applied.status,'NATIVE_PACKAGE_UPGRADED');
+    assert.equal(applied.transactionId,first.transactionId);
+    const installed=await executeNativeTransaction({
+      action:'plan',input:f.input,adapter:f.adapter
+    });
+    assert.equal(installed.status,'ALREADY_INSTALLED');
+    assert.notEqual(installed.transactionId,first.transactionId);
+    const count=f.invocations.length;
+    await assert.rejects(executeNativeTransaction({
+      action:'rollback',input:f.input,adapter:f.adapter,journal:f.journal,
+      approve:async()=>({kind:'native-owner-install-approval',approved:true,
+        transactionId:first.transactionId})
+    }),{code:'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED'});
+    assert.equal(f.invocations.length,count);
+    assert.equal(f.getVersion(),f.input.candidate.version);
+    const rollback=await executeNativeTransaction({action:'rollback',...f});
+    assert.equal(rollback.status,'NATIVE_PACKAGE_ROLLED_BACK');
+    assert.equal(rollback.transactionId,installed.transactionId);
+    assert.equal(f.getVersion(),f.input.previous.version);
+  }
+});
+
+test('fresh first install and native uninstall require distinct owner approval',async()=>{
+  for(const platform of ['windows','linux']){
+    const f=fixture(platform);
+    f.input.installationKind='fresh';
+    f.setVersion(null);
+    const first=await executeNativeTransaction({
+      action:'plan',input:f.input,adapter:f.adapter
+    });
+    assert.equal(first.status,'READY_TO_FIRST_INSTALL');
+    await executeNativeTransaction({action:'apply',...f});
+    const installed=await executeNativeTransaction({
+      action:'plan',input:f.input,adapter:f.adapter
+    });
+    assert.equal(installed.status,'ALREADY_INSTALLED');
+    assert.notEqual(first.transactionId,installed.transactionId);
+    const count=f.invocations.length;
+    await assert.rejects(executeNativeTransaction({
+      action:'rollback',input:f.input,adapter:f.adapter,journal:f.journal,
+      approve:async()=>({kind:'native-owner-install-approval',approved:true,
+        transactionId:first.transactionId})
+    }),{code:'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED'});
+    assert.equal(f.invocations.length,count);
+    const rollback=await executeNativeTransaction({action:'rollback',...f});
+    assert.equal(rollback.status,'NATIVE_PACKAGE_ROLLED_BACK');
+    assert.equal(rollback.transactionId,installed.transactionId);
+    assert.equal(f.getVersion(),null);
+  }
+});
