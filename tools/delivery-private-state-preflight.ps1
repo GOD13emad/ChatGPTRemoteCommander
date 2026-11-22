@@ -26,8 +26,14 @@ $summary = [ordered]@{
 }
 try {
   if ($Scope -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') { throw 'INVALID_SCOPE' }
+  # Windows may return a legitimate 8.3 short alias in %TEMP%; .NET can
+  # expand it during GetFullPath. Security must use path semantics, not raw
+  # string equality. Reject relative, UNC/device and dot-segment traversal.
+  if ($Directory -cnotmatch '^[A-Za-z]:\\' -or
+      $Directory -match '(^|[\\/])\.{1,2}([\\/]|$)' -or
+      $Directory.Contains([char]0)) { throw 'INVALID_DIRECTORY' }
   $root = [IO.Path]::GetFullPath($Directory)
-  if (-not [IO.Path]::IsPathRooted($Directory) -or $root -ne $Directory -or $root.StartsWith('\\')) { throw 'INVALID_DIRECTORY' }
+  if ($root -cnotmatch '^[A-Za-z]:\\') { throw 'INVALID_DIRECTORY' }
   $user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
   $allowed = @($user, 'S-1-5-18', 'S-1-5-32-544')
   function Test-Item([string]$Item, [bool]$IsDirectory, [bool]$Required) {
