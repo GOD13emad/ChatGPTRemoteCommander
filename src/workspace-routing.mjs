@@ -1,5 +1,11 @@
 // Workspace routing: choose the least-interfering lawful control surface first.
 // A failed/uncertain target MUST NOT disable other windows or the physical desktop.
+// Reconcile is owned by the target-scoped CUA controller despite its
+// historical workspace_target_ prefix. The legacy adapter cannot resolve it.
+export function isWorkspaceControllerToolName(name){
+  return typeof name==='string' && name.startsWith('workspace_') &&
+    (!name.startsWith('workspace_target_') || name==='workspace_target_reconcile');
+}
 const OPTIONS=new Set(['existing-browser','new-browser','existing-app','new-app']);
 const DESKTOPS=new Set(['windows','x11','wayland','headless']);
 const no=(code,detail)=>({code,detail});

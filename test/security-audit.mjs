@@ -124,11 +124,20 @@ const tunnelPattern = patterns.find(([type]) => type === 'Tunnel identifier')[1]
 if (!tunnelPattern.test('tunnel' + '_' + '0123456789abcdef'.repeat(2)) || tunnelPattern.test('tunnel_control_plane_fresh') || tunnelPattern.test('TUNNEL_HEALTH_UNKNOWN_LISTENER')) {
   throw new Error('Tunnel identifier audit pattern regression');
 }
+// One exact historical QA placeholder, introduced and then replaced in Nov 2026.
+// Scope the exception by commit, file, change side and literal. The actual
+// identifier scanner remains fully active for every other token, even on that line.
+const historicalTunnelDummy='tunnel'+'_'+'0123456789abcdef'.repeat(2);
+const historicalProbePath='tools/probe-owner-pair-mtls.mjs';
+const historicalAdd='633acfa7d5251538bea86e9e2464820c37de50f8';
+const historicalRemove='e178bf9b4b4daa6bc2916c106d02b2ac8cf2fa91';
+
 // Scan complete Git history without buffering the entire potentially multi-GB patch.
 // Lines are bounded; anything above the bound fails closed instead of being skipped.
 function makeHistoryScanner(rules) {
   const hits = new Set();
   let pending = '', preceding = '';
+  let historicalCommit='', historicalFixtureFile=false;
   let parentPem = null, currentPem = null;
   const limit = 16 * 1024 * 1024;
   function advancePem(state, content) {
@@ -149,6 +158,13 @@ function makeHistoryScanner(rules) {
   resetPem();
   function scanLine(line) {
     const raw=line.trimEnd();
+    if(line.startsWith('commit ')){
+      historicalCommit=line.slice(7,47);
+      historicalFixtureFile=false;
+    } else if(line.startsWith('diff --git ')) {
+      historicalFixtureFile=line.trim()===
+        'diff --git a/'+historicalProbePath+' b/'+historicalProbePath;
+    }
     if(/^(?:commit |diff --(?:git|cc|combined) |@@)/.test(line)){
       preceding='';resetPem();return;
     }
@@ -165,7 +181,13 @@ function makeHistoryScanner(rules) {
     }else{
       resetPem();
     }
-    const sample=preceding+line;
+    const provenDummyLine=historicalFixtureFile&&
+      ((historicalCommit===historicalAdd&&side==='+')||
+       (historicalCommit===historicalRemove&&side==='-'));
+    const auditedLine=provenDummyLine
+      ?line.replaceAll(historicalTunnelDummy,'[SYNTHETIC_HISTORICAL_QA_TUNNEL]')
+      :line;
+    const sample=preceding+auditedLine;
     for(const [name,pattern] of rules){
       if(name==='Private key block')continue;
       if(secretPatternMatches(name,pattern,sample))hits.add(name);
@@ -224,6 +246,24 @@ const probed = boundaryProbe.finish();
 if (!probed.has('Tunnel identifier') || !probed.has('Bearer token literal')) {
   throw new Error('SECURITY_AUDIT_STREAM_SCANNER_REGRESSION');
 }
+// Regression for a verified noncredential fixture in one historical probe.
+// The same token anywhere else must remain a security finding.
+function historicalTunnelProbe(commit,file,side,lines){
+  const scan=makeHistoryScanner(patterns);
+  scan.write('commit '+commit+'\n');
+  scan.write('diff --git a/'+file+' b/'+file+'\n');
+  for(const v of lines)scan.write(side+'  tunnel_id: '+v+'\n');
+  return scan.finish().has('Tunnel identifier');
+}
+if(historicalTunnelProbe(historicalAdd,historicalProbePath,'+',[historicalTunnelDummy])||
+   historicalTunnelProbe(historicalRemove,historicalProbePath,'-',[historicalTunnelDummy])||
+   !historicalTunnelProbe('f'.repeat(40),historicalProbePath,'+',[historicalTunnelDummy])||
+   !historicalTunnelProbe(historicalAdd,'src/other-file.mjs','+',[historicalTunnelDummy])||
+   !historicalTunnelProbe(historicalAdd,historicalProbePath,'-',[historicalTunnelDummy])||
+   !historicalTunnelProbe(historicalAdd,historicalProbePath,'+',
+     [historicalTunnelDummy,'tunnel'+'_'+'123456789abcdef0'.repeat(2)]))
+  throw new Error('SECURITY_AUDIT_KNOWN_TUNNEL_FIXTURE_REGRESSION');
+
 async function scanCompleteHistory() {
   const args = ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,'log', '--all', '-p', '--no-color', '--no-ext-diff'];
   const child = spawn('git', args, { cwd:repoRoot, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
