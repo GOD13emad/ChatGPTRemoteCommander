@@ -56,3 +56,71 @@ export async function executeV2BoundOperation(route, services, tool) {
     );
   });
 }
+
+
+/**
+ * RC013 source-only opt-in primary-host admission for workflow-root effects.
+ *
+ * This reuses executeV2BoundOperation (authenticated route, revocable grant,
+ * existing root lease, durable receipts). It does NOT create a new lease store,
+ * trusted device, owner identity, approval, RPC route, or native effect-sink.
+ * Never wire this adapter from MCP input. All four additional callbacks below
+ * must be installed by trusted native owner/transport bootstrap:
+ *
+ *   nativeHostId()             the OS-attested local host identifier
+ *   readNativePrimary(project) owner-pinned primary/epoch/root registry
+ *   verifyNativePrimary(pin)   independently authenticates the registry pin
+ *   withEffectSinkFence(pin, execute) performs a native atomic fence check
+ *       at the ACTUAL effect sink for the entire execute callback.
+ *
+ * A lease in process memory, separate SQLite DBs, a Boolean flag, a metadata
+ * marker, or a check only before execute is NOT sufficient.
+ * This function refuses secondary-host local effects. Authenticated forwarding
+ * to the primary must be added separately before multi-host promotion.
+ * Until wired to an effect-sink implementation, this is a contract QA candidate.
+ */
+export async function executeV2PinnedPrimaryWorkflowOperation(route, services, tool) {
+  const r=normalizeV2Route(route);
+  if(r.target.kind!=='workflow-root')fail('V2_PRIMARY_WORKFLOW_ROOT_REQUIRED');
+  if(!services||typeof services!=='object')fail('V2_TRUSTED_DEPENDENCY_REQUIRED');
+  for(const name of ['nativeHostId','readNativePrimary','verifyNativePrimary','withEffectSinkFence']){
+    requireFunction(services[name]);
+  }
+  const host=await services.nativeHostId();
+  if(typeof host!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(host))
+    fail('V2_PRIMARY_NATIVE_HOST_UNVERIFIED');
+
+  // Verify the native owner record, not arbitrary host hints in user-facing args.
+  const load=async()=>{
+    const p=await services.readNativePrimary(r.target.id);
+    if(!p||typeof p!=='object'||Array.isArray(p)
+      ||Object.getPrototypeOf(p)!==Object.prototype
+      ||Object.keys(p).sort().join(',')!==['authorityEpoch','primaryHostId','projectId','rootFingerprint'].sort().join(',')
+      ||typeof p.projectId!=='string'||p.projectId!==r.target.id
+      ||typeof p.primaryHostId!=='string'||p.primaryHostId!==host
+      ||typeof p.rootFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(p.rootFingerprint)
+      ||!Number.isSafeInteger(p.authorityEpoch)||p.authorityEpoch<1)
+      fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+    // The check itself must use native trust/cryptographic provenance, not p flags.
+    if(await services.verifyNativePrimary(p)!==true)
+      fail('V2_PRIMARY_OWNER_PIN_UNVERIFIED');
+    return Object.freeze({
+      projectId:p.projectId,primaryHostId:p.primaryHostId,
+      rootFingerprint:p.rootFingerprint,authorityEpoch:p.authorityEpoch
+    });
+  };
+
+  if(r.hostId!==host)fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+  const first=await load();
+  const sinkScope=Object.freeze({
+    ...first, operationKey:v2OperationKey(r),resourceKey:v2ResourceLeaseKey(r)
+  });
+  // Native sink MUST reject stale epochs and duplicate operation keys in the
+  // same atomic effect boundary. Callback result/exception is not a release ACK.
+  return services.withEffectSinkFence(sinkScope,async()=>{
+    const fresh=await load();
+    for(const name of ['projectId','primaryHostId','rootFingerprint','authorityEpoch'])
+      if(fresh[name]!==first[name])fail('V2_PRIMARY_AUTHORITY_CHANGED');
+    return executeV2BoundOperation(r,services,tool);
+  });
+}
