@@ -87,3 +87,14 @@ test('hosted native matrix executes only the common dispatcher; Windows version 
   assert.match(migrate, /RC012_EXPLICIT_EXPECTED_VERSION_REQUIRED/);
   assert.doesNotMatch(migrate, /ExpectedVersion='0\.12\.0-dev\.[0-9]+'/);
 });
+
+test('native installer pilot triggers on all archived Core sources',()=>{
+  const yaml=fs.readFileSync(path.join(root,'.github/workflows/unified-installer-pilot.yml'),'utf8');
+  const block=yaml.match(/^  pull_request:\r?\n    paths:\r?\n((?:      [^\n]*\r?\n)+)/m)?.[1];
+  assert.ok(block,'No pull_request.paths block');
+  const selectors=[...block.matchAll(/^      - "([^"]+)"$/gm)].map(x=>x[1]);
+  for(const source of ['src/**','tools/**','vendor/**','assets/**','package.json',
+    'config.json','docs/release-train-0.12.json','installer/universal-install-contract.json']) {
+    assert.ok(selectors.includes(source),'Native Pilot misses archived Core input '+source);
+  }
+});
