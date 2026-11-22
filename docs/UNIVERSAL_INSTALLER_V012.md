@@ -127,6 +127,27 @@ font pixels, identical native permissions or activated Full Power; these are
 separate acceptance gates. The job does not install or promote on owner hosts.
 
 
+### Linux owner GUI package consent (source-stage, not host promotion)
+
+The shared native installer supports an opt-in `--gui-approval` suffix for Linux
+`--apply` or `--rollback`. After its unchanged independent owner-pinned
+manifest/head + actual candidate/rollback bytes checks, it displays the exact
+version transition and transaction ID through the absolute `/usr/bin/zenity`
+program. Only a real successful user click yields the transaction-scoped native
+package approval; Cancel, timeout, missing GUI owner seat or no provenance are
+fail-closed. The existing exact-ID TTY prompt remains the fallback when the GUI
+flag is not supplied. `--plan` cannot accept GUI approval. This UI grants no
+J01 Worker capability and does not switch the production Tunnel. A separate
+OS polkit authorization may still be required for system package installation.
+
+Usage after independently trusted provenance/head are established and supplied
+by the **owner-controlled release authority**, not by the candidate download:
+`node tools/universal-install/native-cli.mjs --apply --manifest /absolute/owner-native-manifest.json --gui-approval`.
+The supplied pin values are still mandatory; this change does not mint them or
+automatically approve unsigned artifacts. In-source unit tests verify the absent
+seat and missing-provenance denial paths; real owner-seat click, native polkit,
+post-install health, rollback and promotion require separate operational receipts.
+
 ## Native owner-pair J01 validation without a signed Worker grant
 
 The Linux owner-enrolled mTLS bootstrap now derives the canonical account-host

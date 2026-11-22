@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createInterface} from 'node:readline/promises';
 import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
 import {executeNativeTransaction}
   from './native-transaction.mjs';
 import {createNativeOsAdapter}
@@ -15,12 +16,14 @@ import {createNativeFileJournal}
 
 const fail=s=>{throw Object.assign(new Error(s),{code:s});};
 function options(args){
-  if(args.length!==3||!['--plan','--apply','--rollback'].includes(args[0])
+  if(![3,4].includes(args.length)||!['--plan','--apply','--rollback'].includes(args[0])
+    ||(args.length===4&&(args[3]!=='--gui-approval'||args[0]==='--plan'))
     ||args[1]!=='--manifest')
     fail('UNIVERSAL_NATIVE_CLI_ARGUMENTS_INVALID');
   if(typeof args[2]!=='string'||!path.isAbsolute(args[2]))
     fail('UNIVERSAL_NATIVE_CLI_MANIFEST_ABSOLUTE_REQUIRED');
-  return {mode:args[0].slice(2),file:path.resolve(args[2])};
+  return {mode:args[0].slice(2),file:path.resolve(args[2]),
+    guiApproval:args[3]==='--gui-approval'};
 }
 function readManifest(file){
   const s=fs.lstatSync(file);
@@ -36,7 +39,27 @@ function readManifest(file){
     fail('UNIVERSAL_NATIVE_PROVENANCE_PATH_INVALID');
   return {input,provenanceManifestPath};
 }
-async function nativeApproval(plan){
+export async function nativeApproval(plan,{guiApproval=false}={}){
+  if(guiApproval){
+    if(process.platform!=='linux'||typeof process.getuid!=='function'
+      ||process.getuid()===0||!(process.env.DISPLAY||process.env.WAYLAND_DISPLAY)
+      ||!process.env.XDG_RUNTIME_DIR)
+      fail('UNIVERSAL_NATIVE_GUI_OWNER_SESSION_REQUIRED');
+    // Show the exact package scope. Never obtain consent from a redirected
+    // stdin, an environment boolean, a fake pin, or an external IPC message.
+    const prompt='Commander native package only\n'+plan.installedVersion+
+      ' → '+plan.candidate.version+'\nTransaction: '+plan.transactionId+
+      '\nActive 0.11 Tunnel remains untouched.\nApprove this package operation?';
+    const result=spawnSync('/usr/bin/zenity',[
+      '--question','--title=ChatGPT Commander - Owner approval',
+      '--text='+prompt,'--ok-label=Approve package',
+      '--cancel-label=Cancel','--width=430'],{
+      stdio:'ignore',timeout:120000,windowsHide:true});
+    if(result.error||result.status!==0)
+      fail('UNIVERSAL_NATIVE_OWNER_DECLINED');
+    return {kind:'native-owner-install-approval',
+      transactionId:plan.transactionId,approved:true};
+  }
   if(!process.stdin.isTTY||!process.stdout.isTTY)
     fail('UNIVERSAL_NATIVE_OWNER_TTY_REQUIRED');
   const rl=createInterface({input:process.stdin,output:process.stdout});
@@ -53,7 +76,7 @@ async function nativeApproval(plan){
   }finally{rl.close();}
 }
 export async function nativeCli(argv=process.argv.slice(2)){
-  const {mode,file}=options(argv);
+  const {mode,file,guiApproval}=options(argv);
   const {input,provenanceManifestPath}=readManifest(file);
   const os=process.platform==='win32'?'windows':process.platform;
   if(input.platform!==os)
@@ -95,7 +118,8 @@ export async function nativeCli(argv=process.argv.slice(2)){
   }
   const journal=mode==='plan'?undefined:createNativeFileJournal();
   const result=await executeNativeTransaction({
-    action:mode,input,adapter,journal,approve:nativeApproval
+    action:mode,input,adapter,journal,
+    approve:plan=>nativeApproval(plan,{guiApproval})
   });
   return result;
 }
