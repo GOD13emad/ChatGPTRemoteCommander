@@ -190,12 +190,35 @@ export class ProjectCoordinationDirectory{
     // is trusted. A production adapter MUST resolve an attested current caller.
     return trustedRoute(await this.resolveAttestedRoute());
   }
+  async assertRouteUnchanged(before){
+    // Native project approval may pause for user input while the authenticated
+    // conversation, host or private Tunnel binding changes underneath it.
+    // No route from MCP arguments is accepted; re-resolve trusted ingress.
+    const current=await this.route();
+    for(const key of ['hostId','principalId','profileId','conversationId',
+      'bindingHash','tunnelBindingHash']){
+      if(before[key]!==current[key])
+        fail('PROJECT_HUB_ROUTE_CHANGED_DURING_APPROVAL');
+    }
+  }
   async enroll({projectId,root,ownerProof}){
     id(projectId,'PROJECT_ID',PROJECT);
     const att=await this.route();
     const actionRoot=rootPath(root);
+    const rootStat=fs.statSync(actionRoot,{bigint:true});
     if(await this.authorizeProject({action:'enroll',projectId,att,ownerProof})!==true)
       fail('PROJECT_HUB_OWNER_APPROVAL_REQUIRED');
+    await this.assertRouteUnchanged(att);
+    // A native approval is for one concrete root, not another directory
+    // swapped into the same pathname while the user was approving.
+    let sameRoot=false;
+    try{
+      const checkedRoot=rootPath(root);
+      const after=fs.statSync(checkedRoot,{bigint:true});
+      sameRoot=checkedRoot===actionRoot
+        &&after.dev===rootStat.dev&&after.ino===rootStat.ino;
+    }catch{}
+    if(!sameRoot)fail('PROJECT_HUB_ROOT_CHANGED_DURING_APPROVAL');
     return this.tx(()=>{
       const existing=this.db.prepare('SELECT root FROM projects WHERE id=?').get(projectId);
       if(existing&&existing.root!==actionRoot)fail('PROJECT_HUB_ROOT_CONFLICT');
@@ -210,6 +233,7 @@ export class ProjectCoordinationDirectory{
     const att=await this.route();
     if(await this.authorizeProject({action:'join',projectId,att,ownerProof})!==true)
       fail('PROJECT_HUB_OWNER_APPROVAL_REQUIRED');
+    await this.assertRouteUnchanged(att);
     return this.tx(()=>{
       if(!this.db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId))
         fail('PROJECT_HUB_PROJECT_UNKNOWN');
