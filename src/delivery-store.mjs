@@ -334,8 +334,14 @@ export class DeliveryStore {
   }
   artifactPaths(id) {
     if (!/^[a-f0-9]{64}$/.test(id)) fail('DELIVERY_INVALID_ARTIFACT');
-    const dir = path.join(this.directory, 'artifacts', this.scope);
-    noLinks(dir); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const root = path.join(this.directory, 'artifacts');
+    const dir = path.join(root, this.scope);
+    for (const target of [root,dir]) {
+      noLinks(target);
+      const existed=fs.existsSync(target);
+      if(!existed) fs.mkdirSync(target,{mode:0o700});
+      requireOwnerPrivate(target,{directory:true,newlyCreated:!existed});
+    }
     return {
       plain: path.join(dir, id + '.json'),
       archive: path.join(dir, id + '.json.gz')
@@ -346,6 +352,7 @@ export class DeliveryStore {
   }
   readArchivedArtifact(target, ref) {
     const archived = regular(target);
+    requireOwnerPrivate(target);
     if (archived.size > MAX_ARTIFACT_BYTES + 1024 * 1024) fail('DELIVERY_ARTIFACT_CHANGED');
     let bytes;
     try { bytes = gunzipSync(fs.readFileSync(target), { maxOutputLength: MAX_ARTIFACT_BYTES + 1 }); }
@@ -359,6 +366,7 @@ export class DeliveryStore {
     const sha256 = digest(bytes), targets = this.artifactPaths(sha256);
     if (fs.existsSync(targets.plain)) {
       const stat = regular(targets.plain);
+      requireOwnerPrivate(targets.plain);
       if (stat.size !== bytes.length || digest(fs.readFileSync(targets.plain)) !== sha256) fail('DELIVERY_ARTIFACT_CHANGED');
       return { id: sha256, sha256, bytes: bytes.length };
     }
@@ -368,6 +376,7 @@ export class DeliveryStore {
     }
     const fd = fs.openSync(targets.plain, 'wx', 0o600);
     try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    requireOwnerPrivate(targets.plain,{newlyCreated:true});
     if (process.platform !== 'win32') {
       const parent = fs.openSync(path.dirname(targets.plain), 'r');
       try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
@@ -384,6 +393,7 @@ export class DeliveryStore {
     const targets = this.artifactPaths(ref.id);
     if (fs.existsSync(targets.plain)) {
       const before = regular(targets.plain);
+      requireOwnerPrivate(targets.plain);
       if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
       const fd = fs.openSync(targets.plain, 'r');
       try {
@@ -475,6 +485,7 @@ export class DeliveryStore {
       if (scanned >= limit) break;
       scanned += 1;
       const before = regular(targets.plain);
+      requireOwnerPrivate(targets.plain);
       if (before.size !== ref.bytes) fail('DELIVERY_ARTIFACT_CHANGED');
       const bytes = fs.readFileSync(targets.plain);
       if (digest(bytes) !== ref.sha256) fail('DELIVERY_ARTIFACT_CHANGED');
@@ -482,6 +493,7 @@ export class DeliveryStore {
       const temp = targets.archive + '.tmp-' + process.pid + '-' + randomUUID();
       const fd = fs.openSync(temp, 'wx', 0o600);
       try { fs.writeFileSync(fd, compressed); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      requireOwnerPrivate(temp,{newlyCreated:true});
       try {
         const verify = gunzipSync(fs.readFileSync(temp), { maxOutputLength: MAX_ARTIFACT_BYTES + 1 });
         if (verify.length !== ref.bytes || digest(verify) !== ref.sha256) fail('DELIVERY_ARTIFACT_CHANGED');
