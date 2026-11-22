@@ -236,6 +236,8 @@ test('Windows runtime identity excludes foreign listeners and binds native Comma
   assert.match(witness,/\$pidset\.ContainsKey/);
   assert.match(witness,/operation-worker\.mjs/);
   assert.match(witness,/Get-ScheduledTask/);
-  assert.match(witness,/Get-FileHash/);
+  // Native upgrade legitimately swaps installed EXE bytes; this must not look like Core drift.
+  assert.doesNotMatch(witness,/Get-FileHash/);
+  assert.doesNotMatch(witness,/installed=@\(\$bins\)/);
   assert.doesNotMatch(witness,/Get-NetTCPConnection -State Listen -ErrorAction Stop \|\s*Select-Object LocalAddress/);
 });

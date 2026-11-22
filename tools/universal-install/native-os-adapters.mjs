@@ -175,20 +175,18 @@ $tasks=@(Get-ScheduledTask -ErrorAction Stop|Where-Object {
   })
  }
 }|Sort-Object key)
-$bins=@()
-$path=Join-Path $env:LOCALAPPDATA 'Programs\remote-commander-unified\Remote Commander.exe'
-if(Test-Path -LiteralPath $path -PathType Leaf){
- $stat=Get-Item -LiteralPath $path -Force -ErrorAction Stop
- if($stat.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'COMMANDER_BINARY_SYMLINK_UNTRUSTED'}
- $bins=@([pscustomobject]@{path=$stat.FullName.ToLowerInvariant();bytes=$stat.Length;sha=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()})
-}
+# The native installed artifact is INTENTIONALLY not a runtime witness:
+# the same authorized native package transaction changes its bytes/version.
+# Native snapshot() checks HKCU uninstall registration + binary FileVersion,
+# and the owner-pinned provenance checks the exact candidate/rollback hashes.
+# Runtime equality must cover independent running Core/Tunnel identities only.
 # The verification census detects concurrent start, exit or PID reuse.
 $again=@(SnapshotCandidates @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop))
 $canonical0=ConvertTo-Json -InputObject $records -Depth 5 -Compress
 $canonical1=ConvertTo-Json -InputObject $again -Depth 5 -Compress
 if($canonical0 -cne $canonical1){throw 'COMMANDER_PROCESS_CENSUS_CHANGED'}
 $data=[ordered]@{
- schema=1;ownerSid=$sid;installed=@($bins);tasks=@($tasks);
+ schema=1;ownerSid=$sid;tasks=@($tasks);
  processes=@($records);listeners=@($listeners)
 }
 $body=ConvertTo-Json -InputObject $data -Depth 12 -Compress
