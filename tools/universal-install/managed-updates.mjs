@@ -12,7 +12,6 @@ import {verifiedAttestationSubject} from './signed-native-provenance.mjs';
 const REPO='GOD13emad/ChatGPTRemoteCommander';
 const WORKFLOW=REPO+'/.github/workflows/unified-installer-pilot.yml';
 const TAG=/^v(\d+)\.(\d+)\.(\d+)$/;
-const SHA=/^[a-f0-9]{64}$/;
 const COMMIT=/^[a-f0-9]{40}$/;
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 function exec(binary,args,{timeout=25000,maxBuffer=3*1024*1024}={}){
@@ -24,11 +23,6 @@ function exec(binary,args,{timeout=25000,maxBuffer=3*1024*1024}={}){
 }
 function json(v){
   try{return JSON.parse(v);}catch{fail('RC012_AUTO_UPDATE_INVALID_JSON');}
-}
-function semver(s){
-  const m=TAG.exec('v'+s.replace(/^v/,'').replace(/~dev\./,'-dev.'));
-  if(!m)return null;
-  return m.slice(1).map(Number);
 }
 export function compareReleaseVersions(a,b){
   const parse=v=>{
@@ -86,17 +80,22 @@ function signedSourceTrain(tag,majorMinor){
     return json(text);
   }catch{return null;}
 }
-function expectedArtifact(release,platform){
-  const pattern=platform==='linux'
-    ? /^Remote-Commander-Unified-([0-9.]+-dev\.[0-9]+)-Linux-amd64\.deb$/
-    : /^Remote-Commander-Unified-([0-9.]+-dev\.[0-9]+)-Windows-x64\.exe$/;
-  // Stable assets may omit the "-dev.X" suffix.
-  const stable=platform==='linux'
-    ? /^Remote-Commander-Unified-([0-9.]+)-Linux-amd64\.deb$/
-    : /^Remote-Commander-Unified-([0-9.]+)-Windows-x64\.exe$/;
-  const available=(release.assets||[]).filter(a=>
-    a&&typeof a.name==='string'&&(pattern.test(a.name)||stable.test(a.name)));
-  return available.length===1?available[0]:null;
+export function expectedArtifact(release,platform,architecture='x64'){
+  // Match the signed release version, not merely a filename pattern.
+  // A GitHub v0.12.0 release must NEVER stage an unrelated dev.10 build
+  // or an artifact for the wrong CPU/OS.
+  if(!release||!TAG.test(release.tag_name??'')
+    ||!['linux','win32'].includes(platform)
+    ||architecture!=='x64')return null;
+  const version=release.tag_name.slice(1);
+  const exact=platform==='linux'
+    ? 'Remote-Commander-Unified-'+version+'-Linux-amd64.deb'
+    : 'Remote-Commander-Unified-'+version+'-Windows-x64.exe';
+  const matches=(release.assets||[]).filter(a=>
+    a?.name===exact && a?.state==='uploaded'
+    && Number.isSafeInteger(a.size) && a.size>1024
+    && /^sha256:[a-f0-9]{64}$/.test(a.digest??''));
+  return matches.length===1?matches[0]:null;
 }
 function stageDirectory(){
   return process.platform==='win32'
@@ -115,7 +114,7 @@ export function stageApprovedUpdate({run=exec,api=ghApi}={}){
   const {current,selected}=discoverApprovedUpdate();
   if(!selected)return {status:'NO_APPROVED_NEW_RELEASE',current,installed:false};
   const platform=process.platform;
-  const asset=expectedArtifact(selected.release,platform);
+  const asset=expectedArtifact(selected.release,platform,os.arch());
   if(!asset||!/^sha256:[a-f0-9]{64}$/.test(asset.digest||''))
     fail('RC012_AUTO_UPDATE_SIGNED_ASSET_MISSING');
   const commit=api('repos/'+REPO+'/commits/'+encodeURIComponent(selected.tag)).sha;
@@ -149,7 +148,7 @@ export function stageApprovedUpdate({run=exec,api=ghApi}={}){
   verifiedAttestationSubject(verified,{name:asset.name,sha256:digest});
   return {status:'SIGNED_UPDATE_STAGED_AWAITING_OWNER',
     from:current,to:selected.version,sourceHead:commit,
-    tag:selected.tag,sha256:digest,installed:false,
+    tag:selected.tag,candidatePath:dst,sha256:digest,installed:false,
     ownerConsentNeeded:true,rollbackAcceptanceNeeded:true};
 }
 async function main(args){

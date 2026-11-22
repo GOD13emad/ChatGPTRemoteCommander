@@ -191,9 +191,13 @@ timer (Linux) or a least-privilege Task Scheduler task (Windows). For each new
 `publishApproved:true`, `autoupdateApproved:true`,
 `installedPromotionApproved:true`, `isStable:true`, `channel:stable`,
 a matching exact release tag and sourceVersion, and a newer version than
-the native installed package. It also verifies the local package against
-the GitHub asset digest and independent GitHub/Sigstore attestation pinned to
-the fixed repository, exact source commit and fixed workflow signer.
+the native installed package. It selects **only one uploaded artifact whose filename encodes the exact
+approved stable release version, platform and supported architecture**;
+a release containing only an older/dev package or a duplicate is rejected.
+It also verifies the local package against the GitHub asset digest and
+independent GitHub/Sigstore attestation pinned to the fixed repository,
+exact source commit and fixed workflow signer. Successful staging returns
+`candidatePath` for the later owner-approved native package transaction.
 It never treats a PR or NoPromote workflow artifact as an auto-promoted release.
 
 ```text

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compareReleaseVersions,approvedRelease}
+import {compareReleaseVersions,approvedRelease,expectedArtifact}
  from '../tools/universal-install/managed-updates.mjs';
 const valid=(tag,extra={})=>({
  schema:'rc-suite-release-train-v1',train:'0.12',sourceVersion:tag.slice(1),
@@ -43,4 +43,29 @@ test('only a consistent independently approved stable release may advance',()=>{
    }});
  assert.equal(selected.tag,'v0.12.0');
  assert.equal(queried,1);
+});
+
+test('auto-stage enforces exact signed asset version and OS architecture',()=>{
+  const released={tag_name:'v0.12.0',assets:[
+    {name:'Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb',
+      state:'uploaded',size:1000000,digest:'sha256:'+'a'.repeat(64)},
+    {name:'Remote-Commander-Unified-0.12.0-Linux-amd64.deb',
+      state:'uploaded',size:1000000,digest:'sha256:'+'b'.repeat(64)},
+    {name:'Remote-Commander-Unified-0.11.0-Windows-x64.exe',
+      state:'uploaded',size:1000000,digest:'sha256:'+'c'.repeat(64)}
+  ]};
+  assert.equal(expectedArtifact(released,'linux')?.name,
+    'Remote-Commander-Unified-0.12.0-Linux-amd64.deb');
+  assert.equal(expectedArtifact(released,'win32'),null,
+    'Windows must never stage a package from another release');
+  assert.equal(expectedArtifact(released,'linux','arm64'),null,
+    'Unsupported CPU must fail closed');
+  assert.equal(expectedArtifact({...released,assets:released.assets.slice(0,1)},'linux'),null,
+    'A dev build must not count as a stable asset');
+  assert.equal(expectedArtifact({...released,assets:[
+    {...released.assets[1],state:'new'}
+  ]},'linux'),null);
+  assert.equal(expectedArtifact({...released,assets:[
+    released.assets[1],released.assets[1]
+  ]},'linux'),null,'duplicate assets must fail closed');
 });
