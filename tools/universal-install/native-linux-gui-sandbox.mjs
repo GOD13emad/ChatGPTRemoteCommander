@@ -27,6 +27,19 @@ function smallText(read,p,n=32){
   if(value.length>n)return null;
   return value.toString('utf8').trim();
 }
+const TRUSTED_PARENT_DIRS=Object.freeze([
+  '/opt',ROOT,ROOT+'/resources','/etc','/etc/apparmor.d'
+]);
+function trustedParentDirs(stat){
+  // lstat every ancestor: a symlinked parent can redirect a trusted leaf
+  // into attacker-controlled storage while the leaf remains a regular file.
+  return TRUSTED_PARENT_DIRS.every(dir=>{
+    let node;
+    try{node=stat(dir);}catch{return false;}
+    return !!node&&node.isDirectory()&&!node.isSymbolicLink()
+      &&node.uid===0&&(node.mode&0o022)===0;
+  });
+}
 function trustedFile(file,read,stat,max){
   let s;
   try{s=stat(file);}catch{return null;}
@@ -64,6 +77,7 @@ export function inspectLinuxGuiSandbox({
   // With AppArmor enabled and a restricted or unknown kernel setting, do not
   // claim readiness based on the mere presence of a profile file.
   if(restricted===null)return result('UNKNOWN_KERNEL_SECURITY_STATE');
+  if(!trustedParentDirs(stat))return result('OWNER_POLICY_PATH_UNTRUSTED');
   const executable=(()=>{try{return stat(GUI);}catch{return null;}})();
   if(!executable?.isFile()||executable.isSymbolicLink()||
      executable.uid!==0||executable.nlink!==1||(executable.mode&0o022)!==0)
