@@ -106,6 +106,10 @@ test('isolated DPAPI Windows seed enroll/readback/revocation-like mismatch and n
     const provider=createWindowsDpapiWorkerKeyProvider({
       profileId:PROFILE,expectedKeyId:keyId,credentialPath:digestFile,
       ownerHashMode:'native-j01-v2',
+      // Reuse the SAME independently checked PowerShell 7 executable as
+      // DPAPI enrollment and verification in this synthetic hosted fixture.
+      // This does not alter production's independently pinned key provider.
+      powershellPath:POWERSHELL,
       // QA-only callback, fed by independently sampled current Windows SID.
       // Never reclassify it as production native WTS/J01 owner consent.
       resolveOwnerSidHash:async()=>owner
