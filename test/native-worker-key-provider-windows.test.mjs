@@ -117,6 +117,8 @@ test('DPAPI loader uses a fixed PowerShell executable, encoded non-shell script 
       assert.match(script,/ProtectedData\]::Unprotect/);
       assert.match(script,/DataProtectionScope\]::CurrentUser/);
       assert.match(script,/AreAccessRulesProtected/);
+      assert.match(script,/Get-Command -Name Get-Acl -CommandType Cmdlet/);
+      assert.doesNotMatch(script,/AllowClobber/);
       assert.match(script,/ReparsePoint/);
       assert.match(script,/S-1-5-18/);
       assert.match(script,/S-1-5-32-544/);

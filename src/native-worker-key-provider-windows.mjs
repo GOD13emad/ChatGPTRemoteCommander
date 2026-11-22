@@ -147,7 +147,11 @@ export function createWindowsDpapiSeedLoader({
       "$ErrorActionPreference='Stop'",
       "$ProgressPreference='SilentlyContinue'",
       "Add-Type -AssemblyName System.Security -ErrorAction Stop | Out-Null",
-      "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop | Out-Null",
+      // Importing an already-present PowerShell 7 WindowsCompatibility module
+      // can fail with remote proxy shadowing even though Get-Acl is usable.
+      // Resolve ONLY the genuine local Security cmdlet first, then conditionally
+      // import the trusted module. Never enable AllowClobber or a user alias.
+      "if(-not(Get-Command -Name Get-Acl -CommandType Cmdlet -ErrorAction SilentlyContinue)){Import-Module Microsoft.PowerShell.Security -ErrorAction Stop | Out-Null}",
       "$path=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+pathB64+"'))",
       "$profile=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+profileB64+"'))",
       "$expectedOwner='"+ownerSidHash+"'",
