@@ -28,6 +28,32 @@ test -f "$OLD" && test -f "$NEW"
 test "$(dpkg-deb --field "$OLD" Package)" = chatgpt-remote-commander
 test "$(dpkg-deb --field "$NEW" Package)" = chatgpt-remote-commander
 dpkg --compare-versions "$(dpkg-deb --field "$NEW" Version)" gt "$(dpkg-deb --field "$OLD" Version)"
+# Audit *actual* Native and merged DEB payload names BEFORE installing even on
+# this disposable hosted runner. The public app payload is only the committed
+# runtime Core, never the complete repository or human project/Skill records.
+python3 - "$OLD" "$NEW" <<'PUBLIC_APP_BOUNDARY'
+import subprocess, sys
+prefix="./usr/lib/chatgpt-remote-commander/app/"
+allowed_dirs={"src","tools","vendor","assets"}
+allowed_files={"config.json","package.json"}
+for pkg in sys.argv[1:]:
+    listing=subprocess.check_output(["dpkg-deb","--contents",pkg],text=True)
+    seen=set()
+    for row in listing.splitlines():
+        at=row.find(prefix)
+        if at<0: continue
+        relative=row[at+len(prefix):].split(" -> ",1)[0].strip().rstrip("/")
+        if not relative: continue
+        head=relative.split("/",1)[0]
+        if relative in allowed_files or head in allowed_dirs:
+            seen.add(relative)
+            continue
+        raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
+    required={"package.json","config.json","src/server-v0.3.mjs"}
+    if not required.issubset(seen):
+        raise SystemExit("RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING")
+print("RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS")
+PUBLIC_APP_BOUNDARY
 if dpkg-query -W -f='${Status}' chatgpt-remote-commander 2>/dev/null | grep -q 'install ok installed'; then
   echo RC012_HOSTED_RUNNER_ALREADY_HAS_COMMANDER; exit 3
 fi
