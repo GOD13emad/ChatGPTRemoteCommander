@@ -50,7 +50,7 @@ It never replaces installed Commander Core/Browser/UI, starts native service,
 alters live routing, grants Full Power, or publishes a release. Test success
 is not live installation, feature parity or visual parity proof.
 
-v0.12.0-dev.9 remains INTEGRATION_CANDIDATE_NOT_FINAL; the existing
+v0.12.0-dev.10 remains INTEGRATION_CANDIDATE_NOT_FINAL; the existing
 tools/verify-v012-publish-readiness.mjs explicitly rejects unapproved
 stable promotion. Historical tools/one-install in other branches is design
 provenance, not a competing active installer. The new shared transaction
