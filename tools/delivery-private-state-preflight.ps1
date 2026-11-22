@@ -39,7 +39,17 @@ try {
     try {
       $attr = [IO.File]::GetAttributes($Item)
       if (($attr -band [IO.FileAttributes]::ReparsePoint) -ne 0) { $summary.reparsePoints++; return $false }
-      $acl = if ($IsDirectory) { [IO.Directory]::GetAccessControl($Item) } else { [IO.File]::GetAccessControl($Item) }
+            # PowerShell 5.1 (.NET Framework) and PowerShell 7+ (.NET) expose
+      # native ACL APIs through different types. Avoid cmdlet/module autoload.
+      if ($PSVersionTable.PSEdition -eq 'Core') {
+        $acl = if ($IsDirectory) {
+          [System.IO.FileSystemAclExtensions]::GetAccessControl([IO.DirectoryInfo]::new($Item))
+        } else {
+          [System.IO.FileSystemAclExtensions]::GetAccessControl([IO.FileInfo]::new($Item))
+        }
+      } else {
+        $acl = if ($IsDirectory) { [IO.Directory]::GetAccessControl($Item) } else { [IO.File]::GetAccessControl($Item) }
+      }
       $summary.checked++
       if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -cne $user) { $summary.ownerMismatch++ }
       if ($IsDirectory -and !$acl.AreAccessRulesProtected) { $summary.inheritedDirectoryAcl++ }
