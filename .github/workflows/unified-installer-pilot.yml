@@ -5,7 +5,7 @@ on:
       - "packaging/unified/**"
       - "test/unified-*"
       - "test/verify-compiled-core.test.mjs"
-      - "tools/universal-install/verify-compiled-core.mjs"
+      - "test/native-compiled-core-verifier.mjs"
       # PRIVATE pair ingress and the installed Core tool surface are part of
       # the shipped package, even when packaging scripts are unchanged.
       - "src/server-v0.3.mjs"
@@ -144,7 +144,7 @@ jobs:
           dest="$RUNNER_TEMP/rc012-compiled-deb-verify"
           mkdir -p "$dest"
           dpkg-deb -x "${deb[0]}" "$dest"
-          node tools/universal-install/verify-compiled-core.mjs \
+          node test/native-compiled-core-verifier.mjs \
             --core-root "$dest/opt/Remote Commander/resources/core" \
             --source-manifest "$(pwd)/packaging/unified/.stage/core/source-manifest.json" \
             --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
@@ -162,7 +162,7 @@ jobs:
           New-Item -ItemType Directory -Path $dest -Force | Out-Null
           & $zipPath x -y "-o$dest" $exes[0].FullName 'resources\core\*'
           if ($LASTEXITCODE -ne 0) { throw 'NATIVE_CORE_NSIS_EXTRACT_FAILED' }
-          node tools/universal-install/verify-compiled-core.mjs --core-root (Join-Path $dest 'resources/core') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/core/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
+          node test/native-compiled-core-verifier.mjs --core-root (Join-Path $dest 'resources/core') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/core/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
       - name: Artifact fingerprint (Linux)
         if: runner.os == 'Linux'
         run: sha256sum dist/unified/*.deb

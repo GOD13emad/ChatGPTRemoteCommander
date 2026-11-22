@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { verifyCompiledCore } from '../tools/universal-install/verify-compiled-core.mjs';
+import { verifyCompiledCore } from './native-compiled-core-verifier.mjs';
 
 const head = 'a'.repeat(40), tree = 'b'.repeat(40);
 const sha256 = s => createHash('sha256').update(s).digest('hex');
