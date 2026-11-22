@@ -12,9 +12,28 @@ export const SIGNER=REPO+'/.github/workflows/unified-installer-pilot.yml';
 const HEAD=/^[a-f0-9]{40}$/,HASH=/^[a-f0-9]{64}$/;
 const VERSION=/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
+export function requirePatchedGhCliVersion(output){
+  // gh v2.102.0 patched source-ref case folding, signer-workflow prefix
+  // matching and symlink risks in release-download destinations.
+  const m=/^gh version (\d+)\.(\d+)\.(\d+)\b/.exec(output??'');
+  if(!m)fail('RC012_AUTO_GITHUB_CLI_VERSION_INVALID');
+  const [major,minor,patch]=m.slice(1).map(Number);
+  if(major!==2||minor<102)fail('RC012_AUTO_GITHUB_CLI_SECURITY_UPDATE_REQUIRED');
+  return Object.freeze({major,minor,patch});
+}
+let ghVersionVerified=false;
+function requirePatchedGhCli(){
+  if(ghVersionVerified)return;
+  const p=spawnSync('gh',['version'],{encoding:'utf8',windowsHide:true,
+    timeout:10000,maxBuffer:4096});
+  if(p.error||p.status!==0)fail('RC012_AUTO_GITHUB_UNAVAILABLE');
+  requirePatchedGhCliVersion(p.stdout);
+  ghVersionVerified=true;
+}
 const requireThat=(x,code)=>{if(!x)fail(code);};
 const object=x=>!!x&&typeof x==='object'&&!Array.isArray(x);
 function gh(args,{timeoutMs=30000}={}){
+  requirePatchedGhCli();
   const p=spawnSync('gh',args,{encoding:'utf8',windowsHide:true,
     timeout:timeoutMs,maxBuffer:1024*1024});
   requireThat(!p.error&&p.status===0,'RC012_AUTO_GITHUB_UNAVAILABLE');
