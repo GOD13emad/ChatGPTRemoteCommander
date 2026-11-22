@@ -24,11 +24,33 @@ test('one exact source version maps to NSIS and DEB native install/upgrade/rollb
   assert.throws(()=>nativeLifecycleSpec('darwin',version),{code:'RC012_NATIVE_PLATFORM_UNSUPPORTED'});
   assert.throws(()=>nativeLifecycleSpec('win32','0.12.0-dev.1;rm'),{code:'RC012_NATIVE_VERSION_INVALID'});
 });
+test('native x64 QA explicitly denies ARM64 and incompatible hosted runner architecture',()=>{
+  const {version}=inspectUnifiedNativeSource();
+  assert.throws(()=>nativeLifecycleSpec('linux',version,'arm64'),{code:'RC012_NATIVE_ARCH_UNSUPPORTED'});
+  assert.throws(()=>nativeLifecycleSpec('win32',version,'ia32'),{code:'RC012_NATIVE_ARCH_UNSUPPORTED'});
+  assert.throws(()=>inspectUnifiedNativeSource({arch:'arm64'}),{code:'RC012_NATIVE_ARCH_UNSUPPORTED'});
+  const linux=nativeLifecycleSpec('linux',version,'x64');
+  assert.equal(linux.arch,'x64');
+  assert.equal(linux.ghArch,'X64');
+  const windows=nativeLifecycleSpec('win32',version,'x64');
+  assert.equal(windows.ghArch,'X64');
+  const hosted={CI:'true',GITHUB_ACTIONS:'true',
+    RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:linux.ghOs,RUNNER_ARCH:'X64',
+    GITHUB_WORKSPACE:root,RUNNER_TEMP:path.join(root,'temp-dir')};
+  assert.equal(admittedDisposableHost({spec:linux,env:hosted,arch:'x64'}),true);
+  assert.equal(admittedDisposableHost({spec:linux,env:{...hosted,RUNNER_ARCH:'ARM64'},arch:'x64'}),false);
+  assert.equal(admittedDisposableHost({spec:linux,env:{...hosted,RUNNER_ARCH:''},arch:'x64'}),false);
+  assert.equal(admittedDisposableHost({spec:linux,env:hosted,arch:'arm64'}),false);
+  const denied=call(['--run','--expected-commit',sha],{env:{...hosted,RUNNER_ARCH:'ARM64'}});
+  assert.equal(denied.status,2,denied.stdout);
+  assert.equal(JSON.parse(denied.stderr).reason,'RC012_NATIVE_HOSTED_RUNNER_ONLY');
+});
 test('one cross-platform CLI plans but refuses native changes on any real owner host',()=>{
   const r=call(['--plan','--expected-commit',sha]);
   assert.equal(r.status,0,r.stderr);
   const v=JSON.parse(r.stdout);
   assert.equal(v.status,'RC012_UNIVERSAL_NATIVE_QA_PLAN_READY');
+  assert.equal(v.nativeArch,'x64');
   assert.equal(v.liveInstallApproved,false);
   assert.equal(v.ownerGrantIssued,false);
   assert.equal(v.qaOnly,true);
@@ -55,6 +77,8 @@ test('hosted native matrix executes only the common dispatcher; Windows version 
   const powershell=fs.readFileSync(path.join(root,'test/unified-windows-owner-migration.ps1'),'utf8');
   const migrate=fs.readFileSync(path.join(root,'packaging/unified/owner-windows-legacy-migrate.ps1'),'utf8');
   assert.match(workflow,/node tools\/universal-install\/native-smoke\.mjs --run --expected-commit/);
+  assert.match(workflow,/tools\/universal-install\/\*\*/);
+  assert.match(workflow,/test\/universal-native-smoke\.test\.mjs/);
   assert.doesNotMatch(workflow,/run: bash test\/unified-native-upgrade-smoke\.sh/);
   assert.doesNotMatch(workflow,/run: \.\/test\/unified-windows-owner-migration\.ps1/);
   assert.match(powershell, /RC012_WINDOWS_NATIVE_VERSION_DRIFT/);

@@ -6,6 +6,9 @@ on:
       - "test/unified-*"
       - "test/verify-compiled-core.test.mjs"
       - "test/native-compiled-core-verifier.mjs"
+      # Native dispatcher and architectural admission also require native QA.
+      - "tools/universal-install/**"
+      - "test/universal-native-smoke.test.mjs"
       # PRIVATE pair ingress and the installed Core tool surface are part of
       # the shipped package, even when packaging scripts are unchanged.
       - "src/server-v0.3.mjs"
