@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import { createOwnerGuiReadOnlyProxy } from '../src/gui-owner-delegation.mjs';
+import {createWorkspaceTargetTools,workspaceOwnerRequestContext} from '../src/workspace-target-tools.mjs';
 
 const cfg = () => ({
   powerMode: { guiControl: { enabled: true } },
@@ -131,4 +132,36 @@ test('observe lease forwards a stable, distinct mutation correlation without cre
   assert.equal(first,retry);
   assert.notEqual(first,end);
   assert.ok(!JSON.stringify(captured.map(v=>v.rpc)).includes('session-test-987'));
+});
+test('workspace list delegates owner observation with one request identity and always ends lease',async()=>{
+  const forwarded=[];
+  const proxy=createOwnerGuiReadOnlyProxy({
+    config:cfg(),primaryStatus:primary,readFileImpl:async()=>authorized(),
+    fetchImpl:async(_url,options)=>{
+      const input=JSON.parse(options.body).params;
+      forwarded.push(input);
+      let value;
+      switch(input.name){
+        case 'gui_status':value={ok:true,enabled:true,available:true};break;
+        case 'gui_session_begin':value={ok:true,lease:'owner-observe-lease',mode:'observe'};break;
+        case 'gui_list_windows':value={ok:true,windows:[{processId:123,handle:'567',wmClass:'firefox',title:'Owner Firefox',focused:false}]};break;
+        case 'gui_session_end':value={ok:true};break;
+        default:throw Error('UNEXPECTED_DELEGATED_TOOL');
+      }
+      return {status:200,text:async()=>JSON.stringify({jsonrpc:'2.0',id:1,result:{isError:false,structuredContent:value}})};
+    }
+  });
+  const context=workspaceOwnerRequestContext({},{},()=> 'cae32bac-12aa-42bb-8e2f-000000000001');
+  const tools=createWorkspaceTargetTools({gui:async(tool,args)=>{
+    const r=await proxy.execute(tool,args,context);
+    assert.equal(r.handled,true);
+    return r.value;
+  }});
+  const result=await tools.execute('workspace_target_list',{application:'firefox'});
+  assert.equal(result.windows.length,1);
+  assert.equal(result.windows[0].processId,123);
+  assert.deepEqual(forwarded.map(q=>q.name),['gui_status','gui_session_begin','gui_list_windows','gui_session_end']);
+  assert.match(forwarded[1].arguments.requestId,/^ogui-[a-f0-9]{48}$/);
+  assert.match(forwarded[3].arguments.requestId,/^ogui-[a-f0-9]{48}$/);
+  assert.notEqual(forwarded[1].arguments.requestId,forwarded[3].arguments.requestId);
 });

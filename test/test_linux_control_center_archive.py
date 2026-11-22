@@ -1,5 +1,6 @@
 """Regression suite for source-pinned, non-installing Linux GTK preview archive."""
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
@@ -8,10 +9,11 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUILDER = ROOT / "tools/build-linux-control-center-preview.py"
-SOURCES = {"control_center.py", "dashboard_ui.py", "notion_panel.py"}
+SOURCES = {"control_center.py", "dashboard_ui.py", "notion_panel.py", "products.json"}
 OTHER = {"run-control-center.sh", "README.txt", "MANIFEST.json", "SHA256SUMS.txt", "manage-userlocal.py"}
 
 
@@ -42,7 +44,7 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
                                     for n in names))
                 by_name = {pathlib.PurePosixPath(name).name: archive.read(name) for name in names}
                 sha_lines = by_name["SHA256SUMS.txt"].decode().splitlines()
-                self.assertEqual(len(sha_lines), 7)
+                self.assertEqual(len(sha_lines), len(SOURCES | OTHER) - 1)
                 for line in sha_lines:
                     sha, filename = line.split("  ", 1)
                     self.assertEqual(sha, hashlib.sha256(by_name[filename]).hexdigest())
@@ -53,6 +55,8 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
                 self.assertEqual(manifest["sourceCommit"], expected)
                 self.assertFalse(manifest["installationPerformed"])
                 self.assertFalse(manifest["nativeGuiAccepted"])
+                pkg = json.loads((ROOT / "package.json").read_text())
+                self.assertEqual(manifest["version"], pkg["version"])
                 self.assertEqual(set(manifest["files"]), SOURCES | {"run-control-center.sh", "README.txt", "manage-userlocal.py"})
                 for name, sha in manifest["files"].items():
                     self.assertEqual(sha, hashlib.sha256(by_name[name]).hexdigest())
@@ -71,9 +75,27 @@ class LinuxGtkPreviewArchiveTests(unittest.TestCase):
             self.assertEqual(audit["mode"], "READ_ONLY_CANDIDATE")
             self.assertFalse(audit["workflowControlEnabled"])
             self.assertFalse(audit["credentialAccess"])
+            self.assertEqual(audit["optionalAddonsCount"], 8)
+            self.assertIs(audit["optionalAddonInstallationEnabled"], False)
             self.assertEqual(list(home.iterdir()), [])
             self.assertFalse((root / "xdgdata").exists())
             self.assertFalse((root / "xdgconfig").exists())
+
+    def test_preview_refuses_uncommitted_release_inputs_without_artifact(self):
+        spec = importlib.util.spec_from_file_location("rc_gtk_preview_builder", BUILDER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original = module.checked_git
+        with tempfile.TemporaryDirectory(prefix="rc-gtk-dirty-") as t:
+            output = pathlib.Path(t) / "no.zip"
+            def simulated_git(*args):
+                if args[:2] == ("status", "--porcelain"):
+                    return " M tools/build-linux-control-center-preview.py"
+                return original(*args)
+            with patch.object(module, "checked_git", side_effect=simulated_git):
+                with self.assertRaisesRegex(ValueError, "UNCOMMITTED_BUNDLE_INPUTS"):
+                    module.pack(output)
+            self.assertFalse(output.exists())
 
     def test_refuse_existing_output_and_symlink(self):
         with tempfile.TemporaryDirectory(prefix="rc-gtk-negative-") as t:
