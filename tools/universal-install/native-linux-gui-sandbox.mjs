@@ -9,6 +9,34 @@ const ROOT='/opt/Remote Commander';
 const GUI=ROOT+'/remote-commander-unified';
 const PROFILE=ROOT+'/resources/apparmor-profile';
 const ACTIVE='/etc/apparmor.d/remote-commander-unified';
+const KERNEL_PROFILES='/sys/kernel/security/apparmor/profiles';
+const MAX_KERNEL_LIST_BYTES=1024*1024;
+function readKernelProfileListing(){
+  // Only a bounded, read-only kernel securityfs observation. No escalation,
+  // subprocess, policy load or disclosure of other installed profile names.
+  const fd=fs.openSync(KERNEL_PROFILES,'r');
+  const parts=[],buf=Buffer.alloc(8192);let used=0;
+  try{
+    for(;;){
+      const size=fs.readSync(fd,buf,0,buf.length,null);
+      if(size===0)break;
+      used+=size;
+      if(used>MAX_KERNEL_LIST_BYTES)return null;
+      parts.push(Buffer.from(buf.subarray(0,size)));
+    }
+    return Buffer.concat(parts);
+  }finally{buf.fill(0);fs.closeSync(fd);}
+}
+function observedKernelPolicy(readKernelProfiles){
+  let raw;
+  try{raw=readKernelProfiles();}catch{return null;}
+  if(!(typeof raw==='string'||Buffer.isBuffer(raw)))return null;
+  const bytes=Buffer.isBuffer(raw)?raw:Buffer.from(raw,'utf8');
+  if(bytes.length===0||bytes.length>MAX_KERNEL_LIST_BYTES)return null;
+  const names=bytes.toString('utf8').split(/\r?\n/);
+  return names.some(name=>/^remote-commander-unified \((?:enforce|complain|unconfined|kill)\)$/.test(name.trim()));
+}
+
 const flags={
   appArmor:'/sys/module/apparmor/parameters/enabled',
   restricted:'/proc/sys/kernel/apparmor_restrict_unprivileged_userns',
@@ -17,7 +45,8 @@ const flags={
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 const result=(status,extra={})=>Object.freeze({
   schema:'rc-native-linux-gui-sandbox-admission-v1',
-  status,platform:'linux',nativeOwnerApprovalRequired:status==='OWNER_POLICY_REQUIRED',
+  status,platform:'linux',nativeOwnerApprovalRequired:['OWNER_POLICY_REQUIRED',
+    'OWNER_POLICY_FILE_PRESENT_KERNEL_NOT_LOADED'].includes(status),
   osPolicyModified:false,guiStarted:false,stablePromotionAccepted:false,...extra
 });
 function smallText(read,p,n=32){
@@ -58,10 +87,11 @@ function trustedFile(file,read,stat,max){
 }
 export function inspectLinuxGuiSandbox({
   expectedProfileSha256,read=fs.readFileSync,stat=fs.lstatSync,
-  platform=process.platform
+  readKernelProfiles=readKernelProfileListing,platform=process.platform
 }={}){
   if(platform!=='linux'||!SHA.test(expectedProfileSha256??'')||
-     typeof read!=='function'||typeof stat!=='function')
+     typeof read!=='function'||typeof stat!=='function'||
+     typeof readKernelProfiles!=='function')
     fail('RC_GUI_POLICY_PREFLIGHT_ARGUMENT_INVALID');
   const appArmor=smallText(read,flags.appArmor);
   const restricted=smallText(read,flags.restricted);
@@ -101,9 +131,12 @@ export function inspectLinuxGuiSandbox({
     if(!live)return result('OWNER_POLICY_EXISTING_UNTRUSTED');
     if(createHash('sha256').update(live).digest('hex')!==found)
       return result('OWNER_POLICY_EXISTING_REQUIRES_RECONCILIATION');
-    return result('OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION',{
+    const loaded=observedKernelPolicy(readKernelProfiles);
+    return result(loaded===true?'OWNER_POLICY_LOADED_PENDING_GUI_SMOKE':
+      loaded===false?'OWNER_POLICY_FILE_PRESENT_KERNEL_NOT_LOADED':
+      'OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION',{
       installedProfileSha256:found,activeProfileMatchesPinnedRelease:true,
-      installedGuiIdentityObserved:true,loadedProfileVerified:false
+      installedGuiIdentityObserved:true,loadedProfileVerified:loaded===true
     });
   }
   return result('OWNER_POLICY_REQUIRED',{
