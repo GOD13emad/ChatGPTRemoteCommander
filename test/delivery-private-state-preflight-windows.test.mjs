@@ -71,3 +71,28 @@ test('PowerShell 7 native ACL path agrees with Windows PowerShell 5.1', {skip:!o
   assert.equal(v5.eligible,true,'redacted Windows PowerShell preflight summary: '+JSON.stringify(v5));
   assert.deepEqual(v7,v5);
 });
+
+test('Windows 8.3 local short path is admitted after secure canonicalization',{skip:!onWindows},t=>{
+  const root=fixture(t,'rc-short-root-');
+  if(!/~[0-9]/.test(root))return t.skip('short-path alias not present on this runner');
+  const dir=path.join(root,'state');
+  const s=new DeliveryStore({directory:dir,scope:'qa'});s.close();
+  const report=audit(dir);
+  assert.equal(report.complete,true,'redacted short-path report: '+JSON.stringify(report));
+  assert.equal(report.eligible,true);
+});
+test('relative, UNC and explicit parent traversal fail closed',{skip:!onWindows},t=>{
+  const dir=path.join(fixture(t),'state');
+  const attempts=[
+    'relative\\state',
+    'C:relative',
+    '\\\\example.invalid\\share\\state',
+    dir+'\\..\\state'
+  ];
+  for(const candidate of attempts){
+    const result=audit(candidate);
+    assert.equal(result.eligible,false);
+    assert.equal(result.checked,0);
+    assert.ok(result.inspectionErrors>0,'redacted invalid-path report: '+JSON.stringify(result));
+  }
+});
