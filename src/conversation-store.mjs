@@ -88,13 +88,16 @@ export class ConversationStore{
     this.scope=scope;
     this.directory=privateDirectory(directory);
     this.location=path.join(this.directory,'conversation.sqlite');
-    // Avoid a transient world-readable SQLite file on POSIX even before
-    // the database driver opens it. O_EXCL is atomic against races.
-    if(process.platform!=='win32'&&!fs.existsSync(this.location)){
+    // Claim only an absent file with O_EXCL; a new Windows file may inherit
+    // the token's default owner group and needs a protected user DACL BEFORE
+    // SQLite opens it. Never rewrite the ACL of an existing file.
+    let createdNew=false;
+    if(!fs.existsSync(this.location)){
       try{
         const fd=fs.openSync(this.location,
           fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR,0o600);
         fs.closeSync(fd);
+        createdNew=true;
       }catch(error){
         if(error?.code!=='EEXIST')fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');
       }
@@ -106,7 +109,7 @@ export class ConversationStore{
       if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)
         fail('CONVERSATION_STATE_ALIAS');
       if(process.platform==='win32'){
-        try{windowsPrivateAcl(storageFile);}
+        try{windowsPrivateAcl(storageFile,{initializeNew:createdNew&&suffix===''});}
         catch{fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');}
       }else if(!isPosixOwnerPrivate(storageFile)){
         fail('CONVERSATION_PRIVATE_DATABASE_UNSAFE');

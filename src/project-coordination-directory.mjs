@@ -90,12 +90,15 @@ export class ProjectCoordinationDirectory{
     this.authorizeProject=authorizeProject;
     this.directory=privateDir(directory);
     this.location=path.join(this.directory,'project-conversations.sqlite');
-    // The SQLite file must be private from its first byte on POSIX.
-    if(process.platform!=='win32'&&!fs.existsSync(this.location)){
+    // Only a newly created O_EXCL file may receive native Windows
+    // initial owner-private ACL. Never silently repair an existing DB.
+    let createdNew=false;
+    if(!fs.existsSync(this.location)){
       try{
         const fd=fs.openSync(this.location,
           fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_RDWR,0o600);
         fs.closeSync(fd);
+        createdNew=true;
       }catch(error){
         if(error?.code!=='EEXIST')fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');
       }
@@ -112,7 +115,8 @@ export class ProjectCoordinationDirectory{
       for(const suffix of ['','-journal','-wal','-shm']){
         const p=this.location+suffix;
         if(fs.existsSync(p)){
-          try{windowsPrivateAcl(p);}catch{fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');}
+          try{windowsPrivateAcl(p,{initializeNew:createdNew&&suffix===''});}
+          catch{fail('PROJECT_HUB_DATABASE_ACL_UNSAFE');}
         }
       }
     }
