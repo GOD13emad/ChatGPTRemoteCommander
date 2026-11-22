@@ -7,12 +7,12 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
-import {verifiedAttestationSubject} from './signed-native-provenance.mjs';
+import {verifyPublicSignedNativeRelease} from './signed-native-provenance.mjs';
 
 const REPO='GOD13emad/ChatGPTRemoteCommander';
-const WORKFLOW=REPO+'/.github/workflows/unified-installer-pilot.yml';
 const TAG=/^v(\d+)\.(\d+)\.(\d+)$/;
 const COMMIT=/^[a-f0-9]{40}$/;
+const SHA256=/^[a-f0-9]{64}$/;
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 function exec(binary,args,{timeout=25000,maxBuffer=3*1024*1024}={}){
   const r=spawnSync(binary,args,{encoding:'utf8',timeout,
@@ -172,7 +172,61 @@ export async function discoverApprovedUpdate({
   }
   return {current,selected:null};
 }
-export async function stageApprovedUpdate({run=exec,api=publicGitHubJson}={}){
+export async function downloadPublicReleaseAsset({
+  tag,name,destination,expectedSha256,expectedBytes,fetcher=fetch
+}={}){
+  if(!TAG.test(tag??'')||typeof name!=='string'
+    ||!/^Remote-Commander-Unified-[0-9.]+-(?:Linux-amd64\.deb|Windows-x64\.exe)$/.test(name)
+    ||!SHA256.test(expectedSha256??'')
+    ||!Number.isSafeInteger(expectedBytes)||expectedBytes<1024
+    ||expectedBytes>1536*1024*1024
+    ||typeof destination!=='string'||!path.isAbsolute(destination)
+    ||path.basename(destination)!==name)
+    fail('RC012_AUTO_UPDATE_ASSET_DOWNLOAD_ARGS_INVALID');
+  const url='https://github.com/'+REPO+'/releases/download/'+
+    encodeURIComponent(tag)+'/'+encodeURIComponent(name);
+  let response;
+  try{
+    response=await fetcher(url,{signal:AbortSignal.timeout(180000)});
+  }catch{fail('RC012_AUTO_UPDATE_ASSET_DOWNLOAD_UNAVAILABLE');}
+  const finalUrl=typeof response?.url==='string'&&response.url
+    ?response.url:url;
+  let host;
+  try{const u=new URL(finalUrl);if(u.protocol!=='https:')throw Error();
+    host=u.hostname;}catch{fail('RC012_AUTO_UPDATE_ASSET_REDIRECT_DENIED');}
+  if(!['github.com','release-assets.githubusercontent.com',
+    'objects.githubusercontent.com'].includes(host))
+    fail('RC012_AUTO_UPDATE_ASSET_REDIRECT_DENIED');
+  if(response?.status!==200||!response.body)
+    fail('RC012_AUTO_UPDATE_ASSET_DOWNLOAD_UNAVAILABLE');
+  const temp=destination+'.partial-'+process.pid;
+  const fd=fs.openSync(temp,'wx',0o600);
+  const hash=createHash('sha256');
+  let bytes=0,complete=false;
+  try{
+    for await(const data of response.body){
+      const chunk=Buffer.from(data);
+      bytes+=chunk.length;
+      if(bytes>expectedBytes)
+        fail('RC012_AUTO_UPDATE_ASSET_SIZE_MISMATCH');
+      fs.writeSync(fd,chunk);
+      hash.update(chunk);
+    }
+    if(bytes!==expectedBytes||hash.digest('hex')!==expectedSha256)
+      fail('RC012_AUTO_UPDATE_ASSET_HASH_MISMATCH');
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    if(fs.existsSync(destination))
+      fail('RC012_AUTO_UPDATE_ASSET_DESTINATION_EXISTS');
+    fs.renameSync(temp,destination);
+    complete=true;
+  }finally{
+    try{fs.closeSync(fd);}catch{}
+    if(!complete&&fs.existsSync(temp))fs.rmSync(temp);
+  }
+  return destination;
+}
+export async function stageApprovedUpdate({run=spawnSync,api=publicGitHubJson}={}){
   const {current,selected}=await discoverApprovedUpdate({api});
   if(!selected)return {status:current===null
     ?'NATIVE_FIRST_INSTALL_REQUIRED':'NO_APPROVED_NEW_RELEASE',
@@ -192,7 +246,9 @@ export async function stageApprovedUpdate({run=exec,api=publicGitHubJson}={}){
   if(fs.lstatSync(dir).isSymbolicLink())fail('RC012_AUTO_UPDATE_STAGE_UNTRUSTED');
   const dst=path.join(dir,asset.name);
   if(!fs.existsSync(dst))
-    run('gh',['release','download',selected.tag,'-R',REPO,'-p',asset.name,'-D',dir],{timeout:180000});
+    await downloadPublicReleaseAsset({tag:selected.tag,name:asset.name,
+      destination:dst,expectedSha256:asset.digest.slice(7),
+      expectedBytes:asset.size});
   const st=fs.lstatSync(dst);
   if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||st.size!==asset.size)
     fail('RC012_AUTO_UPDATE_ASSET_UNTRUSTED');
@@ -206,10 +262,23 @@ export async function stageApprovedUpdate({run=exec,api=publicGitHubJson}={}){
   }}finally{buf.fill(0);fs.closeSync(fd);}
   const digest=hash.digest('hex');
   if(digest!==asset.digest.slice(7))fail('RC012_AUTO_UPDATE_ASSET_HASH_MISMATCH');
-  const verified=run('gh',['attestation','verify',dst,'--repo',REPO,
-    '--source-digest',commit,'--signer-workflow',WORKFLOW,
-    '--deny-self-hosted-runners','--format','json'],{timeout:90000,maxBuffer:512*1024});
-  verifiedAttestationSubject(verified,{name:asset.name,sha256:digest});
+  // This is a candidate-only provenance receipt, not an authorized
+  // upgrade manifest or rollback approval.
+  const proof=path.join(dir,'.candidate-attestation-'+process.pid+'.json');
+  try{
+    fs.writeFileSync(proof,JSON.stringify({sourceHead:commit,platform,
+      candidate:{sha256:digest,bytes:st.size}}),{flag:'wx',mode:0o600});
+    const checked=await verifyPublicSignedNativeRelease({
+      manifestPath:proof,candidatePath:dst,
+      expectedCommit:commit,
+      platform:platform==='win32'?'windows':platform
+    },{run});
+    if(checked.signedCandidateVerified!==true
+      ||checked.candidateSha256!==digest)
+      fail('RC012_AUTO_UPDATE_SIGNED_ASSET_REJECTED');
+  }finally{
+    if(fs.existsSync(proof))fs.rmSync(proof);
+  }
   return {status:'SIGNED_UPDATE_STAGED_AWAITING_OWNER',
     from:current,to:selected.version,sourceHead:commit,
     tag:selected.tag,candidatePath:dst,sha256:digest,installed:false,

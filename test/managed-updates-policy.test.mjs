@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compareReleaseVersions,approvedRelease,expectedArtifact,discoverApprovedUpdate,publicGitHubJson}
+import {compareReleaseVersions,approvedRelease,expectedArtifact,discoverApprovedUpdate,publicGitHubJson,downloadPublicReleaseAsset}
  from '../tools/universal-install/managed-updates.mjs';
 const valid=(tag,extra={})=>({
  schema:'rc-suite-release-train-v1',train:'0.12',sourceVersion:tag.slice(1),
@@ -115,4 +115,45 @@ test('a host without native installation needs an explicit first-install manifes
    api:async()=>{throw Error('Should not make promotion request for absent native');}
  });
  assert.deepEqual(selected,{current:null,selected:null,needsFirstInstall:true});
+});
+
+test('stable asset downloader pins exact host, size, digest and cleans partial failures',async()=>{
+ const fs=await import('node:fs');
+ const os=await import('node:os');
+ const path=await import('node:path');
+ const crypto=await import('node:crypto');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-public-asset-'));
+ const name='Remote-Commander-Unified-0.12.0-Linux-amd64.deb';
+ const dest=path.join(dir,name);
+ const bytes=Buffer.alloc(1500,42);
+ const digest=crypto.createHash('sha256').update(bytes).digest('hex');
+ const response={
+   status:200,url:'https://release-assets.githubusercontent.com/attested-file',
+   body:(async function*(){yield bytes.subarray(0,800);yield bytes.subarray(800)})()
+ };
+ try{
+   await downloadPublicReleaseAsset({tag:'v0.12.0',name,
+     destination:dest,expectedSha256:digest,expectedBytes:1500,
+     fetcher:async url=>{
+       assert.equal(url,'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/download/v0.12.0/'+name);
+       return response;
+     }});
+   assert.equal(fs.readFileSync(dest).length,1500);
+   await assert.rejects(downloadPublicReleaseAsset({tag:'v0.12.0',name,
+     destination:path.join(dir,'bad',name),expectedSha256:digest,
+     expectedBytes:1500,fetcher:async()=>({
+       status:200,url:'https://example.invalid/file',
+       body:(async function*(){yield bytes})()
+     })}),/REDIRECT_DENIED/);
+   const falseDest=path.join(dir,'false',name);
+   fs.mkdirSync(path.dirname(falseDest));
+   await assert.rejects(downloadPublicReleaseAsset({tag:'v0.12.0',name,
+     destination:falseDest,expectedSha256:'0'.repeat(64),
+     expectedBytes:1500,fetcher:async()=>({
+       status:200,url:'https://github.com/GOD13emad/ChatGPTRemoteCommander/releases/download/v0.12.0/'+name,
+       body:(async function*(){yield bytes})()
+     })}),/HASH_MISMATCH/);
+   assert.equal(fs.existsSync(falseDest),false);
+   assert.deepEqual(fs.readdirSync(path.dirname(falseDest)),[]);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

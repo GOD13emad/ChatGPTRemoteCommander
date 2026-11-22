@@ -7,7 +7,7 @@ import path from 'node:path';
 import {createInterface} from 'node:readline/promises';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {verifySignedNativeRelease} from './signed-native-provenance.mjs';
+import {verifyPublicSignedNativeRelease} from './signed-native-provenance.mjs';
 import {executeNativeTransaction}
   from './native-transaction.mjs';
 import {createNativeOsAdapter}
@@ -197,7 +197,7 @@ export async function nativeCli(argv=process.argv.slice(2)){
   if(mode!=='plan'){
     if(signedApproval&&mode!=='apply')
       fail('UNIVERSAL_NATIVE_SIGNED_ROLLBACK_OWNER_BASELINE_REQUIRED');
-    const signed=signedApproval?verifySignedNativeRelease({
+    const signed=signedApproval?await verifyPublicSignedNativeRelease({
       manifestPath:provenanceManifestPath,candidatePath:input.candidate.path,
       expectedCommit:input.expectedCommit,platform:os}):null;
     const pinned=signedApproval?signed.manifestSha256

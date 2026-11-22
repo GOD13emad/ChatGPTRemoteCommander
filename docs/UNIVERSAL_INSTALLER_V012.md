@@ -187,12 +187,38 @@ and `managed-update-scheduler.mjs` are the *same code on both OSes*.
 The `--check` path queries the public GitHub REST API over HTTPS **without
 GitHub account sign-in or `gh api`**, resolves tags to immutable SHA-1 commit
 identities and only accepts the train from that exact commit. A missing or
-unavailable release-train never counts as approval. This public discovery is
-not itself cryptographic attestation or permission to install; the current
-`--stage` path still invokes the official `gh attestation verify` client and
-therefore needs a valid local GitHub CLI authentication. Systems lacking it
-can check versions but must not claim `SIGNED_UPDATE_STAGED` until an
-independent signature verifier is available. If the native package is **absent**
+unavailable release-train never counts as approval. Public discovery is
+not itself cryptographic attestation or permission to install. On `--stage`,
+the updater downloads only the exact release asset over GitHub HTTPS, confirms
+its SHA256 and byte count, downloads Sigstore bundles from GitHub's PUBLIC
+repository-attestations REST endpoint by SHA256, and verifies them with the
+**official GitHub CLI offline `--bundle` verifier** against this fixed
+repository, immutable source HEAD, trusted workflow signer and public Sigstore
+root. There is **NO GitHub login, token or manually entered SHA256**; however,
+the official `gh` executable is still needed locally for cryptographic
+verification. Its absence, an unavailable bundle, bad identity, missing signed
+rollback baseline, or owner refusal all FAIL CLOSED and cannot auto-install.
+This is a shared dependency, not an OS-specific signature-verification patch.
+On Windows the official GitHub CLI can be installed **without elevation** from
+Microsoft WinGet's verified user-scope portable package:
+`winget install --id GitHub.cli --exact --source winget --scope user --silent --accept-source-agreements --accept-package-agreements --disable-interactivity`.
+The shared verifier recognizes the default user-local
+`%LOCALAPPDATA%/Microsoft/WinGet/Links/gh.exe` alias even in a fresh Task
+Scheduler session whose PATH has not yet refreshed. This adds a vetted
+verification tool, NOT a GitHub account binding or package permission.
+On two Windows server hosts, the official WinGet v2.105.0 package was
+user-scope installed with WinGet SHA256 validation and returned an executable;
+both live Commander native dev.8 installations remained unchanged.
+The verifier also pins the immutable GitHub repository ID `1374266155`
+and owner ID `94546844`, in addition to exact source HEAD, workflow,
+Sigstore issuer and GitHub-hosted runner. Public API JSON alone never establishes
+authenticity. The `--attested-gui-approval` native CLI now uses the same
+public-bundle verification path before presenting a real owner Yes/Cancel dialog.
+Observed real proof on Linux: GitHub PUBLIC attestation for immutable
+`77831c3d` dev.10 DEB, anonymous `gh attestation verify --bundle`,
+`signedCandidateVerified:true`, `rollbackSignatureVerified:false` and
+`liveCoreChanged:false`; this is candidate acceptance only, not an
+automatic or unsigned rollback grant. If the native package is **absent**
 (as on the Saeid Windows owner account in the measured inventory), discovery
 returns `NATIVE_FIRST_INSTALL_REQUIRED` instead of treating missing native
 version as a broken updater. It must use the separately verified first-install
