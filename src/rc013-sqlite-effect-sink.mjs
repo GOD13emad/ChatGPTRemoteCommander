@@ -37,7 +37,10 @@ export class Rc013SqliteEffectSink {
     if(typeof verifyOwner!=='function'||typeof databasePath!=='string'||
       !path.isAbsolute(databasePath)||/^(?:\\\\|\/\/)/.test(databasePath)) fail('RC013_SINK_PRIVATE_BOOTSTRAP_REQUIRED');
     const dir=path.dirname(databasePath);
-    if(fs.realpathSync.native(dir)!==dir||fs.lstatSync(dir).isSymbolicLink()) fail('RC013_SINK_LOCAL_DIRECTORY_REQUIRED');
+    const normalizeLocal = p => process.platform === 'win32'
+      ? path.toNamespacedPath(p).toLowerCase() : p;
+    if(normalizeLocal(fs.realpathSync.native(dir)) !== normalizeLocal(path.resolve(dir))
+      || fs.lstatSync(dir).isSymbolicLink()) fail('RC013_SINK_LOCAL_DIRECTORY_REQUIRED');
     if(fs.existsSync(databasePath)&&!fs.lstatSync(databasePath).isFile()) fail('RC013_SINK_LOCAL_DATABASE_REQUIRED');
     // Production owner/OS ACL attestation is deliberately NOT implemented here.
     this.#verifyOwner=verifyOwner;
