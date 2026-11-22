@@ -35,6 +35,15 @@ test('native Linux and Electron builder derive one exact prerelease version from
  assert.match(prepare,/pkg\.version!==guiPkg\.version/);
  assert.match(prepare,/train\.sourceVersion!==pkg\.version/);
  assert.match(prepare,/UNIFIED_VERSION_IDENTITY_UNCOMMITTED/);
+ // The public Core cannot inherit optional owner-specific extension files.
+ const archiveStart=prepare.indexOf("execFileSync('git',['-c'");
+ const archiveEnd=prepare.indexOf('cwd:repo',archiveStart);
+ assert.ok(archiveStart>=0&&archiveEnd>archiveStart,
+   'source-pinned native Core archive definition must be inspectable');
+ const archive=prepare.slice(archiveStart,archiveEnd);
+ assert.ok(archive.includes("'src','tools','vendor','assets','config.json','package.json'"));
+ assert.ok(!archive.includes("'extensions'"),
+   'optional extension files must not enter the signed public native Core');
  for(const script of [merged,upgrade]){
    assert.match(script,/Remote-Commander-Unified-\$\{VERSION\}-Linux-amd64\.deb/);
    assert.doesNotMatch(script,/Remote-Commander-Unified-0\.12\.0-dev\.1-Linux-amd64\.deb/);
