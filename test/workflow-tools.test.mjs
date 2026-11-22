@@ -60,3 +60,30 @@ test('image observations preserve MCP content with durable receipt, never cache 
  const args={id:'x',stepId:'a',expectedRevision:1,tool:'gui_screenshot',arguments:{}};const a=await tool.execute('workflow_call',args);assert.equal(a.__mcpContent[0].type,'image');
  const b=await tool.execute('workflow_call',args);assert.equal(b.cachedReceipt,true);assert.equal(b.__mcpContent,undefined);
 }finally{tool?.close();f.dispose();}});
+
+test('workflow scheduler intervals stay finite and within Node timer bounds',()=>{
+ const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-wf-timer-')));
+ const create=(intervalMs)=>createWorkflowTools({
+  config:{durableWorkflows:{enabled:true,directory:path.join(root,'state'),executionTools:['read_text'],
+   scheduler:{enabled:true,intervalMs}}},
+  roots:[root],device:'fixture',configSha256:'0'.repeat(64),
+  lookup:name=>({name,inputSchema:{type:'object'}}),
+  validateSchema:()=>[],dispatch:async()=>({ok:true})
+ });
+ try{
+  let coercions=0;
+  const trap={valueOf(){coercions++;throw Error('UNTRUSTED_COERCION');}};
+  for(const value of [2147483648,Number.MAX_SAFE_INTEGER,NaN,Infinity,-Infinity,
+    -1,0,999,1000.5,'5000',null,trap]){
+   let tool=null;
+   try{
+    assert.throws(()=>{tool=create(value)},/WORKFLOW_SCHEDULER_INTERVAL_INVALID/);
+   }finally{tool?.close();}
+  }
+  assert.equal(coercions,0,'untrusted valueOf must never execute');
+  for(const value of [undefined,1000,5000,3_600_000]){
+   const tool=create(value);
+   try{assert.ok(tool.schedulerTick);}finally{tool.close();}
+  }
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
