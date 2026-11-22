@@ -382,12 +382,18 @@ export function assessMigration(facts){
     throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
   const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
-  // The fixed uninstall registry keys do not cover every owner-managed
-  // PowerShell deployment. A verified live legacy Router is positive evidence
-  // of an existing runtime, but NOT evidence of an installer family.
-  // Fail closed rather than reporting a clean-install/no-old-runtime state.
+  // Windows owner-managed PowerShell deployments need not register either
+  // Inno or NSIS. An observed legacy Router OR an exact live tunnel-target
+  // Core health version proves an existing runtime, not its installer family.
+  // Independent account tunnels can target Core directly, without a Router.
+  // Fail closed before proposing a destructive fresh-install transaction.
+  const liveOldWindowsCore=facts.routerDetected===true
+    ||(facts.tunnelProfileValid===true
+      &&facts.tunnelTargetTls!==true
+      &&typeof facts.tunnelTargetVersion==='string'
+      &&/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(facts.tunnelTargetVersion));
   const liveUnregisteredWindowsCore=facts.platform==='win32'
-    &&facts.routerDetected===true
+    &&liveOldWindowsCore
     &&facts.legacyInnoPresent!==true
     &&facts.nativeUnifiedNsisPresent!==true;
   const oldPresent=facts.platform==='win32'

@@ -458,6 +458,7 @@ test('private URL MCP binding cannot pass privileged cutover through plaintext o
  assert.ok(!protectedDirect.blocked.includes('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
  assert.ok(!protectedDirect.blocked.includes('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE'));
  assert.deepEqual(protectedDirect.blocked,[]);
+ assert.equal(protectedDirect.existingInstalled,false);
  assert.equal(protectedDirect.decision,'NO_PROMOTE',
    'only external native acceptance can promote even when all facts self-report true');
 });
@@ -495,6 +496,19 @@ test('live Windows owner Router without installer key is never treated as clean 
  assert.ok(r.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
  assert.ok(!r.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
  assert.equal(r.decision,'NO_PROMOTE');
+ // Native observed MMZ and saeed-emad Windows tunnels reach a 0.11 Core
+ // directly, with NO Stable Router. Neither is a fresh install.
+ for(const targetPort of [47836,47834]){
+   const direct=assessMigration({platform:'win32',inventoryReliable:true,
+     connectionMode:'private-tunnel',legacyInnoPresent:false,
+     nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+     tunnelProfilePresent:true,tunnelProfileValid:true,
+     tunnelTargetPort:targetPort,tunnelTargetVersion:'0.11.0-dev.23',
+     tunnelTargetTls:false,routerDetected:false});
+   assert.equal(direct.existingInstalled,true);
+   assert.ok(direct.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+   assert.equal(direct.decision,'NO_PROMOTE');
+ }
  const fresh=assessMigration({platform:'win32',inventoryReliable:true,
    connectionMode:'private-tunnel',legacyInnoPresent:false,
    nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
