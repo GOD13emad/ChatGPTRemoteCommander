@@ -129,3 +129,49 @@ test('both adapters reject malformed versions and incomplete native snapshots',a
     }),{code:'UNIVERSAL_NATIVE_VERSION_ORDER_INVALID'});
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('fresh rollback uses OS-native dpkg remove and fixed user-local NSIS uninstaller, never arbitrary commands',async()=>{
+  const linux=[];
+  const l=createNativeOsAdapter({
+    platform:'linux',architecture:'x64',run:(cmd,args,options)=>{
+      linux.push({cmd,args,options});return {code:0,stdout:'',stderr:''};
+    }
+  });
+  await assert.rejects(l.uninstall(null,{installationKind:'upgrade'}),
+    {code:'UNIVERSAL_NATIVE_FRESH_UNINSTALL_NOT_APPROVED'});
+  assert.equal(linux.length,0);
+  await l.uninstall(null,{installationKind:'fresh'});
+  assert.equal(linux.length,1);
+  assert.equal(linux[0].cmd,'pkexec');
+  assert.deepEqual(linux[0].args,
+    ['/usr/bin/dpkg','--remove','chatgpt-remote-commander']);
+
+  const temp=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-uninstall-qa-'));
+  const old=process.env.LOCALAPPDATA;
+  try{
+    process.env.LOCALAPPDATA=temp;
+    const app=path.join(temp,'Programs','remote-commander-unified');
+    fs.mkdirSync(app,{recursive:true});
+    fs.writeFileSync(path.join(app,'Uninstall Remote Commander.exe'),
+      Buffer.alloc(2048));
+    const actions=[];
+    const w=createNativeOsAdapter({
+      platform:'windows',architecture:'x64',run:(binary,args,options)=>{
+        actions.push({binary,args,options});
+        return {code:0,stdout:'NATIVE_NSIS_UNINSTALL_EXIT_ZERO',stderr:''};
+      }
+    });
+    await w.uninstall(null,{installationKind:'fresh'});
+    assert.equal(actions.length,1);
+    const script=Buffer.from(actions[0].args.at(-1),'base64')
+      .toString('utf16le');
+    assert.match(script,/Uninstall Remote Commander\.exe/);
+    assert.match(script,/ELEVATED_OWNER_REFUSED/);
+    assert.match(script,/ArgumentList '\/S'/);
+    assert.doesNotMatch(script,/Remove-Item|Set-Acl/);
+  }finally{
+    if(old===undefined)delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA=old;
+    fs.rmSync(temp,{recursive:true,force:true});
+  }
+});

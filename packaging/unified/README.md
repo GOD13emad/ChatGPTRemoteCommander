@@ -6,7 +6,8 @@ Builds **one native installer per OS** from a single pinned Git commit: electron
 
 The cross-host installation authority is **not a list of Emad/MMZ/server
 special-case scripts**. The native transaction engine consumes one declarative
-schema and runs the same machine-global state machine:
+schema and runs the same machine-global state machine across upcoming 0.13 and
+1.0 releases; native version checks enforce monotonically increasing SemVer:
 
 ```text
 Manifest → native package identity + SHA-256 → installed baseline
@@ -33,6 +34,8 @@ The same local commands work on either operating system with the appropriate
 ```text
 node tools/universal-install/native-manifest.mjs --candidate ABS_NEW_PACKAGE --previous ABS_ROLLBACK_PACKAGE --expected-head EXACT_GIT_SHA --output ABS_NATIVE_MANIFEST.json
 node tools/universal-install/native-cli.mjs --plan --manifest ABS_NATIVE_MANIFEST.json
+# On a truly EMPTY host add --fresh to the manifest generation command.
+# The native CLI and transaction remain identical across Windows/Linux.
 ```
 
 Manifest creation verifies file names/families, calculates actual SHA-256
@@ -52,6 +55,18 @@ noninteractive command cannot silently approve installation. Neither package
 approval nor a successful version change is an OS J01 consent or signed Worker
 grant.
 
+**First installation uses the same engine:** the explicit fresh mode only
+admits an OS-verified empty native installation. Existing account state, legacy
+registry registrations or orphaned executables are denial conditions, never
+auto-repaired machine-by-machine. If installation fails AFTER the candidate
+becomes installed, the same coordinator invokes the OS-owned package
+uninstaller and demands independent readback of native absence and unchanged
+active runtime. For the initial private release, the owner-pinned artifact
+manifest still contains candidate plus previous binary for provenance checks:
+the previous artifact is not installed on a fresh machine. This code path
+has isolated positive/negative tests but has NOT been admitted by a clean
+host native install/uninstall or owner-host Cutover. Do not call it Stable.
+
 Machine-global journal states are `INTENT_COMMITTED`,
 `NATIVE_EFFECT_STARTED`, `VERIFIED`, `ROLLBACK_STARTED`,
 `ROLLBACK_VERIFIED`, and `NEEDS_MANUAL_RECONCILIATION`. An uncertain native
@@ -69,8 +84,7 @@ machine and both OS-command adapters have isolated positive and negative
 tests in the mandatory Linux/Windows CI matrix. Existing hosted native lifecycle
 tests separately perform actual package upgrade and rollback in disposable
 Windows/Linux runners. An owner-host `--apply` through this new Coordinator,
-a clean-machine first installation without a previous native rollback package,
-full Fleet Cutover, and J01/Worker-enabled Stable **remain separate, unaccepted
+clean-machine native fresh install/uninstall acceptance, full Fleet Cutover, and J01/Worker-enabled Stable **remain separate, unaccepted
 gates**; never infer these from the source or read-only tests.
 
 ## One cross-OS native lifecycle command (hosted proof)

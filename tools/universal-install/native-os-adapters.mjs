@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 const check=(c,e)=>{if(!c)fail(e);};
 const HASH=/^[a-f0-9]{64}$/;
-const VERSION=/^0\.12\.0-dev\.[1-9][0-9]*$/;
+const VERSION=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-dev\.[1-9][0-9]*)?$/;
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const PRODUCT='ChatGPTRemoteCommander';
 const PKG='chatgpt-remote-commander';
@@ -17,9 +17,9 @@ const WIN_KEY='e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
 const metadata={product:PRODUCT,format:'native'};
 const shellQuote=s=>"'"+s.replaceAll("'","''")+"'";
 const dpkgVersion=v=>{
-  const m=/^0\.12\.0~dev\.([1-9][0-9]*)$/.exec(v);
+  const m=/^((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))(?:~dev\.([1-9][0-9]*))?$/.exec(v);
   check(!!m,'UNIVERSAL_NATIVE_LINUX_VERSION_INVALID');
-  return '0.12.0-dev.'+m[1];
+  return m[1]+(m[2]?'-dev.'+m[2]:'');
 };
 function regularArtifact(input,platform,arch){
   check(input&&typeof input.path==='string'&&path.isAbsolute(input.path)
@@ -90,7 +90,15 @@ export function createNativeOsAdapter({
         '-p','ExecStart','-p','ActiveState'],{timeoutMs:8000});
       check(r.stdout.includes('MainPID=')&&r.stdout.includes('ActiveState='),
         'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
-      return shaOfRuntime(r.stdout);
+      // A previously absent, inactive user unit can appear after first
+      // package installation. Its *unit file*, not the active Core, changed.
+      // Preserve active service identity, but normalize inactive/zero-PID.
+      const main=/^MainPID=(\d+)$/m.exec(r.stdout);
+      const state=/^ActiveState=([a-z-]+)$/m.exec(r.stdout);
+      check(!!main&&!!state,'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
+      // Failed units must remain a distinct runtime failure signal.
+      const inactive=main[1]==='0'&&state[1]==='inactive';
+      return shaOfRuntime(inactive?'NO_ACTIVE_COMMANDER_CORE':r.stdout);
     }
     const script=[
       "$ErrorActionPreference='Stop'",
@@ -131,19 +139,31 @@ export function createNativeOsAdapter({
     if(!win){
       const format='-f='+String.fromCharCode(36)+'{Version}|'+
         String.fromCharCode(36)+'{Status}';
-      const pair=run('dpkg-query',['-W',format,PKG]).stdout.split('|');
-      check(pair.length===2&&pair[1]==='install ok installed',
-        'UNIVERSAL_NATIVE_INSTALLED_PACKAGE_MISSING');
-      version=dpkgVersion(pair[0]);
-      const v=run('dpkg',['--verify',PKG],{timeoutMs:45000,checkExit:false});
-      integrity=v.code===0&&!v.stdout&&!v.stderr;
+      const q=run('dpkg-query',['-W',format,PKG],{checkExit:false});
+      const pair=q.stdout.split('|');
+      if(q.code===0&&pair.length===2&&pair[1]==='install ok installed'){
+        version=dpkgVersion(pair[0]);
+        const v=run('dpkg',['--verify',PKG],{timeoutMs:45000,checkExit:false});
+        integrity=v.code===0&&!v.stdout&&!v.stderr;
+      }else if(q.code===1&&!q.stdout
+        &&/no packages found matching/i.test(q.stderr)){
+        // Fresh means no installed identity AND no existing user config.
+        // Any orphaned account/tunnel state must use migration, not install.
+        const roots=[
+          path.join(os.homedir(),'.config','chatgpt-remote-commander'),
+          path.join(os.homedir(),'.local','state','chatgpt-remote-commander')
+        ];
+        check(roots.every(p=>!fs.existsSync(p)),
+          'UNIVERSAL_NATIVE_FRESH_OWNER_STATE_PRESENT');
+        version=null;
+      }else fail('UNIVERSAL_NATIVE_INSTALLED_PACKAGE_MISSING');
     }else{
       const script=[
         "$ErrorActionPreference='Stop'",
         "$root='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'",
         "$hits=@(Get-ChildItem -LiteralPath $root | Where-Object {"+
           " $_.PSChildName -eq "+shellQuote(WIN_KEY)+" })",
-        "if($hits.Count -ne 1){throw 'COMMANDER_NSIS_REGISTRY_INVALID'}",
+        "if($hits.Count -gt 1){throw 'COMMANDER_NSIS_REGISTRY_INVALID'}",
         // One NSIS family per user: never coexist with legacy Inno or HKLM.
         "$legacy=Get-ItemProperty -LiteralPath ($root+'\\RemoteCommander') "+
           "-ErrorAction SilentlyContinue",
@@ -158,8 +178,14 @@ export function createNativeOsAdapter({
           "-ErrorAction SilentlyContinue",
         "if($legacy -or $machine -or $legacyMachine -or $legacyWow)"+
           "{throw 'COMMANDER_DUPLICATE_INSTALL_FAMILY'}",
-        "$v=Get-ItemProperty -LiteralPath $hits[0].PSPath",
         "$bin=Join-Path $env:LOCALAPPDATA 'Programs\\remote-commander-unified\\Remote Commander.exe'",
+        "$ownerPairs=Join-Path $env:APPDATA 'ChatGPTRemoteCommander\\private-pair'",
+        "if($hits.Count -eq 0){",
+        " if((Test-Path -LiteralPath $bin) -or (Test-Path -LiteralPath $ownerPairs))"+
+          "{throw 'COMMANDER_FRESH_OWNER_STATE_PRESENT'}",
+        " [Console]::Out.Write('ABSENT');exit 0",
+        "}",
+        "$v=Get-ItemProperty -LiteralPath $hits[0].PSPath",
         "$file=Get-Item -LiteralPath $bin -ErrorAction Stop",
         "if($v.DisplayVersion -cne $file.VersionInfo.FileVersion -or "+
           "$v.DisplayName -cnotlike 'Remote Commander *')"+
@@ -167,9 +193,11 @@ export function createNativeOsAdapter({
         "[Console]::Out.Write($v.DisplayVersion)"
       ].join('\n');
       version=ps(script,run);
-      check(VERSION.test(version),'UNIVERSAL_NATIVE_WINDOWS_INSTALLED_VERSION_INVALID');
+      if(version!=='ABSENT')
+        check(VERSION.test(version),'UNIVERSAL_NATIVE_WINDOWS_INSTALLED_VERSION_INVALID');
+      else version=null;
     }
-    return {...metadata,version,registeredInstallCount:1,
+    return {...metadata,version,registeredInstallCount:version===null?0:1,
       integrityVerified:integrity,runtime:{
         fingerprint:getRuntime(),liveCoreCutover:false,
         ownerGrantIssued:false,existingTunnelModified:false
@@ -199,8 +227,35 @@ export function createNativeOsAdapter({
         'UNIVERSAL_NATIVE_NSIS_EFFECT_FAILED');
     }
   }
+  async function uninstall(_artifact,plan){
+    check(plan?.installationKind==='fresh',
+      'UNIVERSAL_NATIVE_FRESH_UNINSTALL_NOT_APPROVED');
+    if(!win){
+      run('pkexec',['/usr/bin/dpkg','--remove',PKG],{timeoutMs:180000});
+    }else{
+      const base=path.join(process.env.LOCALAPPDATA||'',
+        'Programs','remote-commander-unified');
+      const uninstaller=path.join(base,'Uninstall Remote Commander.exe');
+      const st=fs.lstatSync(uninstaller);
+      check(st.isFile()&&!st.isSymbolicLink()&&st.size>1024,
+        'UNIVERSAL_NATIVE_UNINSTALLER_UNTRUSTED');
+      const script=[
+        "$ErrorActionPreference='Stop'",
+        "$me=[Security.Principal.WindowsIdentity]::GetCurrent()",
+        "$admin=[Security.Principal.WindowsPrincipal]::new($me).IsInRole("+
+          "[Security.Principal.WindowsBuiltInRole]::Administrator)",
+        "if($admin){throw 'WINDOWS_NSIS_ELEVATED_OWNER_REFUSED'}",
+        "$p=Start-Process -FilePath "+shellQuote(uninstaller)+
+          " -ArgumentList '/S' -PassThru -Wait -ErrorAction Stop",
+        "if($p.ExitCode -ne 0){throw 'WINDOWS_NSIS_UNINSTALL_NONZERO'}",
+        "[Console]::Out.Write('NATIVE_NSIS_UNINSTALL_EXIT_ZERO')"
+      ].join('\n');
+      check(ps(script,run,{timeoutMs:180000})==='NATIVE_NSIS_UNINSTALL_EXIT_ZERO',
+        'UNIVERSAL_NATIVE_NSIS_UNINSTALL_FAILED');
+    }
+  }
   return Object.freeze({
     platform,architecture,inspect,snapshot,
-    install:effect,restore:effect,verify:async()=>snapshot()
+    install:effect,restore:effect,uninstall,verify:async()=>snapshot()
   });
 }

@@ -12,22 +12,25 @@ import {verifyNativePlanInput}
 
 const fail=s=>{throw Object.assign(new Error(s),{code:s});};
 const SHA=/^[a-f0-9]{40}$/;
-const NAME=/^Remote-Commander-Unified-(0\.12\.0-dev\.[1-9][0-9]*)-(Windows|Linux)-(x64|arm64|amd64)\.(exe|deb)$/;
+const NAME=/^Remote-Commander-Unified-((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-dev\.[1-9][0-9]*)?)-(Windows|Linux)-(x64|arm64|amd64)\.(exe|deb)$/;
 function readArgs(args){
   const keys=new Set(['--candidate','--previous','--expected-head','--output']);
-  if(args.length!==8)fail('UNIVERSAL_NATIVE_MANIFEST_ARGS_REQUIRED');
+  const fresh=args.filter(x=>x==='--fresh').length;
+  if(fresh>1||![8,9].includes(args.length)||(args.length===9)!==(fresh===1))
+    fail('UNIVERSAL_NATIVE_MANIFEST_ARGS_REQUIRED');
+  const parts=fresh?args.filter(x=>x!=='--fresh'):args;
   const v=new Map();
   for(let i=0;i<8;i+=2){
-    if(!keys.has(args[i])||v.has(args[i])||typeof args[i+1]!=='string')
+    if(!keys.has(parts[i])||v.has(parts[i])||typeof parts[i+1]!=='string')
       fail('UNIVERSAL_NATIVE_MANIFEST_ARGS_INVALID');
-    v.set(args[i],args[i+1]);
+    v.set(parts[i],parts[i+1]);
   }
   if(v.size!==4||!SHA.test(v.get('--expected-head')??''))
     fail('UNIVERSAL_NATIVE_MANIFEST_SOURCE_HEAD_INVALID');
   for(const k of ['--candidate','--previous','--output'])
     if(!path.isAbsolute(v.get(k)??''))
       fail('UNIVERSAL_NATIVE_MANIFEST_ABSOLUTE_PATH_REQUIRED');
-  return v;
+  return {values:v,fresh:fresh===1};
 }
 function inspect(file,platform,architecture){
   const p=path.resolve(file),st=fs.lstatSync(p);
@@ -66,11 +69,13 @@ export function prepareNativeManifest(args,{
   if(!['windows','linux'].includes(platform)
     ||!['x64','arm64'].includes(architecture))
     fail('UNIVERSAL_NATIVE_MANIFEST_PLATFORM_UNSUPPORTED');
-  const v=readArgs(args),output=path.resolve(v.get('--output'));
+  const {values:v,fresh}=readArgs(args);
+  const output=path.resolve(v.get('--output'));
   if(fs.existsSync(output))fail('UNIVERSAL_NATIVE_MANIFEST_OUTPUT_EXISTS');
   const input=verifyNativePlanInput({
     product:'ChatGPTRemoteCommander',platform,architecture,
     expectedCommit:v.get('--expected-head'),
+    ...(fresh?{installationKind:'fresh'}:{}),
     candidate:inspect(v.get('--candidate'),platform,architecture),
     previous:inspect(v.get('--previous'),platform,architecture)
   });
@@ -82,7 +87,8 @@ export function prepareNativeManifest(args,{
     mode:0o600,flag:'wx'
   });
   return {status:'UNIVERSAL_NATIVE_DECLARATIVE_MANIFEST_WRITTEN',
-    platform,output,installedArtifactCount:2,
+    platform,output,installationKind:fresh?'fresh':'upgrade',
+    installedArtifactCount:2,
     independentSourceProvenanceVerified:false,
     nativeEffectsPerformed:false};
 }

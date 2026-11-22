@@ -18,7 +18,8 @@ function fixture(platform='linux'){
   };
   let version=input.previous.version,invocations=[],drift=false,mode='normal';
   const snapshot=()=>({
-    product:input.product,format:'native',registeredInstallCount:1,
+    product:input.product,format:'native',
+    registeredInstallCount:version===null?0:1,
     integrityVerified:mode!=='uncertain-integrity',version,
     runtime:{fingerprint:drift?'0'.repeat(64):H,
       liveCoreCutover:false,ownerGrantIssued:false,existingTunnelModified:false}
@@ -33,6 +34,8 @@ function fixture(platform='linux'){
       if(mode==='throw-after-effect')throw Error('unknown native exit');},
     restore:async()=>{invocations.push('restore');version=input.previous.version;
       if(mode==='bad-restore')throw Error('rollback interrupted');},
+    uninstall:async()=>{invocations.push('uninstall');version=null;
+      if(mode==='bad-restore')throw Error('uninstall interrupted');},
     verify:async()=>{if(mode==='wrong-postcheck')drift=true;return snapshot();}
   };
   const events=[],journal={
@@ -54,7 +57,7 @@ test('one OS-neutral plan identity and DENY-by-default for Windows/Linux',async(
       action:'plan',input:f.input,adapter:f.adapter
     });
     assert.equal(result.status,'READY_TO_APPLY');
-    assert.equal(result.plan.rollbackVerified,true);
+    assert.equal(result.plan.rollbackArtifactVerified,true);
     assert.equal(result.productionCutover,false);
     assert.equal(result.plan.platform,platform);
     assert.equal(f.invocations.length,0);
@@ -157,4 +160,108 @@ test('success journal releases only the owned lock, never records secrets',async
     assert.equal(fs.readFileSync(path.join(dir,'events.jsonl'),'utf8')
       .includes('private value'),false);
   }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+
+test('fresh first-install uses SAME Windows/Linux transaction and native uninstall rollback',async()=>{
+  for(const platform of ['windows','linux']){
+    const f=fixture(platform);
+    f.input.installationKind='fresh';
+    f.setVersion(null);
+    const plan=await executeNativeTransaction({
+      action:'plan',input:f.input,adapter:f.adapter
+    });
+    assert.equal(plan.status,'READY_TO_FIRST_INSTALL');
+    assert.equal(plan.plan.installedVersion,null);
+    assert.equal(plan.plan.rollbackTarget,'NATIVE_ABSENCE');
+    assert.equal(plan.plan.rollbackExecutionVerified,false);
+    assert.equal(f.invocations.length,0);
+    const installed=await executeNativeTransaction({
+      action:'apply',...f
+    });
+    assert.equal(installed.status,'NATIVE_PACKAGE_FIRST_INSTALLED');
+    assert.equal(installed.beforeVersion,null);
+    assert.deepEqual(f.invocations,['install']);
+    const result=await executeNativeTransaction({
+      action:'rollback',...f
+    });
+    assert.equal(result.status,'NATIVE_PACKAGE_ROLLED_BACK');
+    assert.equal(result.observedVersion,null);
+    assert.equal(f.getVersion(),null);
+    assert.deepEqual(f.invocations,['install','uninstall']);
+  }
+});
+
+test('fresh installation refuses wrong baseline, missing native uninstall and unapproved effects',async()=>{
+  const f=fixture('windows');
+  f.input.installationKind='fresh';
+  await assert.rejects(executeNativeTransaction({
+    action:'plan',input:f.input,adapter:f.adapter
+  }),{code:'UNIVERSAL_NATIVE_INSTALLED_VERSION_DRIFT'});
+  f.setVersion(null);
+  const bad={...f.adapter};delete bad.uninstall;
+  await assert.rejects(executeNativeTransaction({
+    action:'plan',input:f.input,adapter:bad
+  }),{code:'UNIVERSAL_NATIVE_FRESH_UNINSTALL_ADAPTER_REQUIRED'});
+  await assert.rejects(executeNativeTransaction({
+    action:'apply',input:f.input,adapter:f.adapter,journal:f.journal,
+    approve:async()=>({approved:false})
+  }),{code:'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED'});
+  assert.deepEqual(f.invocations,[]);
+});
+
+test('fresh installation unknown effect reconciles via one verified native uninstall',async()=>{
+  const f=fixture('linux');f.input.installationKind='fresh';
+  f.setVersion(null);f.setMode('throw-after-effect');
+  await assert.rejects(executeNativeTransaction({
+    action:'apply',...f
+  }),{code:'UNIVERSAL_NATIVE_EFFECT_FAILED_ROLLED_BACK'});
+  assert.deepEqual(f.invocations,['install','uninstall']);
+  assert.equal(f.getVersion(),null);
+  assert.ok(f.events.includes('ROLLBACK_VERIFIED'));
+});
+
+test('owner-only receipt journal permits version=null exclusively for clean first-install recovery',async()=>{
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-native-qa-'));
+  try{
+    const dir=path.join(root,'journal'),j=createNativeFileJournal({directory:dir});
+    await j.claim('a'.repeat(64));
+    await j.write('ROLLBACK_STARTED',{action:'rollback',version:null});
+    await assert.rejects(j.write('VERIFIED',{action:null}),{
+      code:'UNIVERSAL_NATIVE_JOURNAL_DATA_REJECTED'
+    });
+    await j.write('ROLLBACK_VERIFIED',{action:'rollback',version:null});
+    await j.close();
+    assert.equal(fs.existsSync(path.join(dir,'install.lock')),false);
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('general release ordering handles dev-to-stable, next minor and 1.0 without host patches',()=>{
+  const original=fixture('linux').input;
+  for(const [previous,candidate] of [
+    ['0.12.0-dev.9','0.12.0'],
+    ['0.12.0','0.13.0-dev.1'],
+    ['0.13.0-dev.50','0.13.0'],
+    ['0.19.9','1.0.0'],
+    ['0.99.0','1.0.0-dev.1']
+  ]){
+    const result=verifyNativePlanInput({...original,
+      previous:{...original.previous,version:previous},
+      candidate:{...original.candidate,version:candidate}
+    });
+    assert.equal(result.candidate.version,candidate);
+  }
+  for(const [previous,candidate] of [
+    ['0.12.0','0.12.0-dev.99'],
+    ['0.13.0-dev.10','0.13.0-dev.9'],
+    ['1.0.0','0.99.0'],
+    ['1.0.0','1.0.0'],
+    ['0.12.0','v1.0.0'],
+    ['0.12.0','1.0.0-rc.1']
+  ]){
+    assert.throws(()=>verifyNativePlanInput({...original,
+      previous:{...original.previous,version:previous},
+      candidate:{...original.candidate,version:candidate}
+    }));
+  }
 });

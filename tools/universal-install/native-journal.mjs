@@ -56,7 +56,7 @@ export function createNativeFileJournal({
       const summary=Object.create(null);
       for(const [k,v] of Object.entries(data)){
         if(!['transactionId','action','version','reason'].includes(k)
-          ||!finiteString(v))
+          ||!(finiteString(v)||(k==='version'&&v===null)))
           fail('UNIVERSAL_NATIVE_JOURNAL_DATA_REJECTED');
         summary[k]=v;
       }

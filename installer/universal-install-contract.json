@@ -130,6 +130,9 @@
     "coreCutoverAllowed": false,
     "freshInstallAndFleetPromotionAccepted": false,
     "manifestGenerator": "tools/universal-install/native-manifest.mjs",
-    "policyProof": "test/universal-native-cli-policy.test.mjs"
+    "policyProof": "test/universal-native-cli-policy.test.mjs",
+    "initialInstallMode": "--fresh (explicit clean host only; OS-native uninstall fallback)",
+    "initialInstallIsLiveOwnerHostAccepted": false,
+    "rollbackAfterFirstInstall": "native DEB remove/NSIS uninstall with exact baseline readback"
   }
 }
