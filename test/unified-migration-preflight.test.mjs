@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -35,6 +35,39 @@ test('Windows exact owner selector has no default or cross-profile credential fa
       {profilePresent:false,valid:false});
   }
  }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+test('owner-local legacy Commander tunnels are discovered by executable identity, not host names',()=>{
+ const home='/home/owner';
+ const unit='profile-A-tunnel.service';
+ const exe=path.posix.join(home,'.local','share','ChatGPTRemoteCommander',
+   'tools','tunnel-client-v0.0.15-linux-amd64','tunnel-client');
+ const fixture={unit,home,
+   fragmentPath:path.posix.join(home,'.config','systemd','user',unit),
+   execStart:'{ path='+exe+' ; argv[]='+exe+' run --profile profile-A ; ignore_errors=no ; }'};
+ assert.equal(isLinuxOwnerCommanderLegacyTunnelUnit(fixture),true);
+ for(const bad of [
+   {unit:'other.service'},
+   {unit:'profile-B-tunnel.service'},
+   {fragmentPath:path.posix.join('/','etc','systemd','user',unit)},
+   {fragmentPath:path.posix.join(home,'.config','systemd','user','wrong.service')},
+   {execStart:fixture.execStart.replace('run --profile profile-A','run --profile other')},
+   {execStart:fixture.execStart.replace('tunnel-client-v0.0.15-linux-amd64','misc')},
+   {execStart:fixture.execStart.replace(exe+' run',exe+' --api-key=secret run')},
+   {home:path.posix.join('/','home','other')},
+   {home:'relative'}
+ ])assert.equal(isLinuxOwnerCommanderLegacyTunnelUnit({...fixture,...bad}),false);
+ const r=assessMigration({platform:'linux',connectionMode:'private-tunnel',
+   inventoryReliable:true,nativePackageInstalled:true,
+   allNativePayloadPathsAvailable:true,units:[
+     {kind:'tunnel',active:true,enabled:true,knownExecutable:false,
+       nativeTunnelCompatible:false}
+   ]});
+ assert.equal(r.activeTunnelUnits,1);
+ assert.equal(r.enabledTunnelUnits,1);
+ assert.ok(r.blocked.includes('TUNNEL_CUTOVER_UNVERIFIED'));
+ assert.ok(r.blocked.includes('ACTIVE_SERVICE_EXECUTABLE_UNMAPPED'));
+ assert.equal(r.decision,'NO_PROMOTE');
 });
 
 test('read-only Linux inventory preserves Native Tunnel and old live service blockers',()=>{
@@ -158,6 +191,48 @@ test('single native Linux package must contain the actual v0.12 protected Core, 
     assert.ok(packageBuild.includes(rel.replace('app/','')),
       'dpkg builder must verify protected module '+rel);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('one product-wide NSIS registration is detected without interpreting a user uninstall command as permission',()=>{
+ const output=[
+  'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\e8b3b1a5-66f7-5b0b-b5ed-ddf867067934',
+  '    DisplayName    REG_SZ    Remote Commander 0.12.0-dev.8',
+  '    DisplayVersion    REG_SZ    0.12.0-dev.8',
+  '    UninstallString    REG_SZ    "C:\\Users\\OWNER\\AppData\\Local\\Programs\\RemoteCommander\\Uninstall Remote Commander.exe" /currentuser'
+ ].join('\r\n');
+ assert.equal(classifyWindowsUnifiedNsisRegistryResponse(output),'unified-nsis');
+ for(const version of ['0.12.0','0.13.0-beta.1','1.0.0']){
+   const later=output.replaceAll('0.12.0-dev.8',version);
+   assert.equal(classifyWindowsUnifiedNsisRegistryResponse(later),'unified-nsis');
+ }
+ for(const invalid of [
+   output.replace('Remote Commander 0.12.0-dev.8','Remote Commander Browser'),
+   output.replace('DisplayVersion    REG_SZ    0.12.0-dev.8',
+     'DisplayVersion    REG_SZ    0.11.0-dev.8'),
+   output.replaceAll('0.12.0-dev.8','0.11.0-dev.8'),
+   output.replaceAll('0.12.0-dev.8','1.00.0'),
+   output.replace('Uninstall Remote Commander.exe','unknown.exe'),
+   output.replace('Remote Commander 0.12.0-dev.8','Remote Commander 0.12.0-dev.8\r\n    DisplayName    REG_SZ    counterfeit'),
+   output.repeat(1000),
+   ''
+ ])assert.equal(classifyWindowsUnifiedNsisRegistryResponse(invalid),'unverified');
+ const report=assessMigration({platform:'win32',connectionMode:'private-tunnel',
+   inventoryReliable:true,legacyInnoPresent:false,
+   nativeUnifiedNsisPresent:true,nativeUnifiedNsisRegistryMatched:true,
+   ownerRegisteredInstallerFamily:'unified-nsis'});
+ assert.equal(report.existingInstalled,true);
+ assert.equal(report.nativeUnifiedNsisDetected,true);
+ assert.equal(report.nativeUnifiedNsisRegistryMatched,true);
+ assert.equal(report.ownerRegisteredInstallerFamily,'unified-nsis');
+ assert.ok(report.blocked.includes('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED'));
+ assert.ok(!report.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
+ assert.equal(report.decision,'NO_PROMOTE');
+ const ambiguous=assessMigration({...{
+   platform:'win32',inventoryReliable:true,connectionMode:'private-tunnel',
+   nativeUnifiedNsisPresent:true,ownerRegisteredInstallerFamily:'unverified',
+   legacyInnoPresent:false}});
+ assert.ok(ambiguous.blocked.includes('OWNER_INSTALLER_IDENTITY_UNVERIFIED'));
+ assert.equal(ambiguous.decision,'NO_PROMOTE');
 });
 
 test('Windows Inno→NSIS remains blocked without proven reversible cutover',()=>{
