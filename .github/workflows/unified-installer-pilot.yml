@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - "packaging/unified/**"
+      - "tools/universal-install/**"
+      - "installer/universal-install-contract.json"
+      - "test/universal-native-*.test.mjs"
+      - "test/universal-native-coordinator-hosted.mjs"
       - "test/unified-*"
       # PRIVATE pair ingress and the installed Core tool surface are part of
       # the shipped package, even when packaging scripts are unchanged.
@@ -51,6 +55,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
+      - name: Verify identical native transaction and OS adapter contracts
+        run: node --test test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs
       - name: Verify native owner/Worker denial and DPAPI custody on both OSes
         run: npm run test:v012-owner-worker-admission
       - name: Preserve exact native Core inventory for cross-OS byte comparison
@@ -108,6 +114,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./test/unified-nsis-migration-guard.ps1
+      - name: Actual native first install and exact uninstall via ONE coordinator on disposable OS (NoPromote)
+        shell: bash
+        run: node test/universal-native-coordinator-hosted.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: One common native install/upgrade/rollback lifecycle on both hosted OSes (NoPromote)
         shell: bash
         run: node tools/universal-install/native-smoke.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"

@@ -12,7 +12,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "test:universal-install": "node --test --test-concurrency=1 test/universal-install-contract.test.mjs test/universal-install-engine.test.mjs test/universal-native-parity.test.mjs test/universal-native-smoke.test.mjs",
+    "test:universal-install": "node --test --test-concurrency=1 test/universal-install-contract.test.mjs test/universal-install-engine.test.mjs test/universal-native-parity.test.mjs test/universal-native-smoke.test.mjs test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs test/owner-pinned-provenance.test.mjs test/universal-native-coordinator-hosted.test.mjs",
     "test:v012-owner-worker-admission": "node --check src/v012-native-owner-worker-security-factory.mjs && node --check src/v012-private-core-runtime.mjs && node --check src/native-worker-key-provider-windows.mjs && node --check tools/provision-owner-worker-key-windows.mjs && node --check tools/qa-v012-native-worker-key-runtime-linux.mjs && node --check test/owner-dpapi-worker-key-windows.e2e.test.mjs && node --test --test-concurrency=1 test/v012-private-native-worker-adapter.test.mjs test/v2-private-tunnel-https-gateway.test.mjs test/v2-private-signed-worker-grant-adapter.test.mjs test/native-worker-key-provider-windows.test.mjs test/v012-native-worker-key-runtime-linux.test.mjs test/provision-owner-worker-key-windows.test.mjs test/owner-dpapi-worker-key-windows.e2e.test.mjs",
     "test:release-train": "node --test test/release-train-0.11.test.mjs test/release-train-0.12.test.mjs test/native-linux-package-contract.test.mjs",
     "start": "node src/server-v0.3.mjs",
