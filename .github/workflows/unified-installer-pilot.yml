@@ -4,6 +4,8 @@ on:
     paths:
       - "packaging/unified/**"
       - "test/unified-*"
+      - "test/verify-compiled-core.test.mjs"
+      - "tools/universal-install/verify-compiled-core.mjs"
       # PRIVATE pair ingress and the installed Core tool surface are part of
       # the shipped package, even when packaging scripts are unchanged.
       - "src/server-v0.3.mjs"
@@ -51,6 +53,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
+      - name: Reject mutated native Core manifests and extraction paths (synthetic negatives)
+        run: node --test test/verify-compiled-core.test.mjs
       - name: Preserve exact native Core inventory for cross-OS byte comparison
         uses: actions/upload-artifact@v4
         with:
@@ -130,6 +134,35 @@ jobs:
           test "${#deb[@]}" -eq 1
           test "$(dpkg-deb --field "${deb[0]}" Package)" = "chatgpt-remote-commander"
           dpkg --compare-versions "$(dpkg-deb --field "${deb[0]}" Version)" gt "0.12.0~dev1-2"
+      - name: Verify actual Linux DEB embeds SHA-pinned public Core
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          deb=(dist/unified/*.deb)
+          test "${#deb[@]}" -eq 1
+          dest="$RUNNER_TEMP/rc012-compiled-deb-verify"
+          mkdir -p "$dest"
+          dpkg-deb -x "${deb[0]}" "$dest"
+          node tools/universal-install/verify-compiled-core.mjs \
+            --core-root "$dest/opt/Remote Commander/resources/core" \
+            --source-manifest "$(pwd)/packaging/unified/.stage/core/source-manifest.json" \
+            --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Verify actual Windows NSIS embeds SHA-pinned public Core
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exes = @(Get-ChildItem dist/unified/*.exe -File)
+          if ($exes.Count -ne 1) { throw 'NATIVE_CORE_ONE_WINDOWS_INSTALLER_REQUIRED' }
+          $zip = Get-Command 7z.exe -ErrorAction SilentlyContinue
+          $zipPath = if ($zip) { $zip.Source } else { Join-Path $env:ProgramFiles '7-Zip\7z.exe' }
+          if (-not (Test-Path -LiteralPath $zipPath)) { throw 'NATIVE_CORE_NATIVE_7Z_MISSING' }
+          $dest = Join-Path $env:RUNNER_TEMP 'rc012-compiled-nsis-verify'
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          & $zipPath x -y "-o$dest" $exes[0].FullName 'resources\core\*'
+          if ($LASTEXITCODE -ne 0) { throw 'NATIVE_CORE_NSIS_EXTRACT_FAILED' }
+          node tools/universal-install/verify-compiled-core.mjs --core-root (Join-Path $dest 'resources/core') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/core/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
       - name: Artifact fingerprint (Linux)
         if: runner.os == 'Linux'
         run: sha256sum dist/unified/*.deb
