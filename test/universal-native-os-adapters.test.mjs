@@ -1,0 +1,131 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {createNativeOsAdapter}
+  from '../tools/universal-install/native-os-adapters.mjs';
+import {executeNativeTransaction}
+  from '../tools/universal-install/native-transaction.mjs';
+
+const sha=b=>createHash('sha256').update(b).digest('hex');
+const spec=(platform,dir)=>{
+  const newFile=path.join(dir,'Remote-Commander-Unified-0.12.0-dev.9-'+
+    (platform==='linux'?'Linux-amd64.deb':'Windows-x64.exe'));
+  const oldFile=path.join(dir,'Remote-Commander-Unified-0.12.0-dev.8-'+
+    (platform==='linux'?'Linux-amd64.deb':'Windows-x64.exe'));
+  const b1=Buffer.alloc(2048,12),b2=Buffer.alloc(2048,34);
+  fs.writeFileSync(newFile,b2);
+  fs.writeFileSync(oldFile,b1);
+  return {product:'ChatGPTRemoteCommander',platform,architecture:'x64',
+    expectedCommit:'d'.repeat(40),
+    candidate:{path:newFile,sha256:sha(b2),version:'0.12.0-dev.9'},
+    previous:{path:oldFile,sha256:sha(b1),version:'0.12.0-dev.8'}
+  };
+};
+function mockedAdapter(platform,events){
+  let installed='0.12.0-dev.8';
+  const run=(bin,args)=>{
+    events.push({bin,args});
+    if(platform==='linux'){
+      if(bin==='dpkg-deb'){
+        const field=args[2];
+        return {code:0,stdout:field==='Package'?'chatgpt-remote-commander':
+          field==='Architecture'?'amd64':args[1].includes('dev.9')?
+            '0.12.0~dev.9':'0.12.0~dev.8',stderr:''};
+      }
+      if(bin==='dpkg-query')return {code:0,
+        stdout:installed.replace('-dev.','~dev.')+'|install ok installed',stderr:''};
+      if(bin==='dpkg')return {code:0,stdout:'',stderr:''};
+      if(bin==='systemctl')return {code:0,
+        stdout:'ActiveState=active\nMainPID=111\nExecStart=/unchanged/old-core',stderr:''};
+      if(bin==='pkexec'){installed=args[2].includes('dev.9')
+        ?'0.12.0-dev.9':'0.12.0-dev.8';
+        return {code:0,stdout:'',stderr:''};}
+    }else if(bin==='pwsh'){
+      const src=Buffer.from(args.at(-1),'base64').toString('utf16le');
+      if(src.includes('Get-NetTCPConnection'))
+        return {code:0,stdout:'f'.repeat(64),stderr:''};
+      if(src.includes('Get-ChildItem'))
+        return {code:0,stdout:installed,stderr:''};
+      if(src.includes('Start-Process')){
+        assert.match(src,/ELEVATED_OWNER_REFUSED/u);
+        installed=src.includes('dev.9')?'0.12.0-dev.9':'0.12.0-dev.8';
+        return {code:0,stdout:'NATIVE_NSIS_EXIT_ZERO',stderr:''};
+      }
+      if(src.includes('VersionInfo.FileVersion'))
+        return {code:0,stdout:src.includes('dev.9')?
+          '0.12.0-dev.9':'0.12.0-dev.8',stderr:''};
+    }
+    throw Error('UNEXPECTED_OS_EXEC_'+bin);
+  };
+  return {adapter:createNativeOsAdapter({
+    platform,architecture:'x64',run
+  }),get installed(){return installed;}};
+}
+const approval=async plan=>({
+  kind:'native-owner-install-approval',transactionId:plan.transactionId,approved:true
+});
+const journal=()=>({
+  claim:async()=>{},write:async()=>{},close:async()=>{}
+});
+test('the one native transaction exercises both real OS command interfaces',async()=>{
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-adapter-qa-'));
+  try{
+    for(const platform of ['windows','linux']){
+      const dir=path.join(root,platform);fs.mkdirSync(dir);
+      const input=spec(platform,dir),events=[];
+      const native=mockedAdapter(platform,events);
+      const plan=await executeNativeTransaction({
+        action:'plan',input,adapter:native.adapter
+      });
+      assert.equal(plan.status,'READY_TO_APPLY');
+      assert.equal(events.some(x=>x.bin==='pkexec'||(
+        x.bin==='pwsh'&&Buffer.from(x.args.at(-1),'base64')
+          .toString('utf16le').includes('Start-Process'))),false);
+      const applied=await executeNativeTransaction({
+        action:'apply',input,adapter:native.adapter,
+        approve:approval,journal:journal()
+      });
+      assert.equal(applied.status,'NATIVE_PACKAGE_UPGRADED');
+      assert.equal(native.installed,'0.12.0-dev.9');
+      const rollback=await executeNativeTransaction({
+        action:'rollback',input,adapter:native.adapter,
+        approve:approval,journal:journal()
+      });
+      assert.equal(rollback.status,'NATIVE_PACKAGE_ROLLED_BACK');
+      assert.equal(native.installed,'0.12.0-dev.8');
+      assert.equal(events.filter(x=>x.bin==='pkexec'
+        ||x.bin==='pwsh'&&Buffer.from(x.args.at(-1),'base64')
+        .toString('utf16le').includes('Start-Process')).length,2);
+    }
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('both native adapters reject changed package hashes before invoking OS package manager',async()=>{
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-adapter-qa-'));
+  try{
+    for(const platform of ['windows','linux']){
+      const dir=path.join(root,platform);fs.mkdirSync(dir);
+      const input=spec(platform,dir),events=[];
+      const native=mockedAdapter(platform,events);
+      input.candidate.sha256='0'.repeat(64);
+      await assert.rejects(executeNativeTransaction({
+        action:'plan',input,adapter:native.adapter
+      }),{code:'UNIVERSAL_NATIVE_ARTIFACT_SHA256_MISMATCH'});
+      assert.equal(events.filter(x=>x.bin==='pkexec').length,0);
+    }
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('both adapters reject malformed versions and incomplete native snapshots',async()=>{
+  assert.throws(()=>createNativeOsAdapter({platform:'solaris'}),
+    {code:'UNIVERSAL_NATIVE_PLATFORM_UNSUPPORTED'});
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-adapter-qa-'));
+  try{
+    const input=spec('linux',root),native=mockedAdapter('linux',[]);
+    input.previous.version='0.12.0-dev.10';
+    await assert.rejects(executeNativeTransaction({
+      action:'plan',input,adapter:native.adapter
+    }),{code:'UNIVERSAL_NATIVE_VERSION_ORDER_INVALID'});
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

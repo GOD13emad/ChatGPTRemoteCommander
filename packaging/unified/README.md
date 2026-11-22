@@ -2,6 +2,77 @@
 
 Builds **one native installer per OS** from a single pinned Git commit: electron-builder NSIS (Windows, per-user) or DEB (Linux). Electron embeds its own Node.js, while `extraResources/core` carries the unchanged Commander source. A compact per-user preview copy is the only mutable runtime tree; no system-wide Node/.NET SDK is required to launch this package.
 
+## Universal native transaction engine (one installation structure, two OS adapters)
+
+The cross-host installation authority is **not a list of Emad/MMZ/server
+special-case scripts**. The native transaction engine consumes one declarative
+schema and runs the same machine-global state machine:
+
+```text
+Manifest → native package identity + SHA-256 → installed baseline
+→ exact rollback source → runtime fingerprint → owner approval
+→ exclusive on-host lock + durable journal → native package effect
+→ independent installed-version and runtime verification → commit
+                                         ↘ failure: observe, reconcile,
+                                           verify old-package rollback or STOP
+```
+
+The shared implementation is
+`tools/universal-install/native-transaction.mjs`, with a persistent exclusive
+`native-journal.mjs`. Only `native-os-adapters.mjs` knows whether to use
+**NSIS/PowerShell** on Windows or **dpkg/polkit** on Linux. There is **one**
+registered product/app family per operating system, irrespective of how many
+profiles or ChatGPT accounts exist. It does not create a second Tunnel, rename
+an account profile, copy a credential, issue a J01/Worker grant or replace the
+running Core. Native installer service behavior is rechecked using the old
+runtime fingerprint; a mismatch is **not** an accepted deployment.
+
+The same local commands work on either operating system with the appropriate
+`.exe` or `.deb` files; no machine name appears in the manifest schema:
+
+```text
+node tools/universal-install/native-manifest.mjs --candidate ABS_NEW_PACKAGE --previous ABS_ROLLBACK_PACKAGE --expected-head EXACT_GIT_SHA --output ABS_NATIVE_MANIFEST.json
+node tools/universal-install/native-cli.mjs --plan --manifest ABS_NATIVE_MANIFEST.json
+```
+
+Manifest creation verifies file names/families, calculates actual SHA-256
+digests, and refuses existing output and version-order drift. It is **not**
+independent release trust: a digest calculated from the download itself is
+self-asserted. For a **package-only** `--apply` or explicit `--rollback`, the
+operator must also provide separately accepted release-manifest SHA-256 and Git
+HEAD through `RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256` and
+`RC012_OWNER_PINNED_SOURCE_HEAD`, and the manifest's
+`provenanceManifestPath` must reference the owner-approved release provenance
+receipt. The engine calls the already existing
+`verifyOwnerPinnedNativeRelease` routine to verify both binaries and their
+sizes. The owner must then **manually type the exact transaction ID** in an
+interactive local terminal; Linux independently uses polkit for system-package
+effects, and the Windows adapter refuses an elevated owner process. A remote
+noninteractive command cannot silently approve installation. Neither package
+approval nor a successful version change is an OS J01 consent or signed Worker
+grant.
+
+Machine-global journal states are `INTENT_COMMITTED`,
+`NATIVE_EFFECT_STARTED`, `VERIFIED`, `ROLLBACK_STARTED`,
+`ROLLBACK_VERIFIED`, and `NEEDS_MANUAL_RECONCILIATION`. An uncertain native
+effect is never blindly retried; its lock is retained for owner reconciliation.
+If the candidate is positively installed but fails postcheck, the engine
+tries the **exact previously verified** rollback package once, and only declares
+rollback after independent readback. Tests inject malformed hashes, missing
+approval, concurrent lock, unknown installer outcome, and runtime drift.
+
+**Measured acceptance scope (not Stable):** the identical read-only Manifest
+Generator + native CLI were executed against genuine local `dev.8/dev.9`
+Windows NSIS and Linux DEB artifacts and the actual native package database,
+returning `ALREADY_INSTALLED` with no live effects. The full shared state
+machine and both OS-command adapters have isolated positive and negative
+tests in the mandatory Linux/Windows CI matrix. Existing hosted native lifecycle
+tests separately perform actual package upgrade and rollback in disposable
+Windows/Linux runners. An owner-host `--apply` through this new Coordinator,
+a clean-machine first installation without a previous native rollback package,
+full Fleet Cutover, and J01/Worker-enabled Stable **remain separate, unaccepted
+gates**; never infer these from the source or read-only tests.
+
 ## One cross-OS native lifecycle command (hosted proof)
 
 The accepted product has **one contract and a single source-pinned builder**,

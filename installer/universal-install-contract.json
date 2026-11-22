@@ -103,5 +103,33 @@
     "src/transfer-tools.mjs",
     "src/gui-contract.mjs",
     "src/profile-identity-registry.mjs"
-  ]
+  ],
+  "nativeTransactionalEngine": {
+    "schema": "rc-universal-native-transaction-v1",
+    "entrypoint": "tools/universal-install/native-cli.mjs",
+    "commonCoordinator": "tools/universal-install/native-transaction.mjs",
+    "journal": "tools/universal-install/native-journal.mjs",
+    "osAdapter": "tools/universal-install/native-os-adapters.mjs",
+    "commonStages": [
+      "inspect-package",
+      "inspect-baseline",
+      "plan",
+      "owner-approval",
+      "exclusive-lock",
+      "native-effect",
+      "verify-runtime-identity",
+      "commit-or-rollback",
+      "reconcile-uncertain-result"
+    ],
+    "supportedPackageFamilies": {
+      "windows": "NSIS user-local same appId",
+      "linux": "DEB single dpkg identity"
+    },
+    "ownerIndependentProvenanceRequired": true,
+    "machineFullAccessGranted": false,
+    "coreCutoverAllowed": false,
+    "freshInstallAndFleetPromotionAccepted": false,
+    "manifestGenerator": "tools/universal-install/native-manifest.mjs",
+    "policyProof": "test/universal-native-cli-policy.test.mjs"
+  }
 }
