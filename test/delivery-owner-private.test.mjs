@@ -71,3 +71,12 @@ test('Windows NEW content-addressed artifact uses private owner DACL',{skip:!onW
    assert.deepEqual(s.writeArtifact(result),ref);
  } finally {s.close();}
 });
+
+test('read-only artifact health rejects existing public artifact root without repair', {skip: !onPosix}, t => {
+  const dir=path.join(fixture(t),'artifact-health');const s=new DeliveryStore({directory:dir,scope:'qa'});
+  s.writeArtifact({status:'COMPLETED'});
+  const root=path.join(dir,'artifacts');fs.chmodSync(root,0o777);
+  try { assert.throws(()=>s.artifactStorage(),/DELIVERY_PRIVATE_DIRECTORY_UNSAFE/); }
+  finally { s.close(); }
+  assert.equal(fs.statSync(root).mode & 0o777,0o777);
+});
