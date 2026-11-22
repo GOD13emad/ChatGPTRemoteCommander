@@ -482,6 +482,27 @@ test('synthetic fully positive private flags never authorize install or bypass J
    'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED'));
 });
 
+test('live Windows owner Router without installer key is never treated as clean install',()=>{
+ const r=assessMigration({platform:'win32',inventoryReliable:true,
+   connectionMode:'private-tunnel',legacyInnoPresent:false,
+   nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+   tunnelProfilePresent:true,tunnelProfileValid:true,
+   tunnelTargetPort:47831,tunnelTargetVersion:'0.11.0-dev.23',
+   tunnelTargetTls:false,routerDetected:true,routerMappingMatches:true,
+   routerBackendPort:48834,routerBackendVersion:'0.11.0-dev.23'});
+ assert.equal(r.existingInstalled,true);
+ assert.equal(r.ownerRegisteredInstallerFamily,'none');
+ assert.ok(r.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+ assert.ok(!r.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
+ assert.equal(r.decision,'NO_PROMOTE');
+ const fresh=assessMigration({platform:'win32',inventoryReliable:true,
+   connectionMode:'private-tunnel',legacyInnoPresent:false,
+   nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+   routerDetected:false});
+ assert.equal(fresh.existingInstalled,false);
+ assert.ok(!fresh.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+});
+
 test('registered owner PowerShell uninstaller is distinct from Inno and cannot trigger blind removal',()=>{
  const registryCommand='    UninstallString    REG_SZ    "C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoProfile -File "C:\\Users\\Owner\\Remote Commander\\uninstall.ps1"';
  assert.equal(classifyWindowsUninstallRegistryResponse(registryCommand),'owner-managed-powershell');

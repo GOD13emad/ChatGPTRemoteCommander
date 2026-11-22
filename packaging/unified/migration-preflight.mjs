@@ -382,10 +382,21 @@ export function assessMigration(facts){
     throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
   const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
+  // The fixed uninstall registry keys do not cover every owner-managed
+  // PowerShell deployment. A verified live legacy Router is positive evidence
+  // of an existing runtime, but NOT evidence of an installer family.
+  // Fail closed rather than reporting a clean-install/no-old-runtime state.
+  const liveUnregisteredWindowsCore=facts.platform==='win32'
+    &&facts.routerDetected===true
+    &&facts.legacyInnoPresent!==true
+    &&facts.nativeUnifiedNsisPresent!==true;
   const oldPresent=facts.platform==='win32'
     ?facts.legacyInnoPresent===true||facts.nativeUnifiedNsisPresent===true
+      ||liveUnregisteredWindowsCore
     :facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
+  if(liveUnregisteredWindowsCore)
+    blocked.push('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED');
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
   if(facts.platform==='win32'&&facts.routerDetected===true
     &&facts.routerMappingMatches!==true)
@@ -419,7 +430,7 @@ export function assessMigration(facts){
         ||!facts.tunnelTargetVersion.startsWith('0.12.')))
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
-  if(facts.platform==='win32' && oldPresent){
+  if(facts.platform==='win32' && oldPresent&&!liveUnregisteredWindowsCore){
     if(facts.nativeUnifiedNsisPresent===true&&facts.legacyInnoPresent!==true){
       if(facts.ownerRegisteredInstallerFamily==='unified-nsis')
         blocked.push('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED');
