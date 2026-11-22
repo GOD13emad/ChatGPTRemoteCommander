@@ -419,10 +419,16 @@ export class DeliveryStore {
     };
   }
   artifactStorage() {
-    const dir = path.join(this.directory, 'artifacts', this.scope);
+    const root = path.join(this.directory, 'artifacts');
+    const dir = path.join(root, this.scope);
     let plainBytes = 0, archivedBytes = 0, plainCount = 0, archivedCount = 0;
     try {
       noLinks(dir);
+      // Read-only health must not trust a public artifacts directory either.
+      // Do not create directories or change ACLs during a status query.
+      for (const target of [root, dir]) {
+        if (fs.existsSync(target)) requireOwnerPrivate(target, { directory: true });
+      }
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         if (!entry.isFile()) continue;
         const target = path.join(dir, entry.name);
