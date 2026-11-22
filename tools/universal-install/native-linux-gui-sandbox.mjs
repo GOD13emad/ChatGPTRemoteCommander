@@ -95,9 +95,16 @@ export function inspectLinuxGuiSandbox({
     if(e?.code!=='ENOENT')return result('OWNER_POLICY_PATH_UNCERTAIN');
   }
   if(existing){
-    // Never overwrite a pre-existing /etc policy or infer that the kernel has
-    // loaded it. Snapshot/owner approval/rollback are separate admission gates.
-    return result('OWNER_POLICY_EXISTING_REQUIRES_RECONCILIATION');
+    // Installed-file identity is NOT proof that AppArmor accepted the policy
+    // into the running kernel. The native coordinator must separately verify.
+    const live=trustedFile(ACTIVE,read,stat,16384);
+    if(!live)return result('OWNER_POLICY_EXISTING_UNTRUSTED');
+    if(createHash('sha256').update(live).digest('hex')!==found)
+      return result('OWNER_POLICY_EXISTING_REQUIRES_RECONCILIATION');
+    return result('OWNER_POLICY_PRESENT_NEEDS_KERNEL_VERIFICATION',{
+      installedProfileSha256:found,activeProfileMatchesPinnedRelease:true,
+      installedGuiIdentityObserved:true,loadedProfileVerified:false
+    });
   }
   return result('OWNER_POLICY_REQUIRED',{
     installedProfileSha256:found,profileMatchesPinnedRelease:true,
