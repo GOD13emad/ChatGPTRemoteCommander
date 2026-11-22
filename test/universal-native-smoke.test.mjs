@@ -77,6 +77,8 @@ test('hosted native matrix executes only the common dispatcher; Windows version 
   const powershell=fs.readFileSync(path.join(root,'test/unified-windows-owner-migration.ps1'),'utf8');
   const migrate=fs.readFileSync(path.join(root,'packaging/unified/owner-windows-legacy-migrate.ps1'),'utf8');
   assert.match(workflow,/node tools\/universal-install\/native-smoke\.mjs --run --expected-commit/);
+  assert.match(workflow,/tools\/universal-install\/\*\*/);
+  assert.match(workflow,/test\/universal-native-smoke\.test\.mjs/);
   assert.doesNotMatch(workflow,/run: bash test\/unified-native-upgrade-smoke\.sh/);
   assert.doesNotMatch(workflow,/run: \.\/test\/unified-windows-owner-migration\.ps1/);
   assert.match(powershell, /RC012_WINDOWS_NATIVE_VERSION_DRIFT/);
