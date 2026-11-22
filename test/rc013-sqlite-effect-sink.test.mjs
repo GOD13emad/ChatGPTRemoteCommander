@@ -10,10 +10,9 @@ const H='a'.repeat(64), PAYLOAD='b'.repeat(64);
 const claims=(over={})=>({projectId:'project-a',hostId:'host-a',rootFingerprint:H,epoch:1,operationKey:'op-1',payloadHash:PAYLOAD,counterKey:'counter-1',...over});
 function fixture(t){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc013-owner-sink-'));
-  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const dbPath=path.join(dir,'owner.sqlite');
   const options={databasePath:dbPath,verifyOwner:()=>true};
-  const sink=new Rc013SqliteEffectSink(options);t.after(()=>{try{sink.close()}catch{}});
+  const sink=new Rc013SqliteEffectSink(options);t.after(()=>{sink.close();fs.rmSync(dir,{recursive:true,force:true});});
   sink.enroll({projectId:'project-a',hostId:'host-a',rootFingerprint:H,epoch:1});
   return {sink,dbPath,options};
 }
@@ -40,8 +39,8 @@ test('owner epoch CAS fences stale writers even when their operation key is new'
   assert.throws(()=>f.sink.rotate({projectId:'project-a',expectedEpoch:1,nextHostId:'host-c',nextRootFingerprint:H}),/RC013_SINK_STALE_EPOCH/);
 });
 test('no native owner proof means no enrollment or epoch rotation',t=>{
-  const d=fs.mkdtempSync(path.join(os.tmpdir(),'rc013-owner-noauth-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));
-  const sink=new Rc013SqliteEffectSink({databasePath:path.join(d,'db.sqlite'),verifyOwner:()=>false});t.after(()=>sink.close());
+  const d=fs.mkdtempSync(path.join(os.tmpdir(),'rc013-owner-noauth-'));
+  const sink=new Rc013SqliteEffectSink({databasePath:path.join(d,'db.sqlite'),verifyOwner:()=>false});t.after(()=>{sink.close();fs.rmSync(d,{recursive:true,force:true});});
   assert.throws(()=>sink.enroll({projectId:'project-a',hostId:'host-a',rootFingerprint:H,epoch:1}),/RC013_SINK_OWNER_PROOF_REQUIRED/);
 });
 test('reject forged proxy and accessor input without reading semantic fields',t=>{
