@@ -52,7 +52,7 @@ if stale_restart_budget mmz-linux;then echo INVALID_OVERRIDE_ALLOWED;else echo I
 cat "$VAR_DIR/tunnel-stale-restart-mmz-linux.epoch"
 stat -c 'STAMP_MODE=%a' "$VAR_DIR/tunnel-stale-restart-mmz-linux.epoch"
 `;
-    const r=spawnSync('bash',['-c',bash,'fixture',temp],{encoding:'utf8',timeout:4000,env:{PATH:process.env.PATH,HOME:process.env.HOME}});
+    const r=spawnSync('bash',['-s','--',temp],{input:bash+'\n',encoding:'utf8',timeout:4000,env:{PATH:process.env.PATH,HOME:process.env.HOME}});
     assert.equal(r.status,0,r.stderr);
     const lines=r.stdout.trim().split('\n');
     assert.deepEqual(lines,[
@@ -147,7 +147,7 @@ echo PRESERVED_LOGS="$(grep -c TUNNEL_SHARED_CONTROL_PLANE_STALE_PRESERVED "$VAR
 echo ISOLATED_RECYCLES="$(grep -c TUNNEL_ISOLATED_CONTROL_PLANE_STALE_RECYCLE "$VAR_DIR/events.log")"
 `
     ].join('\n');
-    const result=spawnSync('bash',['-c',script,'fixture',temp],{
+    const result=spawnSync('bash',['-s','--',temp],{input:script+'\n',
       encoding:'utf8',timeout:6000,env:{PATH:process.env.PATH,HOME:process.env.HOME}
     });
     assert.equal(result.status,0,result.stderr);
@@ -182,7 +182,7 @@ METRIC_LAST=1700000399
 if control_plane_fresh 47832 600;then echo BEYOND_READY;else echo BEYOND_STALE;fi
 `
   ].join('\n');
-  const r=spawnSync('bash',['-c',script],{encoding:'utf8',timeout:4000,env:{PATH:process.env.PATH,HOME:process.env.HOME}});
+  const r=spawnSync('bash',['-s','--'],{input:script+'\n',encoding:'utf8',timeout:4000,env:{PATH:process.env.PATH,HOME:process.env.HOME}});
   assert.equal(r.status,0,r.stderr);
   assert.deepEqual(r.stdout.trim().split('\n'),[
     'DEFAULT_STALE','LTE_GRACE_READY','BORDER_READY','BEYOND_STALE'
@@ -208,7 +208,7 @@ test('independent peer requires an actual recent successful poll; missing and st
     'MODE=normal;LAST=1700001100',
     'if control_plane_recent_success 47833;then echo BAD_FUTURE;else echo FUTURE;fi'
   ].join('\n');
-  const r=spawnSync('bash',['-c',script],{encoding:'utf8',timeout:4000,
+  const r=spawnSync('bash',['-s','--'],{input:script+'\n',encoding:'utf8',timeout:4000,
     env:{PATH:process.env.PATH,HOME:process.env.HOME}});
   assert.equal(r.status,0,r.stderr);
   assert.deepEqual(r.stdout.trim().split('\n'),[
