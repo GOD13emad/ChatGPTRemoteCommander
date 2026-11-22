@@ -214,3 +214,28 @@ test('fresh Linux state permits ONLY its own journal but rejects profiles and or
     }
   }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
+
+test('Windows runtime identity excludes foreign listeners and binds native Commander owner identities',async()=>{
+  const calls=[];
+  const win=createNativeOsAdapter({platform:'windows',architecture:'x64',run:(exe,args)=>{
+    if(exe!=='pwsh')throw Error('UNEXPECTED_COMMAND');
+    const script=Buffer.from(args.at(-1),'base64').toString('utf16le');
+    calls.push(script);
+    if(script.includes('Get-NetTCPConnection')){
+      return {code:0,stdout:'f'.repeat(64),stderr:''};
+    }
+    return {code:0,stdout:'0.12.0-dev.8',stderr:''};
+  }});
+  const snapshot=await win.snapshot();
+  assert.equal(snapshot.runtime.fingerprint,'f'.repeat(64));
+  const witness=calls.find(x=>x.includes('Get-NetTCPConnection'));
+  assert.ok(witness);
+  assert.match(witness,/GetOwnerSid/);
+  assert.match(witness,/CreationDate/);
+  assert.match(witness,/COMMANDER_PROCESS_CENSUS_CHANGED/);
+  assert.match(witness,/\$pidset\.ContainsKey/);
+  assert.match(witness,/operation-worker\.mjs/);
+  assert.match(witness,/Get-ScheduledTask/);
+  assert.match(witness,/Get-FileHash/);
+  assert.doesNotMatch(witness,/Get-NetTCPConnection -State Listen -ErrorAction Stop \|\s*Select-Object LocalAddress/);
+});
