@@ -4,6 +4,7 @@ param(
   [string]$ExpectedCommit = '',
   [string]$BrowserInstaller = '',
   [string]$SourceBundle = '',
+  [string]$SourceSnapshot = '',
   [switch]$AllowDirty
 )
 $ErrorActionPreference='Stop'
@@ -90,22 +91,40 @@ if($BrowserInstaller){
   $BrowserSha=(Get-FileHash -LiteralPath $BrowserInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
   $args+=('/DBrowserSetup='+$BrowserInstaller)
 }
-$BundleSha=$null
+$SnapshotSha=$null
 if($SourceBundle){
-  $SourceBundle=[IO.Path]::GetFullPath($SourceBundle)
-  if(-not(Test-Path -LiteralPath $SourceBundle -PathType Leaf)){throw 'Core source bundle missing.'}
-  if([IO.Path]::GetExtension($SourceBundle) -ne '.bundle'){throw 'Core source must be a Git .bundle file.'}
-  $file=Get-Item -LiteralPath $SourceBundle
-  if(($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Core bundle cannot be a reparse point.'}
-  & git.exe -C $Root bundle verify $SourceBundle | Out-Null
-  if($LASTEXITCODE -ne 0){throw 'Core source Git bundle validation failed.'}
-  $heads=@(& git.exe bundle list-heads $SourceBundle)
-  if($LASTEXITCODE -ne 0 -or -not($heads | Where-Object {$_ -match ('^'+[regex]::Escape($ExpectedCommit)+'\s+refs/heads/')})){
-    throw 'Core source bundle does not contain the exact source commit as a branch.'
+  if($SourceSnapshot){throw 'CORE_SHALLOW_SNAPSHOT_AND_LEGACY_BUNDLE_CONFLICT'}
+  if($env:GITHUB_ACTIONS -ne 'true' -or -not $env:RUNNER_TEMP){
+    throw 'CORE_LEGACY_BUNDLE_DIRECT_USE_FORBIDDEN'
   }
-  $BundleSha=(Get-FileHash -LiteralPath $SourceBundle -Algorithm SHA256).Hash.ToLowerInvariant()
-  $args+=('/DCoreSourceBundle='+$SourceBundle)
-  $args+=('/DCoreSourceBundleSHA256='+$BundleSha)
+  # Legacy CI still creates a historical .bundle but it must NEVER enter
+  # a release payload. Recreate the exact pinned source as a one-commit
+  # shallow bare Git snapshot from the trusted checkout instead.
+  $SourceSnapshot=Join-Path $env:RUNNER_TEMP 'remote-commander-core-shallow.zip'
+  if(Test-Path -LiteralPath $SourceSnapshot){throw 'CORE_SHALLOW_SNAPSHOT_OUTPUT_PREEXISTS'}
+  $helper=Join-Path $Root 'tools\offline-shallow-source.ps1'
+  $created=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $helper -Mode Create -SourceRoot $Root -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot)
+  if($LASTEXITCODE -ne 0){throw 'CORE_SHALLOW_SNAPSHOT_BUILD_FAILED'}
+  $createdRecord=($created|Select-Object -Last 1|ConvertFrom-Json)
+  if($createdRecord.status -ne 'SHALLOW_SOURCE_SNAPSHOT_CREATED'){throw 'CORE_SHALLOW_SNAPSHOT_BUILD_RECEIPT_INVALID'}
+  Write-Output 'LEGACY_GIT_BUNDLE_NEVER_EMBEDDED'
+}
+if($SourceSnapshot){
+  $SourceSnapshot=[IO.Path]::GetFullPath($SourceSnapshot)
+  if(-not(Test-Path -LiteralPath $SourceSnapshot -PathType Leaf) -or
+     [IO.Path]::GetExtension($SourceSnapshot) -ne '.zip'){throw 'CORE_SHALLOW_SNAPSHOT_REQUIRED'}
+  # An on-runner native regression proves the actual offline exact-commit
+  # import and historical-object denial before compiling the Setup EXE.
+  & node.exe --test (Join-Path $Root 'test/offline-shallow-source.test.mjs') | Out-Host
+  if($LASTEXITCODE -ne 0){throw 'CORE_SHALLOW_SOURCE_NATIVE_REGRESSION_FAILED'}
+  $helper=Join-Path $Root 'tools\offline-shallow-source.ps1'
+  $receipt=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $helper -Mode Verify -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot)
+  if($LASTEXITCODE -ne 0){throw 'CORE_SHALLOW_SNAPSHOT_VERIFICATION_FAILED'}
+  $parsed=($receipt|Select-Object -Last 1|ConvertFrom-Json)
+  if($parsed.status -ne 'SHALLOW_SOURCE_SNAPSHOT_VERIFIED'){throw 'CORE_SHALLOW_SNAPSHOT_NOT_VERIFIED'}
+  $SnapshotSha=(Get-FileHash -LiteralPath $SourceSnapshot -Algorithm SHA256).Hash.ToLowerInvariant()
+  $args+=('/DCoreSourceSnapshot='+$SourceSnapshot)
+  $args+=('/DCoreSourceSnapshotSHA256='+$SnapshotSha)
 }
 $args+=(Join-Path $PSScriptRoot 'RemoteCommander.iss')
 
@@ -127,7 +146,7 @@ $result=[ordered]@{
   browserBundled=[bool]$BrowserInstaller
   browserSha256=$BrowserSha
   windowsJobRunnerSha256=$RunnerSha
-  coreBundled=[bool]$SourceBundle
-  coreSourceBundleSha256=$BundleSha
+  coreBundled=[bool]$SourceSnapshot
+  coreSourceSnapshotSha256=$SnapshotSha
 }
 $result|ConvertTo-Json -Depth 5
