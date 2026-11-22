@@ -67,7 +67,7 @@ function windowsPrivateAcl(file,{directory=false,initializeNew=false}={}){
     };
     const result=execFileSync(ps,['-NoLogo','-NoProfile','-NonInteractive',
       '-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
-    {windowsHide:true,encoding:'utf8',timeout:7000,maxBuffer:4096,env});
+    {windowsHide:true,encoding:'utf8',timeout:7000,maxBuffer:4096,env,stdio:['ignore','pipe','pipe']});
     if(result.trim()!=='RC013_ACL_OK')fail(failCode);
   }catch{fail(failCode);}
 }
