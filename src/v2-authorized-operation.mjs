@@ -3,6 +3,7 @@
 // below must come from an authorized principal/session worker and existing Commander
 // access/lease/receipt services, not from request headers, tool arguments, or model text.
 import { createHash } from 'node:crypto';
+import { isProxy } from 'node:util/types';
 import {
   normalizeV2Route, assertV2CallerBinding, v2ResourceLeaseKey,
   v2OperationKey
@@ -92,11 +93,23 @@ export async function executeV2PinnedPrimaryWorkflowOperation(route, services, t
 
   // Verify the native owner record, not arbitrary host hints in user-facing args.
   const load=async()=>{
-    const p=await services.readNativePrimary(r.target.id);
-    if(!p||typeof p!=='object'||Array.isArray(p)
-      ||Object.getPrototypeOf(p)!==Object.prototype
-      ||Object.keys(p).sort().join(',')!==['authorityEpoch','primaryHostId','projectId','rootFingerprint'].sort().join(',')
-      ||typeof p.projectId!=='string'||p.projectId!==r.target.id
+    const raw=await services.readNativePrimary(r.target.id);
+    // Native provider records must contain only own, enumerable data fields.
+    // Do not invoke attacker-supplied Proxy traps or accessors while checking
+    // pin identity; copy one immutable snapshot before async verification.
+    if(!raw||typeof raw!=='object'||Array.isArray(raw)||isProxy(raw)
+      ||Object.getPrototypeOf(raw)!==Object.prototype
+      ||Reflect.ownKeys(raw).sort().join(',')!==['authorityEpoch','primaryHostId','projectId','rootFingerprint'].sort().join(','))
+      fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+    const p={};
+    for(const key of ['authorityEpoch','primaryHostId','projectId','rootFingerprint']){
+      const descriptor=Object.getOwnPropertyDescriptor(raw,key);
+      if(!descriptor||!descriptor.enumerable||!Object.hasOwn(descriptor,'value'))
+        fail('V2_PRIMARY_HOST_NOT_AUTHORIZED');
+      p[key]=descriptor.value;
+    }
+    Object.freeze(p);
+    if(typeof p.projectId!=='string'||p.projectId!==r.target.id
       ||typeof p.primaryHostId!=='string'||p.primaryHostId!==host
       ||typeof p.rootFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(p.rootFingerprint)
       ||!Number.isSafeInteger(p.authorityEpoch)||p.authorityEpoch<1)
