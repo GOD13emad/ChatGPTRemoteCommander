@@ -37,7 +37,9 @@ try {
   if ($root -cnotmatch '^[A-Za-z]:\\') { throw 'INVALID_DIRECTORY' }
   $user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
   $allowed = @($user, 'S-1-5-18', 'S-1-5-32-544')
-  $fsutil = [IO.Path]::Combine($env:SystemRoot, 'System32', 'fsutil.exe')
+  # Resolve the trusted native system directory from the OS, never from
+  # a caller-controlled SystemRoot/PATH environment variable.
+  $fsutil = [IO.Path]::Combine([Environment]::SystemDirectory, 'fsutil.exe')
   function Test-Item([string]$Item, [bool]$IsDirectory, [bool]$Required) {
     $isPresent = if ($IsDirectory) { [IO.Directory]::Exists($Item) } else { [IO.File]::Exists($Item) }
     if (-not $isPresent) {
