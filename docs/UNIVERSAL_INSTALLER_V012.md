@@ -127,26 +127,55 @@ font pixels, identical native permissions or activated Full Power; these are
 separate acceptance gates. The job does not install or promote on owner hosts.
 
 
-### Linux owner GUI package consent (source-stage, not host promotion)
+### Shared Windows/Linux signed one-click owner package consent
 
-The shared native installer supports an opt-in `--gui-approval` suffix for Linux
-`--apply` or `--rollback`. After its unchanged independent owner-pinned
-manifest/head + actual candidate/rollback bytes checks, it displays the exact
-version transition and transaction ID through the absolute `/usr/bin/zenity`
-program. Only a real successful user click yields the transaction-scoped native
-package approval; Cancel, timeout, missing GUI owner seat or no provenance are
-fail-closed. The existing exact-ID TTY prompt remains the fallback when the GUI
-flag is not supplied. `--plan` cannot accept GUI approval. This UI grants no
-J01 Worker capability and does not switch the production Tunnel. A separate
-OS polkit authorization may still be required for system package installation.
+The same shared CLI supports the **opt-in** `--attested-gui-approval`
+for `--apply`, on **Windows and Linux**. It calls the official GitHub CLI
+`gh attestation verify` against the *actual local package bytes*, pinned
+repository `GOD13emad/ChatGPTRemoteCommander`, source commit from the
+declarative manifest and the fixed signed
+`.github/workflows/unified-installer-pilot.yml` workflow identity.
+Self-hosted runners are rejected. Only after successful independent Sigstore
+verification may it derive the local provenance-manifest SHA and pass it
+into the existing common byte-verifying native provenance validator.
+No developer-entered `OWNER-APPROVED` placeholder or manually typed SHA
+is a valid shortcut.
 
-Usage after independently trusted provenance/head are established and supplied
-by the **owner-controlled release authority**, not by the candidate download:
-`node tools/universal-install/native-cli.mjs --apply --manifest /absolute/owner-native-manifest.json --gui-approval`.
-The supplied pin values are still mandatory; this change does not mint them or
-automatically approve unsigned artifacts. In-source unit tests verify the absent
-seat and missing-provenance denial paths; real owner-seat click, native polkit,
-post-install health, rollback and promotion require separate operational receipts.
+Native owner package approval is separate and remains explicit: Linux uses
+`zenity`, Windows uses an actual current-owner-session WinForms Yes/No
+dialog via system Windows PowerShell; No is the default. No GUI session,
+denial, timeout, absent `gh`, failed attestation, changed manifest or source,
+or invalid manifest identity are all fail-closed. The old `--gui-approval`
+mode still requires an independently owner-pinned manifest SHA and HEAD;
+the existing exact-transaction-ID TTY mode is also retained for legacy
+owner-controlled operations.
+
+After attested candidate and current owner baseline have been vetted,
+one universal command on either OS is:
+
+```text
+node tools/universal-install/native-cli.mjs --apply --manifest ABSOLUTE_NATIVE_MANIFEST_PATH --attested-gui-approval
+```
+
+This mode is **package only / NoPromote**, does not change the active 0.11
+Core or Tunnel, does not enroll accounts, bind chats or grant J01 Worker
+rights. Signed candidate proof is **not** proof that the previous rollback
+installer was signed: on the present dev.9 Windows and Linux owner hosts
+the exact rollback asset has no matching GitHub attestation. Accordingly
+`--attested-gui-approval` is not an unrestricted signed rollback command;
+rollback continues to require the independent owner-pinned route and its
+separate native authorization. Release and deployment acceptance still need
+the applicable historical baseline and reversible install/rollback gates.
+For Linux system DEB operations, polkit may ask separately for native OS
+authorization. Windows per-user NSIS does not imply UAC elevation.
+
+Validation status 2026-11-23: real GitHub Sigstore checks for the *older*
+Windows source `258ca0dc6128ff3d263bd514c41e692dd020e2b8` and Linux
+source `be6d48a0ebdeeb69e9e842f18064c9120c16a8b2` PASS.
+These checks do **not** attest the new code. Linux isolated Xvfb GUI Yes/Cancel
+PASS; Windows native dialog code and signed-release policy must run on
+Windows CI and an owner-visible session before Windows canary acceptance.
+No installed package has been promoted by this code path.
 
 ## Native owner-pair J01 validation without a signed Worker grant
 
