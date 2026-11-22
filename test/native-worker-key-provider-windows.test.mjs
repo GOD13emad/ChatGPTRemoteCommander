@@ -184,3 +184,60 @@ test('native Windows owner resolver rejects malformed SID output and PowerShell 
     await rejectsCode(resolver(),'NATIVE_WORKER_KEY_OWNER_UNAVAILABLE');
   });
 });
+
+test('explicit native J01 owner-hash domain agrees across DPAPI custody and resolver, legacy default unchanged',async()=>{
+  const sid='S-1-5-21-111-222-333-1001';
+  const expectedNative=createHash('sha256').update(
+    'commander.os-owner.sid.v1\0win32\0sid='+sid).digest('hex');
+  const decode=args=>Buffer.from(
+    args[args.indexOf('-EncodedCommand')+1],'base64').toString('utf16le');
+  let nativeResolverScript,legacyResolverScript,dpapiScript;
+  const resolverOptions={
+    platform:'win32',powershellPath:POWERSHELL,verifyExecutable:()=>{}
+  };
+  const nativeResolver=createWindowsNativeOwnerSidHashResolver({
+    ...resolverOptions,ownerHashMode:'native-j01-v2',
+    execFileImpl:(_file,args,_opts,cb)=>{
+      nativeResolverScript=decode(args);cb(null,expectedNative,'');
+    }
+  });
+  assert.equal(await nativeResolver(),expectedNative);
+  assert.match(nativeResolverScript,/commander\.os-owner\.sid\.v1/);
+  assert.match(nativeResolverScript,/\[char\]0/);
+  const legacyResolver=createWindowsNativeOwnerSidHashResolver({
+    ...resolverOptions,execFileImpl:(_file,args,_opts,cb)=>{
+      legacyResolverScript=decode(args);cb(null,OWNER,'');
+    }
+  });
+  assert.equal(await legacyResolver(),OWNER);
+  assert.doesNotMatch(legacyResolverScript,/commander\.os-owner\.sid\.v1/);
+
+  const f=fixture();
+  const loader=createWindowsDpapiSeedLoader({
+    ...resolverOptions,credentialPath:PATH,profileId:PROFILE,
+    ownerHashMode:'native-j01-v2',
+    execFileImpl:(_file,args,_opts,cb)=>{
+      dpapiScript=decode(args);cb(null,Buffer.from(f.seed),Buffer.alloc(0));
+    }
+  });
+  const loaded=await loader({ownerSidHash:expectedNative});
+  assert.deepEqual(loaded,f.seed);
+  loaded.fill(0);
+  assert.match(dpapiScript,/commander\.os-owner\.sid\.v1/);
+  assert.match(dpapiScript,/\[char\]0/);
+  assert.match(dpapiScript,/DataProtectionScope\]::CurrentUser/);
+
+  assert.throws(()=>createWindowsNativeOwnerSidHashResolver({
+    ...resolverOptions,ownerHashMode:'unsupported'
+  }),/NATIVE_WORKER_KEY_WINDOWS_BOOTSTRAP_REQUIRED/);
+  assert.throws(()=>createWindowsDpapiSeedLoader({
+    ...resolverOptions,credentialPath:PATH,profileId:PROFILE,
+    ownerHashMode:'unsupported'
+  }),/NATIVE_WORKER_KEY_WINDOWS_BOOTSTRAP_REQUIRED/);
+  assert.throws(()=>createWindowsDpapiWorkerKeyProvider({
+    platform:'win32',profileId:PROFILE,expectedKeyId:f.keyId,
+    resolveOwnerSidHash:async()=>expectedNative,
+    readProtectedSeed:async()=>Buffer.from(f.seed),
+    ownerHashMode:'unsupported'
+  }),/NATIVE_WORKER_KEY_PROVIDER_CONFIGURATION_REQUIRED/);
+});
