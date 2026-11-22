@@ -201,7 +201,14 @@ test('fresh Linux state permits ONLY its own journal but rejects profiles and or
       {recursive:true});
     assert.equal(cleanFreshLinuxOwnerState(home),true);
     fs.rmSync(journal,{recursive:true});
-    fs.symlinkSync(home,journal);
-    assert.equal(cleanFreshLinuxOwnerState(home),false);
+    try{
+      fs.symlinkSync(home,journal);
+      assert.equal(cleanFreshLinuxOwnerState(home),false);
+    }catch(error){
+      // Windows without Developer Mode cannot create this QA symlink;
+      // all positive/negative non-symlink state tests still run there.
+      if(!['EPERM','EACCES','ENOTSUP'].includes(error?.code))
+        throw error;
+    }
   }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
