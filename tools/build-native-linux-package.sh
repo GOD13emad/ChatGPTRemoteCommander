@@ -72,7 +72,9 @@ mkdir -p "$APP" "$RUNTIME" "$DEB/DEBIAN" \
   "$DEB/usr/lib/systemd/user" \
   "$DEB/usr/share/doc/chatgpt-remote-commander" \
   "$DEB$PACKAGE_DIR/tunnel"
-git -C "$ROOT" archive --format=tar "$HEAD" | tar -xf - -C "$APP"
+# Match the exact committed-Core allowlist used by packaging/unified/prepare.mjs.
+# Do not ship repository governance docs, skill bundles, tests or Git history.
+git -C "$ROOT" archive --format=tar "$HEAD" -- src tools vendor assets config.json package.json | tar -xf - -C "$APP"
 test "$(node -p 'require(process.argv[1]).version' "$APP/package.json")" = "$VERSION"
 # Every build of the single v0.12 Linux product MUST contain the real protected
 # Core + J01 + signed Worker implementation. Version strings alone are not proof.

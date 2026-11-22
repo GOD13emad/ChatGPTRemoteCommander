@@ -59,6 +59,9 @@ jobs:
       # Run shared installer QA once per OS, as one independent CI step.
       - name: Verify universal installer transactions and native parity contracts
         run: npm run test:universal-install
+      - name: Reject specialist payloads in public Release ZIPs (negative fixtures)
+        if: runner.os == 'Linux'
+        run: python3 tools/check-public-release-boundary.py --self-test
       - name: Run qualification check with bounded Windows file concurrency
         if: runner.os == 'Windows'
         run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1

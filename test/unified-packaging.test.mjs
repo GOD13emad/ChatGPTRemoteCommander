@@ -71,6 +71,19 @@ test('real legacy Electron GUI maintainer lifecycle regression is part of source
  assert.doesNotMatch(smoke,/pkexec|sudo (systemctl|service)/);
 });
 
+test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{
+ const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
+ const shared='src tools vendor assets config.json package.json';
+ assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
+ assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
+ const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
+ assert.ok(prepare.includes("'src','tools','vendor','assets','config.json','package.json'"));
+ const hosted=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+ assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/);
+ assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/);
+ assert.ok(hosted.includes('python3 - "$OLD" "$NEW"'));
+});
+
 test('one installer definition uses Windows NSIS per user and Linux DEB, not old host repairs',()=>{
  const y=fs.readFileSync(path.join(repo,'packaging/unified/electron-builder.yml'),'utf8');
  assert.match(y,/target: nsis/);
