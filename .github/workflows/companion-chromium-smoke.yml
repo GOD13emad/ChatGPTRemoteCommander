@@ -1,0 +1,44 @@
+name: External Chromium Companion QA (NoPromote)
+on:
+  pull_request:
+    paths:
+      - 'extensions/chatgpt-companion/**'
+      - 'packaging/unified/browser-companion-bridge.cjs'
+      - 'packaging/unified/prepare.mjs'
+      - 'packaging/unified/package-lock.json'
+      - 'test/browser-companion-chromium-smoke.mjs'
+      - '.github/workflows/companion-chromium-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: companion-chromium-qa-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  chromium:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source identity
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Stage verified optional companion
+        run: node packaging/unified/prepare.mjs
+      - name: Install exact lockfile QA libraries only
+        working-directory: packaging/unified
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install official pinned Playwright Chromium
+        run: node packaging/unified/node_modules/playwright-core/cli.js install chromium --no-shell
+      - name: Actual isolated Chromium extension Pair Observe Close Revoke (no real account)
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 90s xvfb-run -a node test/browser-companion-chromium-smoke.mjs
