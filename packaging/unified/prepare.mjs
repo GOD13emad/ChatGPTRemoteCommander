@@ -59,7 +59,10 @@ try{
   execFileSync('git',['-c','core.autocrlf=false','archive','--format=tar','--output',tar,head,
     'src','tools','vendor','assets','config.json','package.json',
     'packaging/unified/owner-pinned-provenance.mjs',
-    'packaging/unified/migration-preflight.mjs'],{
+    'packaging/unified/migration-preflight.mjs',
+    // Preflight must be self-contained in the exact source-pinned native Core.
+    'packaging/unified/package.json',
+    'packaging/unified/owner-systemd-creds-profile-recovery.sh'],{
       cwd:repo,timeout:30000,env:{...process.env,GIT_NO_LAZY_FETCH:'1'}
     });
   execFileSync('tar',['-xf',tar,'-C',core],{timeout:30000});

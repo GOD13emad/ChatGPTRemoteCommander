@@ -176,10 +176,12 @@ test('staged exact-head public Core manifest excludes ALL optional extension fil
  assert.equal(fs.existsSync(path.join(resource,'extensions')),false,
    'distributable public Core must physically exclude optional extensions');
 });
-test('public Core embeds owner tunnel cutover transitive source exactly and no other packaging paths',async()=>{
+test('public Core embeds owner cutover and recovery dependencies only under audited packaging paths',async()=>{
  const manifest=JSON.parse(fs.readFileSync(path.join(resource,'source-manifest.json'),'utf8'));
  const required=['packaging/unified/owner-pinned-provenance.mjs',
    'packaging/unified/migration-preflight.mjs',
+   'packaging/unified/package.json',
+   'packaging/unified/owner-systemd-creds-profile-recovery.sh',
    'tools/plan-owner-private-tunnel-cutover.mjs',
    'tools/inspect-owner-private-tunnel-cutover.mjs'];
  for(const rel of required){
@@ -187,10 +189,20 @@ test('public Core embeds owner tunnel cutover transitive source exactly and no o
      'embedded Core missing exact imported file: '+rel);
  }
  const packagedPaths=Object.keys(manifest.files).filter(x=>x.startsWith('packaging/')).sort();
+ const embeddedGui=JSON.parse(fs.readFileSync(path.join(resource,'packaging/unified/package.json'),'utf8'));
+ const embeddedCore=JSON.parse(fs.readFileSync(path.join(resource,'package.json'),'utf8'));
+ assert.equal(embeddedGui.version,embeddedCore.version,'native candidate version must be derivable from embedded files');
+ const embeddedRecovery=path.join(resource,'packaging/unified/owner-systemd-creds-profile-recovery.sh');
+ if(process.platform==='linux'){
+   const syntax=spawnSync('/bin/bash',['-n',embeddedRecovery],{encoding:'utf8',timeout:3000});
+   assert.equal(syntax.status,0,syntax.stderr);
+ }
  assert.deepEqual(packagedPaths,[
    'packaging/unified/owner-pinned-provenance.mjs',
-   'packaging/unified/migration-preflight.mjs'
- ].sort(),'packaging must not widen beyond the two audited public modules');
+   'packaging/unified/migration-preflight.mjs',
+   'packaging/unified/package.json',
+   'packaging/unified/owner-systemd-creds-profile-recovery.sh'
+ ].sort(),'packaging must not widen beyond the four audited public recovery dependencies');
  const planner=await import(pathToFileURL(path.join(resource,
    'tools/plan-owner-private-tunnel-cutover.mjs')).href);
  assert.equal(typeof planner.planOwnerPrivateTunnelCutover,'function',
@@ -422,7 +434,7 @@ test('preview upgrade refuses oversized runtime data without replacing current C
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
-test('hosted public native DEB path policy allows only the two exact public packaging modules and rejects private paths', {
+test('hosted public native DEB path policy admits only four audited packaging files and rejects private paths', {
   skip: process.platform!=='linux'
 },()=>{
   const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
@@ -430,7 +442,9 @@ test('hosted public native DEB path policy allows only the two exact public pack
   assert.ok(section,'execute the same Python policy embedded in the actual hosted native upgrade test');
   const base=['src/server-v0.3.mjs','config.json','package.json','source-manifest.json','packaging',
     'packaging/unified','packaging/unified/owner-pinned-provenance.mjs',
-    'packaging/unified/migration-preflight.mjs'];
+    'packaging/unified/migration-preflight.mjs',
+    'packaging/unified/package.json',
+    'packaging/unified/owner-systemd-creds-profile-recovery.sh'];
   const execute=(paths)=>{
     const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
     const code=[
@@ -460,9 +474,12 @@ test('hosted public native DEB path policy allows only the two exact public pack
     assert.notEqual(invalid.status,0);
     assert.match(invalid.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   }
-  const missingMigration=execute(base.filter(p=>p!=='packaging/unified/migration-preflight.mjs'));
-  assert.notEqual(missingMigration.status,0);
-  assert.match(missingMigration.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  for(const required of ['packaging/unified/migration-preflight.mjs',
+    'packaging/unified/package.json','packaging/unified/owner-systemd-creds-profile-recovery.sh']){
+    const missing=execute(base.filter(p=>p!==required));
+    assert.notEqual(missing.status,0,'must reject missing required '+required);
+    assert.match(missing.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  }
   const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
   assert.notEqual(missingProvenance.status,0);
   assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);

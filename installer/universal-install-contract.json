@@ -96,7 +96,9 @@
     "tools/universal-install/native-journal.mjs",
     "tools/universal-install/native-manifest.mjs",
     "packaging/unified/owner-pinned-provenance.mjs",
-    "packaging/unified/migration-preflight.mjs"
+    "packaging/unified/migration-preflight.mjs",
+    "packaging/unified/package.json",
+    "packaging/unified/owner-systemd-creds-profile-recovery.sh"
   ],
   "nativeCandidateRoot": "packaging/unified",
   "qaTransactionHelper": "tools/universal-install/engine.mjs",
@@ -116,7 +118,9 @@
     "tools/universal-install/native-journal.mjs",
     "tools/universal-install/native-manifest.mjs",
     "packaging/unified/owner-pinned-provenance.mjs",
-    "packaging/unified/migration-preflight.mjs"
+    "packaging/unified/migration-preflight.mjs",
+    "packaging/unified/package.json",
+    "packaging/unified/owner-systemd-creds-profile-recovery.sh"
   ],
   "nativeTransactionalEngine": {
     "schema": "rc-universal-native-transaction-v1",

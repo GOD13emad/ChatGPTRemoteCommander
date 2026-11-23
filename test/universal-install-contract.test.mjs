@@ -54,6 +54,11 @@ test('one package contract covers both operating systems and all nine accepted c
   }
   for(const f of contract.requiredEmbeddedCoreFiles)
     assert.ok(contract.requiredSourceFiles.includes(f) || f==='config.json',f);
+  for(const p of ['packaging/unified/package.json',
+    'packaging/unified/owner-systemd-creds-profile-recovery.sh']){
+    assert.ok(contract.requiredEmbeddedCoreFiles.includes(p),p);
+    assert.ok(contract.requiredSourceFiles.includes(p),p);
+  }
   const native=read('packaging/unified/prepare.mjs');
   assert.match(native,/requiredEmbeddedCoreFiles/u);
   assert.match(native,/UNIFIED_CANDIDATE_CONTRACT_INVALID/u);
