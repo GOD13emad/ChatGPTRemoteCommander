@@ -9,6 +9,19 @@ const contract=JSON.parse(read('installer/universal-install-contract.json'));
 const release=JSON.parse(read('docs/release-train-0.12.json'));
 const engine=read('tools/universal-install/engine.mjs');
 
+test('public Core archive allowlist excludes optional extensions without losing dirty-source checks',()=>{
+  const source=read('packaging/unified/prepare.mjs');
+  const start=source.indexOf("execFileSync('git',['-c','core.autocrlf=false','archive'");
+  const end=source.indexOf("],{",start);
+  assert.ok(start>=0&&end>start,'source must use pinned git archive');
+  const roots=source.slice(start,end);
+  assert.doesNotMatch(roots,/'extensions'/,
+    'optional private extensions must not enter distributable public Core');
+  assert.match(source,/const touched=runGit\(\['status','--porcelain=v1'.*'extensions'/,
+    'tracked or dirty extensions remain part of source-integrity census');
+  assert.match(roots,/'src','tools','vendor','assets','config\.json','package\.json'/,
+    'keep required approved source roots');
+});
 test('one package contract covers both operating systems and all nine accepted components',()=>{
   assert.equal(contract.schema,'rc-unified-installer-v1');
   assert.deepEqual(Object.keys(contract.platforms),['windows','linux']);

@@ -57,7 +57,7 @@ const tar=path.join(stage,'committed-core.tar');
 if(fs.existsSync(tar))throw Error('UNIFIED_ARCHIVE_PREEXISTS');
 try{
   execFileSync('git',['-c','core.autocrlf=false','archive','--format=tar','--output',tar,head,
-    'src','tools','vendor','assets','extensions','config.json','package.json',
+    'src','tools','vendor','assets','config.json','package.json',
     'packaging/unified/owner-pinned-provenance.mjs'],{
       cwd:repo,timeout:30000,env:{...process.env,GIT_NO_LAZY_FETCH:'1'}
     });
