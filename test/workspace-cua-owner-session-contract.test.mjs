@@ -136,3 +136,29 @@ test('uncertain typed input is one-shot and requires same-target journal reconci
  assert.equal((await ctl.execute('workspace_window_observe',id)).targetUncertain,false);
  assert.equal(calls.filter(c=>c.name==='type_text').length,1);
 });
+
+test('CUA driver path is owner-home pinned and ignores forged LOCALAPPDATA',async()=>{
+  const os=(await import('node:os')).default;
+  const path=(await import('node:path')).default;
+  const {resolvePinnedWorkspaceDriverExecutable}=await import('../src/workspace-tools.mjs');
+  assert.equal(typeof resolvePinnedWorkspaceDriverExecutable,'function');
+  const win=path.win32.join(os.homedir(),'AppData','Local',
+    'ChatGPTRemoteCommander','adapters','cua-driver','v0.38.0','cua-driver.exe');
+  const linux=path.join(os.homedir(),'.local','share',
+    'chatgpt-remote-commander','adapters','cua-driver','v0.38.0','cua-driver');
+  assert.equal(resolvePinnedWorkspaceDriverExecutable('win32'),win);
+  assert.equal(resolvePinnedWorkspaceDriverExecutable('linux'),linux);
+  const prior=process.env.LOCALAPPDATA;
+  try{
+    for(const forged of ['Z:\\untrusted-executable-root','C:\\Users\\Other\\bin','..\\outside','']){
+      process.env.LOCALAPPDATA=forged;
+      assert.equal(resolvePinnedWorkspaceDriverExecutable('win32'),win);
+    }
+  }finally{
+    if(prior===undefined)delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA=prior;
+  }
+  const source=await readFile(new URL('../src/workspace-tools.mjs',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/env\.LOCALAPPDATA/);
+  assert.match(source,/const executable=resolvePinnedWorkspaceDriverExecutable\(platform\)/);
+});

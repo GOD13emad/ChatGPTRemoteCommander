@@ -24,9 +24,13 @@ function desktopType(platform=process.platform,env=process.env){
  if(platform==='linux')return env.XDG_SESSION_TYPE==='wayland'||!!env.WAYLAND_DISPLAY?'wayland':env.DISPLAY?'x11':'headless';
  return 'headless';
 }
-function driverBinary(platform=process.platform,env=process.env){
- if(platform==='win32')return path.join(env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'ChatGPTRemoteCommander','adapters','cua-driver','v0.38.0','cua-driver.exe');
- return path.join(os.homedir(),'.local','share','chatgpt-remote-commander','adapters','cua-driver','v0.38.0','cua-driver');
+export function resolvePinnedWorkspaceDriverExecutable(platform=process.platform){
+ // The owner profile is an OS identity; do not trust caller-supplied LOCALAPPDATA
+ // to choose which executable Commander launches. Nonstandard layouts fail closed.
+ if(platform==='win32')return path.win32.join(os.homedir(),'AppData','Local',
+   'ChatGPTRemoteCommander','adapters','cua-driver','v0.38.0','cua-driver.exe');
+ return path.join(os.homedir(),'.local','share',
+   'chatgpt-remote-commander','adapters','cua-driver','v0.38.0','cua-driver');
 }
 export async function defaultOwnerSession({platform=process.platform,env=process.env}={}){
  if(platform==='win32'){
@@ -48,7 +52,12 @@ export function resolveOwnerCuaPipe(env=process.env){
  return socket;
 }
 export async function defaultCuaCall(tool,args,{platform=process.platform,env=process.env,workspaceSeat=null,screenshotFile=null}={}){
- const executable=driverBinary(platform,env);
+ const executable=resolvePinnedWorkspaceDriverExecutable(platform);
+ // Reject a symlink or non-file before executing the owner-local adapter.
+ try{
+  const st=await fs.lstat(executable);
+  if(!st.isFile()||st.isSymbolicLink())throw fail('WORKSPACE_DRIVER_NOT_INSTALLED');
+ }catch{throw fail('WORKSPACE_DRIVER_NOT_INSTALLED');}
  // This exact pinned adapter is provided by the verified local Commander install.
  // Never accept a caller-supplied executable, socket or CDP endpoint.
  let output;
