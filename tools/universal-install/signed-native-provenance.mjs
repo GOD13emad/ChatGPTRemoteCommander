@@ -29,6 +29,23 @@ export function officialNativeVerifierBinary({
   }
   return 'gh';
 }
+// GitHub CLI v2.51.0–v2.101.0 accepted workflow-name prefixes; the
+// pinned --signer-workflow flag is not an adequate policy check on those builds.
+export function assertSafeGhAttestationVersion(binary,{run=spawnSync}={}){
+  const result=run(binary,['--version'],{
+    encoding:'utf8',windowsHide:true,timeout:5000,maxBuffer:4096
+  });
+  if(result?.error||result?.signal||result?.status!==0
+    ||typeof result.stdout!=='string')
+    fail('UNIVERSAL_NATIVE_GH_VERSION_UNVERIFIED');
+  const m=/^gh version ([0-9]+)\.([0-9]+)\.([0-9]+)(?=\s|$)/.exec(result.stdout);
+  if(!m)fail('UNIVERSAL_NATIVE_GH_VERSION_UNVERIFIED');
+  const numbers=m.slice(1).map(Number);
+  if(numbers.some(n=>!Number.isSafeInteger(n))
+    ||numbers[0]<2||(numbers[0]===2&&numbers[1]<102))
+    fail('UNIVERSAL_NATIVE_GH_VERSION_UNSAFE');
+  return numbers.join('.');
+}
 export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={}){
   let results;
   try{results=JSON.parse(stdout);}catch{fail('UNIVERSAL_NATIVE_SIGSTORE_JSON_INVALID');}
@@ -37,6 +54,17 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
   const matched=results.some(v=>{
     const statement=v?.verificationResult?.statement;
     const cert=v?.verificationResult?.signature?.certificate;
+    // Match the full filename and the @refs/ boundary: a longer workflow
+    // name in the same repository must never inherit its signer authority.
+    const workflowPrefix='https://github.com/'+WORKFLOW+'@refs/';
+    const san=cert?.subjectAlternativeName;
+    // sigstore-go exposes X.509 URI SAN as {type:'URI',value:'...'};
+    // some verification transports expose the same URI as a string.
+    const sanUri=typeof san==='string' ? san
+      :san?.type==='URI'&&typeof san?.value==='string' ? san.value : null;
+    const exactWorkflow=typeof sanUri==='string'
+      &&sanUri.startsWith(workflowPrefix)
+      &&/^[A-Za-z0-9._/-]+$/.test(sanUri.slice(workflowPrefix.length));
     return statement?.predicateType==='https://slsa.dev/provenance/v1'
       &&Array.isArray(statement.subject)
       &&statement.subject.some(s=>s?.name===name&&s?.digest?.sha256===sha256)
@@ -45,6 +73,7 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
       &&cert?.sourceRepositoryURI==='https://github.com/'+REPO
       &&cert?.runnerEnvironment==='github-hosted'
       &&cert?.issuer==='https://token.actions.githubusercontent.com'
+      &&exactWorkflow
       &&(!expectedCommit||cert?.sourceRepositoryDigest===expectedCommit)
       &&v.verificationResult?.verifiedIdentity?.subjectAlternativeName;
   });
@@ -82,7 +111,9 @@ export function verifySignedNativeRelease({
   const args=['attestation','verify',candidatePath,'--repo',REPO,
     '--source-digest',expectedCommit,'--signer-workflow',WORKFLOW,
     '--deny-self-hosted-runners','--format','json'];
-  const result=run(officialNativeVerifierBinary(),args,{encoding:'utf8',windowsHide:true,
+  const ghBinary=officialNativeVerifierBinary();
+  assertSafeGhAttestationVersion(ghBinary,{run});
+  const result=run(ghBinary,args,{encoding:'utf8',windowsHide:true,
     timeout:90000,maxBuffer:512*1024});
   if(result?.error||result?.signal||result?.status!==0
     ||typeof result.stdout!=='string')
