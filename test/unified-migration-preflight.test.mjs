@@ -674,6 +674,28 @@ test('Linux encrypted backup guard independently decrypts an exact owner-local r
   const save=()=>fs.writeFileSync(receiptFile,JSON.stringify(payload),{mode:0o600});
   save();
   assert.equal(verify(),true);
+  // Ambient PATH cannot select the system credential or hashing executables.
+  const fakeBin=path.join(home,'untrusted-executables');
+  fs.mkdirSync(fakeBin,{mode:0o700});
+  const marker=path.join(home,'unexpected-exec-marker');
+  for(const name of ['sha256sum','systemd-creds','cut'])
+    fs.writeFileSync(path.join(fakeBin,name),
+      '#!/bin/sh\nprintf exec >> "$RC020_PATH_MARKER"\nexit 91\n',{mode:0o700});
+  const priorPath=process.env.PATH;
+  const priorMarker=process.env.RC020_PATH_MARKER;
+  let safe;
+  try{
+    process.env.PATH=fakeBin+path.delimiter+(priorPath??'');
+    process.env.RC020_PATH_MARKER=marker;
+    safe=verify();
+  }finally{
+    if(priorPath===undefined)delete process.env.PATH;else process.env.PATH=priorPath;
+    if(priorMarker===undefined)delete process.env.RC020_PATH_MARKER;
+    else process.env.RC020_PATH_MARKER=priorMarker;
+  }
+  assert.equal(fs.existsSync(marker),false,
+    'preflight must never run attacker-selectable executables from PATH');
+  assert.equal(safe,true,'owner-scoped backup remains valid with untrusted PATH');
   assert.equal(verify({profileName:'other-owner'}),false);
   assert.equal(verify({recoveryDir:undefined}),false);
   fs.chmodSync(sourceFile,0o644);

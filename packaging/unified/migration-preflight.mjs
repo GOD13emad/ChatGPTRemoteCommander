@@ -197,7 +197,7 @@ function verifyLinuxSixFileOwnerCapsule({home,ownerUid,profileName}){
  ];
  const config=path.join(home,'.config');
  const digest=file=>{
-  const p=spawnSync('sha256sum',[file],{encoding:'utf8',timeout:5000,
+  const p=spawnSync('/usr/bin/sha256sum',[file],{encoding:'utf8',timeout:5000,
     maxBuffer:1024,stdio:['ignore','pipe','ignore']});
   return p.status===0?/^([a-f0-9]{64})\s/.exec(p.stdout||'')?.[1]??null:null;
  };
@@ -292,15 +292,6 @@ export function verifyLinuxPrivateProfileBackup({
         &&end.size===initial.size&&end.mtimeMs===initial.mtimeMs;
     }catch{return false;}
   };
-  const digestCommand=(program,args)=>{
-    try{
-      const result=spawnSync(program,args,{
-        encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024,
-        stdio:['ignore','pipe','ignore']});
-      const v=result.stdout?.trim();
-      return result.status===0&&/^[0-9a-f]{64}$/.test(v)?v:null;
-    }catch{return null;}
-  };
   try{
     // Resolve/verify the whole parent path: symlinked recovery directories
     // cannot redirect backup inspection outside the owner home.
@@ -325,7 +316,7 @@ export function verifyLinuxPrivateProfileBackup({
       ||!/^[a-f0-9]{64}$/.test(item.sourceSha256)
       ||!/^[a-f0-9]{64}$/.test(item.ciphertextSha256))return false;
     const fileHash=(file)=>{
-      const result=spawnSync('sha256sum',[file],{
+      const result=spawnSync('/usr/bin/sha256sum',[file],{
         encoding:'utf8',windowsHide:true,timeout:5000,maxBuffer:1024,
         stdio:['ignore','pipe','ignore']});
       const digest=/^([a-f0-9]{64})\s/.exec(result.stdout||'');
@@ -333,9 +324,13 @@ export function verifyLinuxPrivateProfileBackup({
     };
     if(fileHash(source)!==item.sourceSha256
       ||fileHash(encrypted)!==item.ciphertextSha256)return false;
-    const script='set -o pipefail; systemd-creds decrypt --user --refuse-null --name="$1" "$2" - | sha256sum | cut -d " " -f1';
-    const restored=digestCommand('/bin/bash',['-c',script,
-      'verify',expectedCredentialName,encrypted]);
+    const script='set -o pipefail; /usr/bin/systemd-creds decrypt --user --refuse-null --name="$1" "$2" - | /usr/bin/sha256sum | /usr/bin/cut -d " " -f1';
+    // Root-owned executables only; script source travels on stdin, never argv.
+    const proof=spawnSync('/bin/bash',['-s','--',expectedCredentialName,encrypted],{
+      input:script,encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024,
+      stdio:['pipe','pipe','ignore']});
+    const value=proof.stdout?.trim();
+    const restored=proof.status===0&&/^[0-9a-f]{64}$/.test(value)?value:null;
     return restored===item.sourceSha256
       &&unchanged(receipt,rstat)&&unchanged(source,sstat)
       &&unchanged(encrypted,cstat);
