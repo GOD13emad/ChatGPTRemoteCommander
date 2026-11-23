@@ -3,6 +3,7 @@ import { mkdtemp, writeFile, open, lstat, rm, realpath } from 'node:fs/promises'
 import os from 'node:os';
 import path from 'node:path';
 import { assertNoCodexDelegatingScript, assertNoCodexExecutable, commanderChildEnv } from './no-codex-policy.mjs';
+import { WINDOWS_SYSTEM_TASKKILL_EXE } from './platform.mjs';
 
 const MAX_INPUT_BYTES = 512 * 1024;
 const FIELDS = ['action', 'tool', 'argumentsJson', 'summary'];
@@ -164,7 +165,7 @@ function runProcess(executable, args, input, { cwd, timeoutMs, maxOutputBytes, s
       if (!child?.pid) { settle(error); return; }
       // Kill the process tree, not just the CLI. Never invoke a shell.
       if (process.platform === 'win32') {
-        const killer = spawn(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
+        const killer = spawn(WINDOWS_SYSTEM_TASKKILL_EXE,
           ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, shell: false, stdio: 'ignore' });
         killer.once('error', () => { try { child.kill('SIGKILL'); } catch {} });
         killer.once('close', () => { try { child.kill('SIGKILL'); } catch {} });

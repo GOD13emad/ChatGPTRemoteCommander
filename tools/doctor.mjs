@@ -19,8 +19,15 @@ export function validateEndpoint(value) {
   if (!['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)) {
     throw new Error('doctor endpoint must be loopback-only');
   }
-  if (!url.pathname.endsWith('/mcp')) throw new Error('doctor endpoint path must end with /mcp');
-  return url;
+  if (url.pathname !== '/mcp') throw new Error('doctor endpoint path must be exactly /mcp');
+  if (!url.port || !Number.isSafeInteger(Number(url.port)) ||
+    Number(url.port) < 1 || Number(url.port) > 65535) {
+    throw new Error('doctor endpoint must include an explicit port');
+  }
+  const scheme = url.protocol === 'http:' ? 'http' : 'https';
+  const pinnedHost = host === '127.0.0.1' ? '127.0.0.1'
+    : host === 'localhost' ? 'localhost' : '[::1]';
+  return new URL(scheme + '://' + pinnedHost + ':' + Number(url.port) + '/mcp');
 }
 
 export function parseArgs(argv) {
