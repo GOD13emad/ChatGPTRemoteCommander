@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import https from 'node:https';
 import {createHash} from 'node:crypto';
 import tls from 'node:tls';
 import {spawnSync} from 'node:child_process';
@@ -15,6 +16,7 @@ const REPO_ID='1374266155';
 const OWNER_ID='94546844';
 const SHA=/^[a-f0-9]{64}$/;
 const HEAD=/^[a-f0-9]{40}$/;
+const MAX_PUBLIC_ATTESTATION_BYTES=4*1024*1024;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
 export function officialNativeVerifierBinary({
@@ -144,24 +146,41 @@ export function verifySignedNativeRelease({
  * The response is UNTRUSTED until the official gh offline bundle verifier
  * authenticates Sigstore certificate identity, source and exact artifact.
  */
-// Node 22+/24 may use only its bundled Mozilla roots; official system trust
-// additionally recognizes CA roots configured by the owner/OS. Never disable
-// TLS verification, replace default trust outright, or trust the public
-// attestation data without the independent Sigstore identity check below.
-// Scope this temporary TLS setting to the caller's current thread only.
-export async function withOfficialSystemCa(action,{tlsApi=tls}={}){
-  if(typeof action!=='function')
-    fail('UNIVERSAL_NATIVE_SYSTEM_CA_ACTION_INVALID');
-  if(typeof tlsApi.getCACertificates!=='function'
-    ||typeof tlsApi.setDefaultCACertificates!=='function')
-    return action();
-  const current=tlsApi.getCACertificates('default');
+// Scope OS roots to one GitHub request. Concurrent operations and unrelated
+// TLS clients must never see a temporarily changed thread-wide CA list.
+export function publicAttestationHttpsAgent({
+  tlsApi=tls,proxyEnv=https.globalAgent.options.proxyEnv
+}={}){
+  if(typeof tlsApi.getCACertificates!=='function')return null;
   const system=tlsApi.getCACertificates('system');
-  if(!Array.isArray(current)||!Array.isArray(system)||system.length===0)
-    return action();
-  tlsApi.setDefaultCACertificates([...current,...system]);
-  try{return await action();}
-  finally{tlsApi.setDefaultCACertificates(current);}
+  if(system.length===0)return null;
+  const roots=new Set([...tlsApi.getCACertificates('default'),...system]);
+  return new https.Agent({ca:[...roots],keepAlive:false,proxyEnv,
+    rejectUnauthorized:true});
+}
+
+async function fetchPublicAttestation(url,{headers,signal}){
+  const agent=publicAttestationHttpsAgent();
+  if(!agent)return fetch(url,{headers,signal,redirect:'error'});
+  try{
+    const response=await new Promise((resolve,reject)=>{
+      https.get(url,{agent,headers,signal},resolve).once('error',reject);
+    });
+    const status=response.statusCode;
+    if(status!==200){
+      response.destroy();
+      return {status};
+    }
+    const chunks=[];
+    let bytes=0;
+    for await(const chunk of response){
+      bytes+=chunk.length;
+      if(bytes>MAX_PUBLIC_ATTESTATION_BYTES)
+        fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNTRUSTED');
+      chunks.push(chunk);
+    }
+    return {status,text:async()=>Buffer.concat(chunks,bytes).toString('utf8')};
+  }finally{agent.destroy();}
 }
 
 export async function publicNativeAttestationBundles(sha256,{fetcher=fetch}={}){
@@ -169,24 +188,23 @@ export async function publicNativeAttestationBundles(sha256,{fetcher=fetch}={}){
     fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_DIGEST_INVALID');
   let response;
   try{
-    const retrieve=()=>fetcher('https://api.github.com/repos/'+REPO+
+    const retrieve=fetcher===fetch?fetchPublicAttestation:fetcher;
+    response=await retrieve('https://api.github.com/repos/'+REPO+
       '/attestations/sha256:'+sha256,{
       headers:{Accept:'application/vnd.github+json',
         'User-Agent':'ChatGPTCommander-SignedNativeVerifier/0.12'},
       signal:AbortSignal.timeout(15000)
     });
-    // Apply platform CA roots only for the real network fetch; injected
-    // offline test transports never change process TLS settings.
-    response=fetcher===fetch
-      ? await withOfficialSystemCa(retrieve)
-      : await retrieve();
-  }catch{fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNAVAILABLE');}
+  }catch(error){
+    if(error?.code==='UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNTRUSTED')throw error;
+    fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNAVAILABLE');
+  }
   if(response?.status!==200)
     fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNAVAILABLE');
   let text;
   try{text=await response.text();}
   catch{fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNAVAILABLE');}
-  if(typeof text!=='string'||text.length<50||text.length>4*1024*1024)
+  if(typeof text!=='string'||text.length<50||text.length>MAX_PUBLIC_ATTESTATION_BYTES)
     fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNTRUSTED');
   let list;
   try{list=JSON.parse(text).attestations;}

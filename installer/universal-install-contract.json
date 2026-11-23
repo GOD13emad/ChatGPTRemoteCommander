@@ -98,6 +98,7 @@
     "packaging/unified/owner-pinned-provenance.mjs",
     "packaging/unified/migration-preflight.mjs",
     "packaging/unified/package.json",
+    "packaging/unified/owner-dpapi-profile-recovery.ps1",
     "packaging/unified/owner-systemd-creds-profile-recovery.sh"
   ],
   "nativeCandidateRoot": "packaging/unified",
@@ -120,6 +121,7 @@
     "packaging/unified/owner-pinned-provenance.mjs",
     "packaging/unified/migration-preflight.mjs",
     "packaging/unified/package.json",
+    "packaging/unified/owner-dpapi-profile-recovery.ps1",
     "packaging/unified/owner-systemd-creds-profile-recovery.sh"
   ],
   "nativeTransactionalEngine": {

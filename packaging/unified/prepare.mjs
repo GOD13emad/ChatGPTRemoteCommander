@@ -62,6 +62,7 @@ try{
     'packaging/unified/migration-preflight.mjs',
     // Preflight must be self-contained in the exact source-pinned native Core.
     'packaging/unified/package.json',
+    'packaging/unified/owner-dpapi-profile-recovery.ps1',
     'packaging/unified/owner-systemd-creds-profile-recovery.sh'],{
       cwd:repo,timeout:30000,env:{...process.env,GIT_NO_LAZY_FETCH:'1'}
     });
