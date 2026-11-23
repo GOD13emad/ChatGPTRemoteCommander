@@ -9,7 +9,7 @@ const userSource=readFileSync('install.sh','utf8').replace(/\r\n?/g,'\n');
 const functionBody=source.match(/^install_bootstrap_packages\(\) \{[\s\S]*?^\}/m)?.[0];
 const userFunctionBody=userSource.match(/^install_os_packages\(\) \{[\s\S]*?^\}/m)?.[0];
 const bash=process.platform==='win32'
-  ? join(process.env.ProgramFiles??'C:\\Program Files','Git','bin','bash.exe')
+  ? join('C:\\Program Files','Git','bin','bash.exe')
   : 'bash';
 const bashAvailable=process.platform==='win32'?existsSync(bash):true;
 test('Linux apt bootstrap refreshes package indexes and retries transient package mirror 404', {skip:!bashAvailable},()=>{
