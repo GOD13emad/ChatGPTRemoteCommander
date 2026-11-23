@@ -96,3 +96,21 @@ test('source regression owner-recovery batches respect native test deadlines wit
   assert.match(source,/index === 14 \? \(part === 0 \? 55000 : 65000\)/);
   assert.match(source,/new Set\(batches\.flat\(\)\)\.size!==files\.length/);
 });
+
+test('Linux native archive list exactly matches unified public Core archive list',()=>{
+  const prepare=read('packaging/unified/prepare.mjs');
+  const builder=read('tools/build-native-linux-package.sh');
+  const staged=prepare.match(/'archive','--format=tar','--output',tar,head,\s*([\s\S]*?)\],\{/u);
+  const native=builder.match(/git -C "\$ROOT" archive --format=tar "\$HEAD" -- ([^|\r\n]+) \| tar -xf - -C "\$APP"/u);
+  assert.ok(staged&&native,'both exact committed-source archive commands must exist');
+  const stagedPaths=[...staged[1].matchAll(/'([^']+)'/gu)].map(m=>m[1]);
+  const nativePaths=native[1].trim().split(/\s+/u);
+  assert.deepEqual(nativePaths,stagedPaths,'Linux DEB and unified stage must carry identical public Core source files');
+  assert.ok(nativePaths.includes(contract.nativeTransactionalEngine.provenanceModule),
+    'the runtime owner-pinned provenance verifier must be embedded in both Core payloads');
+  assert.ok(!nativePaths.includes('extensions'),'specialty/private extensions must not enter the public Core');
+  for(const required of contract.requiredEmbeddedCoreFiles){
+    assert.ok(nativePaths.some(p=>required===p||required.startsWith(p+'/')),
+      'required runtime source is absent from the shared archive roots: '+required);
+  }
+});
