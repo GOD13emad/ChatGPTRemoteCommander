@@ -201,3 +201,40 @@ The Linux user-level Commander service normally has no `XDG_SESSION_ID` even whe
 The existing `tools/local-ollama-planner.mjs` now supports both the original Ollama loopback and the already-installed owner-local `llama.cpp` server, without a second service or paid API. A qualified owner may configure the existing Project Runner command provider with `node tools/local-ollama-planner.mjs --backend llama.cpp --model qwen3-06b-q8` when its exact Node/script path and trusted workflow policy have been enrolled. Its only HTTP destination is `127.0.0.1:8080/v1/chat/completions`; it reads the same-user protected API key from `~/.config/commander-local-ai/secrets/llama-api-key` (owner UID, mode 0600, owner-only directory mode 0700) without printing or storing the key in Git or command-line arguments. It returns **one proposal only**; never calls a tool. The existing Project Engine validates tool scope, action arguments, one-writer leases, mutation receipts, and owner grants before any effect. A model refusal is safely reduced to `block`, empty tool and empty argument object. The current tiny local model may be insufficient for autonomous software repair; this capability is not a substitute for v0.12 Protected ingress, native owner authorization or a verified auto-update transaction.
 
 On Emad Linux, the existing llama service remained active after the narrow owner-only secret-directory ACL correction (775 to 700). A real, explicitly non-mutating one-step planner smoke returned `{"action":"block","tool":"","argumentsJson":"{}"}`. This proves only an authenticated local model **proposal**, not unattended workflow task completion or any live service cutover.
+
+
+### Cross-OS read-only restore-readiness evidence (NoPromote)
+
+The **single** shared native audit accepts an exact source-identified previous
+Windows NSIS installer or Linux DEB, its SHA-256, and an absolute installed
+payload root. It uses only host-native bsdtar/tar or dpkg-deb; it does
+**not** install, elevate, restart, switch tunnels or issue an owner grant.
+
+    node tools/universal-install/native-baseline-audit.mjs --previous "ABSOLUTE_NATIVE_INSTALLER" --sha256 "64_LOWERCASE_HEX_SHA256" --installed-root "ABSOLUTE_INSTALLED_PAYLOAD_ROOT" --registration
+
+The optional --registration flag also observes native registration without
+changing it. Windows checks the fixed current-user NSIS key, uninstaller
+identity and SHA-256, expected uninstall commands, executable version and
+reparse-point safety. Linux uses dpkg-query to count the installed package's
+recorded paths and dpkg --verify to observe file integrity. These checks do
+**not** establish that the supplied previous package matches the registered
+installation: inspect the versions and archive-member evidence separately.
+
+The additional `--scan-extra-files` option performs a bounded, read-only
+file census only inside the selected application `--installed-root`. It
+refuses a filesystem root, symlinks, unsupported entries and large trees;
+this explicitly exposes extra generated files (for example the NSIS
+Uninstaller) without silently treating them as restorable. Never point this
+option at the Linux `/` installation root. Its result remains **partial**.
+
+Machine-readable exit codes are **2** (audit unavailable/invalid), **3**
+(archive-member mismatch), and **4** (archive-member parity only). This
+audit does **not** return zero or fullRestoreVerified=true. Even exact
+archive-member parity and structurally valid native registration do not
+prove extra files, generated NSIS uninstaller/registry reconstruction,
+owner-private mutable state, signed publisher identity or an executable
+restore plan. A matched package is **not** rollback authorization.
+Native upgrades still require an independently derived complete restore
+receipt in the common native-transaction, separate native owner consent,
+and post-restore verification. A mixed-source baseline fails closed;
+do not repair it with per-host installers.

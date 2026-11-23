@@ -3,6 +3,7 @@
 // exact SHA/version checks and rollback are identical. No profile/Tunnel/Worker
 // mutations and no implicit privilege escalation are permitted here.
 import {createHash} from 'node:crypto';
+import {requireNativeBaselineProof} from './native-baseline-proof.mjs';
 
 export const TRANSACTION_SCHEMA='rc-universal-native-transaction-v1';
 const HASH=/^[a-f0-9]{64}$/;
@@ -96,7 +97,7 @@ function exactSnapshot(value){
     'UNIVERSAL_NATIVE_RUNTIME_FINGERPRINT_INVALID');
   return value;
 }
-function identity(spec,before){
+function identity(spec,before,baselineProof){
   const values=[
     TRANSACTION_SCHEMA,spec.product,spec.platform,spec.architecture,
     spec.installationKind,spec.expectedCommit,spec.candidate.version,spec.candidate.sha256,
@@ -106,7 +107,9 @@ function identity(spec,before){
     // Planning at baseline retains exactly the APPLY ID; at candidate, the
     // same manifest plans a distinct ROLLBACK ID.
     before.version??'NATIVE_ABSENCE',before.registeredInstallCount,
-    before.runtime.fingerprint
+    before.runtime.fingerprint,
+    // Approval for an upgrade is tied to independently observed restore state.
+    baselineProof?.identity??'BASELINE_RESTORE_NOT_VERIFIED'
   ];
   return sha(values.join('\0'));
 }
@@ -175,11 +178,29 @@ export async function executeNativeTransaction({
   const atCandidate=before.version===spec.candidate.version
     &&before.registeredInstallCount===1;
   assert(atBaseline||atCandidate,'UNIVERSAL_NATIVE_INSTALLED_VERSION_DRIFT');
+  // An archived prior package's SHA is not evidence that it can restore the
+  // *installed* baseline. Trust only the OS adapter's independent file-tree,
+  // provenance, registration and owner-state receipt. Missing evidence blocks.
+  let baselineProof=null;
+  if(atBaseline&&spec.installationKind==='upgrade'
+    &&typeof adapter.proveRestoreBaseline==='function'){
+    try{
+      baselineProof=requireNativeBaselineProof(
+        await adapter.proveRestoreBaseline(spec.previous,before),
+        spec.previous,before
+      );
+    }catch(error){
+      if(action!=='plan')throw error;
+    }
+  }
   const plan=Object.freeze({
-    ...spec,transactionId:identity(spec,before),
+    ...spec,transactionId:identity(spec,before,baselineProof),
     baselineRuntimeFingerprint:before.runtime.fingerprint,
     installedVersion:before.version,
-    rollbackArtifactVerified:spec.previous!==null,
+    previousArtifactHashVerified:spec.previous!==null,
+    rollbackArtifactVerified:baselineProof!==null,
+    baselineRestoreVerified:baselineProof!==null,
+    baselineRestoreIdentity:baselineProof?.identity??null,
     rollbackExecutionVerified:false,
     rollbackTarget:spec.installationKind==='fresh'
       ?'NATIVE_ABSENCE':spec.previous.version,
@@ -189,7 +210,8 @@ export async function executeNativeTransaction({
     cutoverRequiresSeparateAuthorization:true
   });
   if(action==='plan')return outcome(atCandidate?'ALREADY_INSTALLED':
-    spec.installationKind==='fresh'?'READY_TO_FIRST_INSTALL':'READY_TO_APPLY',plan,{
+    spec.installationKind==='fresh'?'READY_TO_FIRST_INSTALL':
+      baselineProof?'READY_TO_APPLY':'BASELINE_RESTORE_UNVERIFIED',plan,{
     plan,packageOnly:true,approvalIssued:false,
     sourceCommitVerified:false,independentReleaseProvenanceVerified:false
   });
@@ -198,6 +220,8 @@ export async function executeNativeTransaction({
     'UNIVERSAL_NATIVE_EFFECT_AUTHORITY_REQUIRED');
   assert(action==='apply'?atBaseline:atCandidate,
     'UNIVERSAL_NATIVE_ACTION_BASELINE_MISMATCH');
+  if(action==='apply'&&spec.installationKind==='upgrade')
+    assert(baselineProof!==null,'UNIVERSAL_NATIVE_BASELINE_RESTORE_UNVERIFIED');
   // Avoid a caller supplying an async "yes" without an owner approval contract.
   const granted=await approve(plan);
   assert(granted?.kind==='native-owner-install-approval'
@@ -206,10 +230,28 @@ export async function executeNativeTransaction({
     'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED');
   await journal.claim(plan.transactionId);
   try{
-    const fresh=await adapter.snapshot();
-    exactSnapshot(fresh);
-    assert(fresh.version===before.version&&sameRuntime(before,fresh),
-      'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+    // No native package command has begun before INTENT_COMMITTED. A guarded
+    // denial here is a *known no-effect* outcome, so do not strand the owner's
+    // exclusive journal lock as though an installer had changed unknown state.
+    try{
+      const fresh=await adapter.snapshot();
+      exactSnapshot(fresh);
+      assert(fresh.version===before.version&&sameRuntime(before,fresh),
+        'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+      if(action==='apply'&&spec.installationKind==='upgrade'){
+        const rechecked=requireNativeBaselineProof(
+          await adapter.proveRestoreBaseline(spec.previous,fresh),
+          spec.previous,fresh
+        );
+        assert(rechecked.identity===baselineProof.identity,
+          'UNIVERSAL_NATIVE_PRE_EFFECT_RESTORE_PROOF_DRIFT');
+      }
+    }catch(error){
+      await journal.write('NO_CHANGE_VERIFIED',{
+        action,reason:'PRE_EFFECT_GUARD_REJECTED'
+      });
+      throw error;
+    }
     const primary=action==='apply'||spec.installationKind==='fresh'
       ?spec.candidate:spec.previous;
     const desiredVersion=action==='rollback'&&spec.installationKind==='fresh'
@@ -228,6 +270,15 @@ export async function executeNativeTransaction({
         &&after.registeredInstallCount===(desiredVersion===null?0:1)
         &&sameRuntime(before,after),
         'UNIVERSAL_NATIVE_POST_EFFECT_VERIFICATION_FAILED');
+      // Rollback success must restore exact prior payload, not just VersionInfo.
+      if(action==='rollback'&&spec.installationKind==='upgrade'){
+        assert(typeof adapter.proveRestoreBaseline==='function',
+          'UNIVERSAL_NATIVE_ROLLBACK_UNVERIFIED');
+        requireNativeBaselineProof(
+          await adapter.proveRestoreBaseline(spec.previous,after),
+          spec.previous,after
+        );
+      }
       await journal.write('VERIFIED',{action,version:desiredVersion});
       return outcome(action==='apply'
         ?spec.installationKind==='fresh'
@@ -262,6 +313,14 @@ export async function executeNativeTransaction({
           &&restored.registeredInstallCount===before.registeredInstallCount
           &&sameRuntime(before,restored),
           'UNIVERSAL_NATIVE_ROLLBACK_VERIFICATION_FAILED');
+        if(spec.installationKind==='upgrade'){
+          const receipt=requireNativeBaselineProof(
+            await adapter.proveRestoreBaseline(spec.previous,restored),
+            spec.previous,restored
+          );
+          assert(receipt.identity===baselineProof.identity,
+            'UNIVERSAL_NATIVE_ROLLBACK_VERIFICATION_FAILED');
+        }
         await journal.write('ROLLBACK_VERIFIED',{reason:primaryError?.code||'NATIVE_FAILURE'});
       }catch{
         await journal.write('NEEDS_MANUAL_RECONCILIATION',{

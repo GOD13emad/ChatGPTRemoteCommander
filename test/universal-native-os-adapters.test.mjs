@@ -61,9 +61,21 @@ function mockedAdapter(platform,events){
     }
     throw Error('UNEXPECTED_OS_EXEC_'+bin);
   };
-  return {adapter:createNativeOsAdapter({
+  const core=createNativeOsAdapter({
     platform,architecture:'x64',run
-  }),get installed(){return installed;}};
+  });
+  // Synthetic independently validated receipts belong to THIS unit fixture,
+  // not to the real native adapter, which must fail closed without OS proof.
+  const adapter={...core,proveRestoreBaseline:async(previous,before)=>({
+    schema:'rc-universal-native-baseline-proof-v1',
+    artifactSha256:previous.sha256,version:previous.version,
+    archivedPayloadSha256:'d'.repeat(64),
+    installedPayloadSha256:'d'.repeat(64),
+    runtimeFingerprint:before.runtime.fingerprint,
+    completeInventory:true,nativeRegistrationVerified:true,
+    ownerRestoreVerified:true,provenanceVerified:true
+  })};
+  return {adapter,get installed(){return installed;}};
 }
 const approval=async plan=>({
   kind:'native-owner-install-approval',transactionId:plan.transactionId,approved:true
@@ -71,6 +83,31 @@ const approval=async plan=>({
 const journal=()=>({
   claim:async()=>{},write:async()=>{},close:async()=>{}
 });
+test('both platform adapters block upgrade without independently verified baseline',async()=>{
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-adapter-qa-'));
+  try{
+    for(const platform of ['windows','linux']){
+      const dir=path.join(root,platform);fs.mkdirSync(dir);
+      const input=spec(platform,dir),events=[];
+      const native=mockedAdapter(platform,events);
+      // The real adapter has no such provider until its package payload and
+      // native registration are independently proven. Unit-only mock receipts
+      // cannot flow into production.
+      const adapter={...native.adapter};
+      delete adapter.proveRestoreBaseline;
+      const plan=await executeNativeTransaction({action:'plan',input,adapter});
+      assert.equal(plan.status,'BASELINE_RESTORE_UNVERIFIED');
+      assert.equal(plan.plan.rollbackArtifactVerified,false);
+      await assert.rejects(executeNativeTransaction({
+        action:'apply',input,adapter,approve:approval,journal:journal()
+      }),{code:'UNIVERSAL_NATIVE_BASELINE_RESTORE_UNVERIFIED'});
+      assert.equal(events.some(x=>x.bin==='pkexec'||(
+        x.bin==='pwsh'&&Buffer.from(x.args.at(-1),'base64')
+          .toString('utf16le').includes('Start-Process'))),false);
+    }
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('the one native transaction exercises both real OS command interfaces',async()=>{
   const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-adapter-qa-'));
   try{

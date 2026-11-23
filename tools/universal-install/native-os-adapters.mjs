@@ -12,8 +12,10 @@ const HASH=/^[a-f0-9]{64}$/;
 const VERSION=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-dev\.[1-9][0-9]*)?$/;
 const sha=b=>createHash('sha256').update(b).digest('hex');
 const PRODUCT='ChatGPTRemoteCommander';
-const PKG='chatgpt-remote-commander';
-const WIN_KEY='e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
+export const NATIVE_LINUX_PACKAGE='chatgpt-remote-commander';
+export const NATIVE_WINDOWS_UNINSTALL_KEY='e8b3b1a5-66f7-5b0b-b5ed-ddf867067934';
+const PKG=NATIVE_LINUX_PACKAGE;
+const WIN_KEY=NATIVE_WINDOWS_UNINSTALL_KEY;
 const metadata={product:PRODUCT,format:'native'};
 const shellQuote=s=>"'"+s.replaceAll("'","''")+"'";
 const dpkgVersion=v=>{
