@@ -41,12 +41,19 @@ function readManifest(file){
     fail('UNIVERSAL_NATIVE_PROVENANCE_PATH_INVALID');
   return {input,provenanceManifestPath};
 }
+function approvalChange(plan){
+  const from=plan.installedVersion??'No Commander package';
+  const target=plan.installedVersion===plan.candidate.version
+    ?plan.rollbackTarget:plan.candidate.version;
+  const to=target==='NATIVE_ABSENCE'?'No Commander package':target;
+  return from+' -> '+to;
+}
 export function windowsGuiApprovalScript(plan){
   // Do not interpolate untrusted manifest values into PowerShell instructions.
-  const message='ChatGPT Commander - package only\n'+plan.installedVersion+
-    ' -> '+plan.candidate.version+'\nTransaction: '+plan.transactionId+
+  const message='ChatGPT Commander - package only\n'+approvalChange(plan)+
+    '\nTransaction: '+plan.transactionId+
     '\nActive 0.11 Core and Tunnel stay untouched.\n'+
-    'No account enrollment, Worker grant or chat binding.\nApprove installation?';
+    'No account enrollment, Worker grant or chat binding.\nApprove this package operation?';
   const b64=Buffer.from(message,'utf8').toString('base64');
   return [
     "$ErrorActionPreference='Stop'",
@@ -153,8 +160,8 @@ export async function nativeApproval(plan,{
     const seat=ownerSeatResolver();
     // Show the exact package scope. Never obtain consent from a redirected
     // stdin, an environment boolean, a fake pin, or an external IPC message.
-    const prompt='Commander native package only\n'+plan.installedVersion+
-      ' → '+plan.candidate.version+'\nTransaction: '+plan.transactionId+
+    const prompt='Commander native package only\n'+approvalChange(plan)+
+      '\nTransaction: '+plan.transactionId+
       '\nActive 0.11 Tunnel remains untouched.\nApprove this package operation?';
     const result=spawnSync('/usr/bin/zenity',[
       '--question','--title=ChatGPT Commander - Owner approval',
@@ -172,8 +179,8 @@ export async function nativeApproval(plan,{
   const rl=createInterface({input:process.stdin,output:process.stdout});
   try{
     // Read-only display contains no credentials and cannot be used for Worker.
-    console.error('Package-only native '+plan.platform+' '+plan.installedVersion+
-      ' -> '+plan.candidate.version+' (NO TUNNEL CUTOVER).');
+    console.error('Package-only native '+plan.platform+' '+approvalChange(plan)+
+      ' (NO TUNNEL CUTOVER).');
     console.error('Type EXACT transaction ID to approve this native package effect:');
     const got=await rl.question('ID> ');
     if(got.trim()!==plan.transactionId)

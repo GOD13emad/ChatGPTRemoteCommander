@@ -48,6 +48,20 @@ test('Windows one-click script is a real owner-session Yes/No UI, never a typed 
   assert.match(Buffer.from(encoded,'base64').toString('utf8'),/user-manifest-'\$\(\$evil\)/);
   assert.match(script,/DialogResult\]::Yes/);
 });
+test('native owner approval shows the actual rollback and uninstall destinations',()=>{
+  const plan={installedVersion:'0.12.0-dev.10',
+    candidate:{version:'0.12.0-dev.10'},transactionId:'c'.repeat(64)};
+  for(const [rollbackTarget,target] of [
+    ['0.12.0-dev.9','0.12.0-dev.9'],
+    ['NATIVE_ABSENCE','No Commander package']
+  ]){
+    const script=windowsGuiApprovalScript({...plan,rollbackTarget});
+    const encoded=script.match(/FromBase64String\('([^']+)'\)/)?.[1];
+    assert.ok(encoded);
+    const text=Buffer.from(encoded,'base64').toString('utf8');
+    assert.ok(text.split('\n').includes('0.12.0-dev.10 -> '+target));
+  }
+});
 test('signed candidate uses official pinned repo/source/signer and refuses bad results',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-signed-owner-'));
   const candidate=path.join(dir,'Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb');

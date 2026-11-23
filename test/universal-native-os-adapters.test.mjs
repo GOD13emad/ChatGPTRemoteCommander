@@ -11,6 +11,25 @@ import {executeNativeTransaction}
   from '../tools/universal-install/native-transaction.mjs';
 
 const sha=b=>createHash('sha256').update(b).digest('hex');
+test('Windows runtime verifies Commander ownership with built-in PowerShell 5.1',async()=>{
+  const calls=[];
+  const win=createNativeOsAdapter({platform:'windows',architecture:'x64',
+    run:(exe,args)=>{
+      assert.equal(exe,windowsNativePowerShell());
+      const script=Buffer.from(args.at(-1),'base64').toString('utf16le');
+      calls.push(script);
+      return {code:0,stdout:script.includes('Get-NetTCPConnection')
+        ?'f'.repeat(64):'0.12.0-dev.8',stderr:''};
+    }});
+  assert.equal((await win.snapshot()).runtime.fingerprint,'f'.repeat(64));
+  const witness=calls.find(script=>script.includes('Get-NetTCPConnection'));
+  assert.match(witness,/GetOwnerSid/);
+  assert.match(witness,/COMMANDER_PROCESS_CENSUS_CHANGED/);
+  assert.match(witness,/\$pidset\.ContainsKey/);
+  assert.match(witness,/operation-worker\.mjs/);
+  assert.match(witness,/Get-ScheduledTask/);
+  assert.doesNotMatch(witness,/-Parallel|::HashData|::ToHexString|Get-FileHash/);
+});
 const spec=(platform,dir)=>{
   const newFile=path.join(dir,'Remote-Commander-Unified-0.12.0-dev.9-'+
     (platform==='linux'?'Linux-amd64.deb':'Windows-x64.exe'));
