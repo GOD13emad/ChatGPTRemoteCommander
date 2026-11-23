@@ -32,26 +32,33 @@ const redactUrl=value=>{
  }catch{return {url:null,queryRedacted:false,fragmentRedacted:false,schemeRedacted:false};}
 };
 const exists=p=>{try{return fs.statSync(p).isFile();}catch{return false;}};
-function which(name){
- for(const dir of String(process.env.PATH??'').split(path.delimiter).filter(Boolean)){
-  const p=path.join(dir,name);if(exists(p))return p;
- }
- return null;
+function ownedFile(p){
+ try{const st=fs.lstatSync(p);return st.isFile()&&!st.isSymbolicLink();}
+ catch{return false;}
 }
 function detectFirefox(explicit){
  if(typeof explicit==='string'&&explicit&&exists(explicit)&&/firefox/i.test(path.basename(explicit)))return path.resolve(explicit);
- const winCandidates=process.platform==='win32'?[
-  path.join(process.env['ProgramFiles(x86)']||'C:\\Program Files (x86)','Mozilla Firefox','firefox.exe'),
-  path.join(process.env.ProgramFiles||'C:\\Program Files','Mozilla Firefox','firefox.exe'),
-  path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'Mozilla Firefox','firefox.exe')
- ]:[];
- for(const p of [which('firefox.exe'),which('firefox'),...winCandidates,'/usr/bin/firefox','/snap/bin/firefox'])if(p&&exists(p))return path.resolve(p);
+ // Ambient PATH, ProgramFiles and LOCALAPPDATA are not browser executable authority.
+ const candidates=process.platform==='win32'?[
+  path.win32.join('C:\\Program Files (x86)','Mozilla Firefox','firefox.exe'),
+  path.win32.join('C:\\Program Files','Mozilla Firefox','firefox.exe'),
+  path.win32.join(os.homedir(),'AppData','Local','Mozilla Firefox','firefox.exe')
+ ]:['/usr/bin/firefox','/snap/bin/firefox'];
+ for(const p of candidates)if(exists(p))return path.resolve(p);
  return null;
 }
 function detectGecko(){
- const ownerLocal=path.join(os.homedir(),'.local','share','chatgpt-remote-commander','adapters','geckodriver','geckodriver');
- const ownerLocalWin=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'ChatGPTRemoteCommander','adapters','geckodriver','geckodriver.exe');
- for(const p of [which('geckodriver.exe'),which('geckodriver'),ownerLocalWin,ownerLocal,'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
+ // Only the known owner-local managed adapter or OS-installed driver.
+ // Never execute the first geckodriver found in an untrusted PATH.
+ const managed=process.platform==='win32'
+  ? path.win32.join(os.homedir(),'AppData','Local','ChatGPTRemoteCommander',
+    'adapters','geckodriver','geckodriver.exe')
+  : path.join(os.homedir(),'.local','share','chatgpt-remote-commander',
+    'adapters','geckodriver','geckodriver');
+ if(ownedFile(managed))return path.resolve(managed);
+ if(process.platform==='linux')
+  for(const p of ['/usr/bin/geckodriver','/snap/bin/geckodriver'])
+   if(exists(p))return path.resolve(p);
  return null;
 }
 async function freePort(){

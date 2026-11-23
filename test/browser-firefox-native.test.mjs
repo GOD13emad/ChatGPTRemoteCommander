@@ -53,3 +53,29 @@ test('Linux Firefox WebDriver backend provides the background browser contract',
   ctl.close();await new Promise(r=>server.close(r));
  }
 });
+
+test('Firefox WebDriver status ignores fake PATH-first geckodriver without spawning a browser',()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-gecko-path-spoof-'));
+  try{
+    const faux=path.join(temp,process.platform==='win32'?'geckodriver.exe':'geckodriver');
+    const firefox=path.join(temp,process.platform==='win32'?'firefox.exe':'firefox');
+    fs.writeFileSync(faux,'synthetic driver never to execute', {mode:0o700});
+    fs.writeFileSync(firefox,'synthetic Firefox merely for status', {mode:0o700});
+    const helper=path.resolve(import.meta.dirname,'..','tools','browser-control-firefox.mjs');
+    const child=spawnSync(process.execPath,[helper,'--server'],{
+      input:JSON.stringify({action:'status',executable:firefox})+'\n',
+      encoding:'utf8',timeout:8000,maxBuffer:128*1024,
+      env:{...process.env,PATH:temp+path.delimiter+(process.env.PATH??'')}
+    });
+    assert.equal(child.status,0,child.stderr?.slice(-700));
+    const lines=child.stdout.trim().split(/\r?\n/).map(line=>JSON.parse(line));
+    assert.equal(lines.length,2);
+    assert.equal(lines[0].ready,true);
+    assert.equal(lines[1].ok,true);
+    assert.notEqual(lines[1].driverExecutable&&path.normalize(lines[1].driverExecutable),
+      path.normalize(faux),'PATH-first synthetic driver must never be selected');
+    assert.equal(lines[1].active,false);
+  }finally{
+    fs.rmSync(temp,{recursive:true,force:true});
+  }
+});
