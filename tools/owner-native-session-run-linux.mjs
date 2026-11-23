@@ -75,7 +75,7 @@ export function planNativeOwnerSession({
     const name=manager.WAYLAND_DISPLAY;
     if(manager.XDG_SESSION_TYPE!=='wayland'
       ||typeof name!=='string'||!/^wayland-[0-9]{1,3}$/.test(name)
-      ||verifySocket(path.join(runtime,name),uid)!==true)
+      ||verifySocket(path.posix.join(runtime,name),uid)!==true)
       fail('RC012_NATIVE_SEAT_WAYLAND_SOCKET_UNVERIFIED');
     env.push('WAYLAND_DISPLAY='+name);
   }else{
