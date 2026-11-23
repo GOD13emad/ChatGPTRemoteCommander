@@ -29,6 +29,13 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       assert.match(await page.title(),/Remote Commander/);
       await page.waitForFunction(()=>document.querySelector('#status')?.textContent?.includes('stopped'),
         null,{timeout:12000});
+      // Selectable external-browser setup is part of the same native GUI,
+      // but this test must never open or modify any host browser profile.
+      await page.locator('#companion-browser-target').waitFor({timeout:8000});
+      const known=await page.evaluate(()=>window.commander.companionBrowserList());
+      assert.deepEqual(known.map(x=>x.id),['chrome','edge','brave','chromium','firefox']);
+      assert.ok(known.every(x=>typeof x.installed==='boolean' && !Object.hasOwn(x,'executable')));
+      assert.ok(!known.find(x=>x.id==='firefox').supported);
       const before=await page.locator('#status').innerText();
       assert.match(before,/source/);
       assert.match(before,/[0-9a-f]{40}/);
