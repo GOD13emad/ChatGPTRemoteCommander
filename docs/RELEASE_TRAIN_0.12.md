@@ -1,4 +1,12 @@
-# Release Train 0.12 — `0.12.0-dev.12` source candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.13` source candidate (NoPromote)
+
+## Dev.13 upgrade qualification candidate
+
+Dev.13 combines independently pinned rollback provenance and exact signer
+checks with the scoped build-tool compatibility fix. Dev.12 (`46a8256`) is the
+observed Windows baseline. The same source version identifies Core, Desktop,
+NSIS, DEB, and plugin metadata. Hosted provenance for the candidate and
+native owner consent are required before owner-host installation.
 
 ## Dev.12 source-only package closure candidate (23 November 2026)
 

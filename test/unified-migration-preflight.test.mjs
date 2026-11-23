@@ -758,23 +758,23 @@ test('one native DEB derives its version from the exact same source and GUI trai
   ]) assert.equal(candidateNativeDebianVersion(source,gui),null,
     String(source)+' / '+String(gui));
 });
-test('Debian dev.11 candidate advances installed dev.10 without implying owner admission',{skip:process.platform!=='linux'},()=>{
+test('Debian dev.13 candidate advances installed dev.12 without implying owner admission',{skip:process.platform!=='linux'},()=>{
  const app=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
  const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
- assert.equal(app.version,'0.12.0-dev.12');
+ assert.equal(app.version,'0.12.0-dev.13');
  assert.equal(app.version,gui.version);
  assert.equal(train.sourceVersion,app.version);
  assert.equal(train.installedPromotionApproved,false);
  assert.equal(train.publishApproved,false);
  const cand=candidateNativeDebianVersion(app.version,gui.version);
- assert.equal(cand,'0.12.0~dev.12');
+ assert.equal(cand,'0.12.0~dev.13');
  for(const [lower,relation,upper,expected] of [
-   ['0.12.0~dev.10','lt',cand,0],
-   [cand,'gt','0.12.0~dev.10',0],
+   ['0.12.0~dev.12','lt',cand,0],
+   [cand,'gt','0.12.0~dev.12',0],
    [cand,'eq',cand,0],
    [cand,'lt','0.12.0',0],
-   ['0.12.0~dev.10','gt',cand,1]
+   ['0.12.0~dev.12','gt',cand,1]
  ]){
    const r=spawnSync('dpkg',['--compare-versions',lower,relation,upper],{encoding:'utf8'});
    assert.equal(r.status,expected,lower+' '+relation+' '+upper+' '+r.stderr);
