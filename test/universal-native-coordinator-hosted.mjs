@@ -75,6 +75,23 @@ export async function hostedNativeCoordinatorProof(args=process.argv.slice(2)){
   const platform=process.platform==='win32'?'windows':process.platform;
   check(['windows','linux'].includes(platform)
     &&os.arch()==='x64','RC012_HOSTED_NATIVE_COORDINATOR_PLATFORM_UNSUPPORTED');
+  // The disposable runner must use a FRESH owner state, independently of
+  // ~/.config and ~/.local modified by earlier GitHub CI tests/build tools.
+  // This isolation is deliberately limited to admitted, non-owner CI hosts:
+  // real users keep native profile checks and are never silently rehomed.
+  if(platform==='linux'){
+    const temp=path.resolve(process.env.RUNNER_TEMP);
+    const original=fs.lstatSync(temp);
+    check(original.isDirectory()&&!original.isSymbolicLink()
+      &&original.uid===process.getuid()
+      &&fs.realpathSync(temp)===temp,
+      'RC012_HOSTED_OWNER_TEMP_UNTRUSTED');
+    const home=fs.mkdtempSync(path.join(temp,'rc012-native-owner-'));
+    fs.chmodSync(home,0o700);
+    process.env.HOME=home;
+    check(os.homedir()===home&&fs.readdirSync(home).length===0,
+      'RC012_HOSTED_OWNER_HOME_ISOLATION_FAILED');
+  }
   const candidatePath=path.resolve(root,source.spec.artifact);
   check(candidatePath.startsWith(root+path.sep),
     'RC012_HOSTED_NATIVE_COORDINATOR_ARTIFACT_OUTSIDE_SOURCE');

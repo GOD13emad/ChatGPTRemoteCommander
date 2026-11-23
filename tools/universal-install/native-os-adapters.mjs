@@ -68,6 +68,194 @@ function ps(script,run,{timeoutMs=15000}={}){
   return run('pwsh',['-NoLogo','-NoProfile','-NonInteractive',
     '-EncodedCommand',enc],{timeoutMs}).stdout;
 }
+// Owner-bound Commander runtime census. Foreign TCP listeners are deliberately excluded.
+// Fail closed on owner-SID mismatch, process reuse/exit, or census drift.
+const windowsRuntimeSource=String.raw`$ErrorActionPreference='Stop'
+function Sha([string]$v) {
+  return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($v))).ToLowerInvariant()
+}
+$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if(!$sid -or $sid -eq 'S-1-5-18') {throw 'UNTRUSTED_OWNER_SESSION'}
+$roots=@(
+ (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'),
+ (Join-Path $env:LOCALAPPDATA 'CommanderV2'),
+ (Join-Path $env:LOCALAPPDATA 'CommanderTransferPilot'),
+ (Join-Path $env:LOCALAPPDATA 'Programs\remote-commander-unified'),
+ (Join-Path $env:ProgramData 'ChatGPTRemoteCommander')
+) | ForEach-Object {([IO.Path]::GetFullPath($_).TrimEnd('\')+'\').ToLowerInvariant()}
+function InRoot([string]$v) {
+ if(!$v -or ![IO.Path]::IsPathRooted($v)){return $false}
+ try{$n=[IO.Path]::GetFullPath($v).ToLowerInvariant()}catch{return $false}
+ foreach($r in $roots){if($n.StartsWith($r,[StringComparison]::OrdinalIgnoreCase)){return $true}}
+ return $false
+}
+function Candidate([object]$p){
+ $exe=[string]$p.ExecutablePath
+ if(InRoot $exe){return $exe}
+ if(!$exe -or !$p.CommandLine){return ''}
+ $name=[IO.Path]::GetFileName($exe).ToLowerInvariant()
+ if($name -notin @('node.exe','pwsh.exe','powershell.exe','python.exe','pythonw.exe')){return ''}
+ $line=[string]$p.CommandLine
+ if($name -match '^(pwsh|powershell)\.exe$'){
+  if($line -match '(?i)(?:^|\s)-(?:EncodedCommand|Command)\b'){return ''}
+  $m=[regex]::Match($line,'(?i)(?:^|\s)-File\s+(?:"([^"]+)"|(\S+))')
+  if(!$m.Success){return ''}
+  $file=if($m.Groups[1].Success){$m.Groups[1].Value}else{$m.Groups[2].Value}
+  if((InRoot $file) -and $file -match '(?i)\.ps1$'){return $file}
+  return ''
+ }
+ $tokens=@([regex]::Matches($line,'(?:"([^"]+)"|(\S+))')|ForEach-Object {
+  if($_.Groups[1].Success){$_.Groups[1].Value}else{$_.Groups[2].Value}
+ })
+ if($tokens.Count -lt 2){return ''}
+ $skipNext=$false
+ for($i=1;$i -lt $tokens.Count;$i++){
+  $v=[string]$tokens[$i]
+  if($skipNext){$skipNext=$false;continue}
+  if($v -in @('-e','--eval','-p','--print')){return ''}
+  if($v -in @('-r','--require','--import','--loader')){$skipNext=$true;continue}
+  if($v.StartsWith('-')){continue}
+  if((InRoot $v) -and $v -match '(?i)\.(mjs|cjs|js|ps1|py|pyw)$'){return $v}
+  return ''
+ }
+ return ''
+}
+function SnapshotCandidates($procs){
+ $result=@()
+ foreach($p in $procs){
+  $entry=Candidate $p
+  # Per-call operation worker is not the persistent Core/Tunnel identity.
+  if([IO.Path]::GetFileName($entry) -ieq 'operation-worker.mjs'){continue}
+  if(!$entry){continue}
+  if(!$p.ProcessId -or !$p.CreationDate -or !$p.ExecutablePath){throw 'COMMANDER_PROCESS_UNREADABLE'}
+  $result+= [pscustomobject]@{
+   pid=[int]$p.ProcessId
+   created=([datetime]$p.CreationDate).ToUniversalTime().ToString('o')
+   parent=[int]$p.ParentProcessId
+   exe=([IO.Path]::GetFullPath($p.ExecutablePath)).ToLowerInvariant()
+   entry=([IO.Path]::GetFullPath($entry)).ToLowerInvariant()
+   cmdHash=Sha([string]$p.CommandLine)
+  }
+ }
+ return @($result |Sort-Object pid)
+}
+$records=@(SnapshotCandidates @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop))
+$verified=@($records |ForEach-Object -Parallel {
+ $ErrorActionPreference='Stop'
+ $row=$_
+ $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+[string]$row.pid) -ErrorAction Stop
+ if(!$p -or !$p.CreationDate -or ([datetime]$p.CreationDate).ToUniversalTime().ToString('o') -cne $row.created) {
+  throw 'COMMANDER_PROCESS_CHANGED_DURING_OWNER_ATTESTATION'
+ }
+ $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
+ if($owner.ReturnValue -ne 0 -or $owner.Sid -cne $using:sid){
+  throw 'COMMANDER_PROCESS_OWNER_MISMATCH'
+ }
+ $row
+} -ThrottleLimit 8)
+if($verified.Count -ne $records.Count){throw 'COMMANDER_PROCESS_ATTESTATION_INCOMPLETE'}
+$tcp=@(Get-NetTCPConnection -State Listen -ErrorAction Stop)
+$pidset=@{};foreach($p in $records){$pidset[[string]$p.pid]=$true}
+$listeners=@($tcp|Where-Object{$pidset.ContainsKey([string]$_.OwningProcess)}|ForEach-Object{
+ [pscustomobject]@{pid=[int]$_.OwningProcess;addr=[string]$_.LocalAddress;port=[int]$_.LocalPort}
+}|Sort-Object pid,port,addr)
+$tasks=@(Get-ScheduledTask -ErrorAction Stop|Where-Object {
+ $_.TaskName -match '^(?i:ChatGPTRemoteCommander-|CommanderV[12]-|CommanderTransferMeshPilot)'
+}|ForEach-Object {
+ $t=$_
+ [pscustomobject]@{
+  key=([string]$t.TaskPath+[string]$t.TaskName).ToLowerInvariant()
+  state=[string]$t.State
+  principal=([string]$t.Principal.UserId).ToLowerInvariant()
+  actions=@($t.Actions|ForEach-Object {
+   [pscustomobject]@{
+    exe=([string]$_.Execute).ToLowerInvariant()
+    args=Sha([string]$_.Arguments)
+    cwd=([string]$_.WorkingDirectory).ToLowerInvariant()
+   }
+  })
+ }
+}|Sort-Object key)
+# An enrolled transfer task is owner state. ONLY the observed Syncthing
+# sync-protocol 22000/IPv6 wildcard listener is transient; GUI/REST and
+# unrecognized/exposed ports remain approval-critical, fail closed.
+# The listener exception cannot replace owner/task/process attestation.
+$ignoredTransferPids=@{}
+$transferTasks=@(Get-ScheduledTask -TaskName 'CommanderTransferMeshPilot' -ErrorAction SilentlyContinue)
+$transferCandidates=@($records|Where-Object {
+ [IO.Path]::GetFileName([string]$_.exe) -ieq 'syncthing.exe' -and
+ ([string]$_.exe -match '(?i)[\\/]CommanderTransferPilot[\\/]bin[\\/]syncthing\.exe$')
+})
+if($transferCandidates.Count -ne 0 -or @($transferTasks|Where-Object {$_.State -eq 'Running'}).Count -ne 0){
+ if($transferTasks.Count -ne 1){throw 'COMMANDER_TRANSFER_TASK_AMBIGUOUS'}
+ $t=$transferTasks[0]
+ $actions=@($t.Actions)
+ if([string]$t.State -ne 'Running' -or $actions.Count -ne 1){
+  throw 'COMMANDER_TRANSFER_TASK_NOT_ACTIVE'
+ }
+ $binary=[IO.Path]::GetFullPath([string]$actions[0].Execute).ToLowerInvariant()
+ if(!(InRoot $binary) -or [IO.Path]::GetFileName($binary) -ine 'syncthing.exe'){
+  throw 'COMMANDER_TRANSFER_TASK_BINARY_UNTRUSTED'
+ }
+ try{
+  $taskOwnerSid=([Security.Principal.NTAccount]::new([string]$t.Principal.UserId)).
+    Translate([Security.Principal.SecurityIdentifier]).Value
+ }catch{throw 'COMMANDER_TRANSFER_TASK_OWNER_UNVERIFIABLE'}
+ if($taskOwnerSid -cne $sid){throw 'COMMANDER_TRANSFER_TASK_OWNER_MISMATCH'}
+ $transfer=@($records|Where-Object {$_.exe -eq $binary})
+ if($transfer.Count -lt 1 -or $transferCandidates.Count -ne $transfer.Count){
+  throw 'COMMANDER_TRANSFER_PROCESS_MISSING_OR_UNEXPECTED'
+ }
+ $scheduler=Get-CimInstance -ClassName Win32_Service -Filter "Name='Schedule'" -ErrorAction Stop
+ if(!$scheduler -or $scheduler.ProcessId -le 0 -or [string]$scheduler.State -ne 'Running' -or [string]$scheduler.StartName -ne 'LocalSystem'){
+  throw 'COMMANDER_TRANSFER_TASK_SCHEDULER_UNTRUSTED'
+ }
+ $byPid=@{};foreach($r in $transfer){$byPid[[string]$r.pid]=$r}
+ $taskRoots=@($transfer|Where-Object {
+  !$byPid.ContainsKey([string]$_.parent)
+ })
+ if($taskRoots.Count -ne 1 -or $taskRoots[0].parent -ne [int]$scheduler.ProcessId){
+  throw 'COMMANDER_TRANSFER_TASK_PROCESS_TREE_UNTRUSTED'
+ }
+ $rootPid=[int]$taskRoots[0].pid
+ foreach($rec in $transfer){
+  $seen=@{}
+  $cursor=$rec
+  while([int]$cursor.pid -ne $rootPid){
+   $k=[string]$cursor.pid
+   if($seen.ContainsKey($k) -or !$byPid.ContainsKey([string]$cursor.parent)){
+    throw 'COMMANDER_TRANSFER_TASK_PROCESS_TREE_BROKEN'
+   }
+   $seen[$k]=$true
+   $cursor=$byPid[[string]$cursor.parent]
+  }
+  $ignoredTransferPids[[string]$rec.pid]=$true
+ }
+}
+$approvalListeners=@($listeners|Where-Object {
+ # Preserve GUI/REST (e.g. 18384) and any additional/changed endpoint.
+ # An unrecognized sync port or bind address changes the runtime witness.
+ !($ignoredTransferPids.ContainsKey([string]$_.pid) -and
+   [int]$_.port -eq 22000 -and [string]$_.addr -ceq '::')
+})
+# The native installed artifact is INTENTIONALLY not a runtime witness:
+# the same authorized native package transaction changes its bytes/version.
+# Native snapshot() checks HKCU uninstall registration + binary FileVersion,
+# and the owner-pinned provenance checks the exact candidate/rollback hashes.
+# Runtime equality must cover independent running Core/Tunnel identities only.
+# The verification census detects concurrent start, exit or PID reuse.
+$again=@(SnapshotCandidates @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop))
+$canonical0=ConvertTo-Json -InputObject $records -Depth 5 -Compress
+$canonical1=ConvertTo-Json -InputObject $again -Depth 5 -Compress
+if($canonical0 -cne $canonical1){throw 'COMMANDER_PROCESS_CENSUS_CHANGED'}
+$data=[ordered]@{
+ schema=1;ownerSid=$sid;tasks=@($tasks);
+ processes=@($records);listeners=@($approvalListeners)
+}
+$body=ConvertTo-Json -InputObject $data -Depth 12 -Compress
+[Console]::Out.Write((Sha($body)))
+`;
+
 function shaOfRuntime(raw){
   check(typeof raw==='string'&&raw.length<100000&&raw.length>0,
     'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
@@ -128,16 +316,7 @@ export function createNativeOsAdapter({
         fail('UNIVERSAL_NATIVE_FRESH_ACTIVE_LEGACY_CORE');
       return shaOfRuntime(inactive?'NO_ACTIVE_COMMANDER_CORE':r.stdout);
     }
-    const script=[
-      "$ErrorActionPreference='Stop'",
-      "$l=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | "+
-        "Select-Object LocalAddress,LocalPort,OwningProcess | "+
-        "Sort-Object LocalAddress,LocalPort,OwningProcess)",
-      "$canonical=($l|ConvertTo-Json -Depth 3 -Compress)",
-      "$hash=[Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($canonical))",
-      "[Console]::Out.Write([Convert]::ToHexString($hash).ToLowerInvariant())"
-    ].join('\n');
-    const digest=ps(script,run);
+    const digest=ps(windowsRuntimeSource,run,{timeoutMs:60000});
     check(HASH.test(digest),'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
     return digest;
   }

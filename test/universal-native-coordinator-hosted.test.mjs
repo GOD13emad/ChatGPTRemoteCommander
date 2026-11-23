@@ -34,3 +34,20 @@ test('the hosted real native executor refuses any owner host and incomplete sour
   assert.equal(JSON.parse(refused.stderr).reason,
     'RC012_HOSTED_NATIVE_COORDINATOR_CI_ONLY');
 });
+
+test('a non-hosted owner cannot trigger a temporary home or native effect',()=>{
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-hosted-negative-'));
+  try{
+    const head=spawnSync('git',['-C',root,'rev-parse','HEAD'],
+      {encoding:'utf8'}).stdout.trim();
+    const env={...process.env,CI:'false',GITHUB_ACTIONS:'false',
+      RUNNER_ENVIRONMENT:'local',RUNNER_TEMP:tmp};
+    const r=invoke(['--run','--expected-commit',head],env);
+    assert.equal(r.status,2);
+    assert.equal(JSON.parse(r.stderr).reason,
+      'RC012_HOSTED_NATIVE_COORDINATOR_CI_ONLY');
+    assert.deepEqual(fs.readdirSync(tmp),[]);
+  }finally{
+    fs.rmSync(tmp,{recursive:true,force:true});
+  }
+});
