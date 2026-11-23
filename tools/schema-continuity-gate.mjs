@@ -25,7 +25,12 @@ export function validateLocalSchemaEndpoint(value,role=null){
     ||(role==='mcp'&&u.pathname!=='/mcp')
     ||(role==='router'&&u.pathname!=='/router/status'))
     throw new Error('SCHEMA_ENDPOINT_LOOPBACK_REQUIRED');
-  return u.href;
+  // Rebuild the outbound URL using only enumerated host/path literals;
+  // do not forward an untrusted caller URL as the fetch destination.
+  const pinnedHost=u.hostname==='127.0.0.1'?'127.0.0.1'
+    :u.hostname==='localhost'?'localhost':'[::1]';
+  const pinnedPath=u.pathname==='/mcp'?'/mcp':'/router/status';
+  return `http://${pinnedHost}:${Number(u.port)}${pinnedPath}`;
 }
 async function fetchJson(url,options){
   const safeUrl=validateLocalSchemaEndpoint(url);
