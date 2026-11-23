@@ -2,7 +2,7 @@ import {observationFromUrl} from './protocol.js';
 const APP='REMOTE_COMMANDER_CHAT_COMPANION';
 const ENDPOINT='http://127.0.0.1:41267';
 const PAIR_KEY='commanderPairToken';
-let inFlight=false,latest=null;
+let inFlight=false,latest=null,latestEpoch=0;
 async function token(){const data=await chrome.storage.local.get(PAIR_KEY);return data[PAIR_KEY]??null;}
 async function call(route,body,credential=null){
   const result=await fetch(ENDPOINT+route,{method:'POST',
@@ -15,8 +15,16 @@ async function call(route,body,credential=null){
 async function deliver(){
   if(inFlight||!latest)return;
   inFlight=true;
-  try{const credential=await token();if(credential)await call('/observation',latest,credential);}
-  catch{/* Not paired or bridge stopped: retain last state, retry on next tab observation. */}
+  try{
+    const credential=await token();
+    if(!credential)return;
+    // A new navigation during an in-flight request must not be lost.
+    for(let i=0;i<3;i++){
+      const current=latest,epoch=latestEpoch;
+      await call('/observation',current,credential);
+      if(epoch===latestEpoch)break;
+    }
+  }catch{/* Not paired or bridge stopped: retry at next periodic tab heartbeat. */}
   finally{inFlight=false;}
 }
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
@@ -29,7 +37,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
          ||url.username||url.password||url.port)
         throw Error('CONTENT_ORIGIN_DENIED');
       // Always use the browser-authenticated sender URL, never a page-provided URL.
-      latest=observationFromUrl(sender.url);
+      latest=observationFromUrl(sender.url);latestEpoch++;
       await deliver();
       return {ok:true};
     }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import vm from 'node:vm';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
@@ -164,4 +165,20 @@ test('MV3 worker mock enforces content/popup separation and never exposes pairin
   assert.equal((await send({kind:'DISCONNECT'},popup)).paired,false);
   assert.equal(stores.commanderPairToken,undefined);
   assert.ok(requests.some(x=>x.url.endsWith('/revoke')));
+});
+
+test('Content script sends only scoped presence and re-reports after worker expiry',()=>{
+  const script=fs.readFileSync(path.join(root,'extensions/chatgpt-companion/content.js'),'utf8');
+  const sent=[];let now=0,tick=null;
+  const window={addEventListener(){}},location={protocol:'https:',hostname:'chatgpt.com',origin:'https://chatgpt.com',pathname:'/'};
+  window.top=window;
+  const chrome={runtime:{sendMessage(data,callback){sent.push(data);callback?.();},lastError:null}};
+  const ctx={window,location,chrome,Date:{now:()=>now},setInterval(fn){tick=fn;}};
+  vm.runInNewContext(script,ctx,{timeout:1000});
+  assert.equal(sent.length,1);assert.equal(sent[0].kind,'CHAT_URL');
+  assert.equal(Object.keys(sent[0]).length,1);
+  now=2500;tick();assert.equal(sent.length,1);
+  now=31000;tick();assert.equal(sent.length,2);
+  location.pathname='/c/'+chatId;tick();assert.equal(sent.length,3);
+  assert.ok(!JSON.stringify(sent).includes(chatId));
 });
