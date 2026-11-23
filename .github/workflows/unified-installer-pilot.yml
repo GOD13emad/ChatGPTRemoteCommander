@@ -108,10 +108,12 @@ jobs:
         run: |
           set -euo pipefail
           test "$(node -p "require('./packaging/unified/node_modules/electron/package.json').version")" = "45.3.0"
-          executable="$(node -e "process.stdout.write(require('./packaging/unified/node_modules/electron'))")"
-          case "$executable" in "$GITHUB_WORKSPACE"/packaging/unified/node_modules/electron/dist/electron) ;; *) echo 'Unexpected Electron executable'; exit 1;; esac
-          helper="$(dirname "$executable")/chrome-sandbox"
+          # Resolving the Electron package may initialize its pinned binary.
+          # Do not parse CLI output as a path: installers may print progress.
+          node -e "require('./packaging/unified/node_modules/electron')" >/dev/null
+          helper="$GITHUB_WORKSPACE/packaging/unified/node_modules/electron/dist/chrome-sandbox"
           test -f "$helper" && test ! -L "$helper"
+          test -x "$GITHUB_WORKSPACE/packaging/unified/node_modules/electron/dist/electron"
           # Electron's pinned binary was fetched through its verified installer.
           sudo chown root:root "$helper"
           sudo chmod 4755 "$helper"
