@@ -9,6 +9,19 @@ const contract=JSON.parse(read('installer/universal-install-contract.json'));
 const release=JSON.parse(read('docs/release-train-0.12.json'));
 const engine=read('tools/universal-install/engine.mjs');
 
+test('public Core archive allowlist excludes optional extensions without losing dirty-source checks',()=>{
+  const source=read('packaging/unified/prepare.mjs');
+  const start=source.indexOf("execFileSync('git',['-c','core.autocrlf=false','archive'");
+  const end=source.indexOf("],{",start);
+  assert.ok(start>=0&&end>start,'source must use pinned git archive');
+  const roots=source.slice(start,end);
+  assert.doesNotMatch(roots,/'extensions'/,
+    'optional private extensions must not enter distributable public Core');
+  assert.match(source,/const touched=runGit\(\['status','--porcelain=v1'.*'extensions'/,
+    'tracked or dirty extensions remain part of source-integrity census');
+  assert.match(roots,/'src','tools','vendor','assets','config\.json','package\.json'/,
+    'keep required approved source roots');
+});
 test('one package contract covers both operating systems and all nine accepted components',()=>{
   assert.equal(contract.schema,'rc-unified-installer-v1');
   assert.deepEqual(Object.keys(contract.platforms),['windows','linux']);
@@ -97,20 +110,24 @@ test('source regression owner-recovery batches respect native test deadlines wit
   assert.match(source,/new Set\(batches\.flat\(\)\)\.size!==files\.length/);
 });
 
-test('Linux native archive list exactly matches unified public Core archive list',()=>{
+test('Linux native and GUI payloads reuse exactly one verified public Core manifest',()=>{
   const prepare=read('packaging/unified/prepare.mjs');
   const builder=read('tools/build-native-linux-package.sh');
   const staged=prepare.match(/'archive','--format=tar','--output',tar,head,\s*([\s\S]*?)\],\{/u);
-  const native=builder.match(/git -C "\$ROOT" archive --format=tar "\$HEAD" -- ([^|\r\n]+) \| tar -xf - -C "\$APP"/u);
-  assert.ok(staged&&native,'both exact committed-source archive commands must exist');
+  assert.ok(staged,'the canonical committed Core allowlist must remain available');
   const stagedPaths=[...staged[1].matchAll(/'([^']+)'/gu)].map(m=>m[1]);
-  const nativePaths=native[1].trim().split(/\s+/u);
-  assert.deepEqual(nativePaths,stagedPaths,'Linux DEB and unified stage must carry identical public Core source files');
-  assert.ok(nativePaths.includes(contract.nativeTransactionalEngine.provenanceModule),
-    'the runtime owner-pinned provenance verifier must be embedded in both Core payloads');
-  assert.ok(!nativePaths.includes('extensions'),'specialty/private extensions must not enter the public Core');
+  assert.ok(builder.includes('node "$ROOT/packaging/unified/prepare.mjs"'));
+  assert.ok(builder.includes('cp -a -- "$PUBLIC_CORE/." "$APP/"'));
+  assert.ok(builder.includes('validateCore(stage),native=validateCore(installed)'));
+  assert.ok(builder.includes('JSON.stringify(staged.files)!==JSON.stringify(native.files)'));
+  assert.doesNotMatch(builder,/git -C "\$ROOT" archive --format=tar "\$HEAD"/u,
+    'the native builder must not independently archive source roots');
+  assert.ok(stagedPaths.includes(contract.nativeTransactionalEngine.provenanceModule),
+    'the runtime owner-pinned provenance verifier must appear in the canonical Core');
+  assert.ok(!stagedPaths.includes('extensions'),
+    'optional/private extensions must not enter public Core');
   for(const required of contract.requiredEmbeddedCoreFiles){
-    assert.ok(nativePaths.some(p=>required===p||required.startsWith(p+'/')),
-      'required runtime source is absent from the shared archive roots: '+required);
+    assert.ok(stagedPaths.some(p=>required===p||required.startsWith(p+'/')),
+      'required runtime source absent from canonical Core: '+required);
   }
 });

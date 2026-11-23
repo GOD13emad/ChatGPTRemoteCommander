@@ -56,10 +56,23 @@ test('native Linux and Electron builder derive one exact prerelease version from
      'native build and delivery must not pin one stale candidate revision');
 });
 
-test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{
+test('Linux final DEB must match exact public Core manifest in BOTH native and GUI roots',()=>{
+ const builder=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
+ const merge=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ assert.equal(builder.includes('git -C "$ROOT" archive --format=tar "$HEAD"'),false,
+   'whole-repository native source archive reintroduces optional extensions');
+ assert.ok(builder.includes('node "$ROOT/packaging/unified/prepare.mjs"'));
+ assert.ok(builder.includes('validateCore(installed)'));
+ assert.ok(merge.includes('RC012_MERGE_UNMANIFESTED_PUBLIC_CORE_'));
+ assert.ok(merge.includes("for label,root in [('native',core),('gui',gui_core)]"));
+ assert.ok(merge.includes('observed!=allowed'));
+ assert.ok(merge.includes('RC012_MERGE_PUBLIC_CORE_EXTENSION_LEAK_'));
+});
+test('Linux native package reuses the verified public Core and hosted path allowlist',()=>{
  const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
- const shared='src tools vendor assets config.json package.json packaging/unified/owner-pinned-provenance.mjs';
- assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
+  assert.ok(native.includes('node "$ROOT/packaging/unified/prepare.mjs"'));
+ assert.ok(native.includes('validateCore(installed)'));
+ assert.ok(native.includes('cp -a -- "$PUBLIC_CORE/." "$APP/"'));
  assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
  const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
  assert.ok(prepare.includes("'src','tools','vendor','assets','config.json','package.json'"));
@@ -132,6 +145,16 @@ test('PRIVATE ingress source changes trigger both native package jobs at the exa
  assert.match(y,/upload-artifact@v4/);
 });
 
+test('staged exact-head public Core manifest excludes ALL optional extension files',()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(resource,'source-manifest.json'),'utf8'));
+ assert.equal(manifest.schema,2);
+ assert.equal(manifest.count,Object.keys(manifest.files).length);
+ assert.ok(manifest.files['src/server-v0.3.mjs']);
+ const optional=Object.keys(manifest.files).filter(p=>p==='extensions'||p.startsWith('extensions/'));
+ assert.deepEqual(optional,[],'no optional extensions may ship in public Core');
+ assert.equal(fs.existsSync(path.join(resource,'extensions')),false,
+   'distributable public Core must physically exclude optional extensions');
+});
 test('immutable packaged source and restricted preview boot',async()=>{
  const manifest=validateCore(resource);
  assert.match(manifest.head,/^[0-9a-f]{40}$/);

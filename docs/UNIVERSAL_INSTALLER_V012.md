@@ -70,8 +70,29 @@ pinned release provenance → owner OS consent → exclusive journal lock →
 native package effect → independent version, integrity and runtime checks →
 commit / verified rollback or stop`. Windows uses the existing per-user
 NSIS appId; Linux uses the same dpkg identity and polkit for owner-visible
-privileged package operations. `--fresh` accepts only actual package absence
-with no owner profile/legacy state. Upgrade uses exact previous native
+privileged package operations. The Windows native adapter uses only the
+built-in `System32/WindowsPowerShell/v1.0/powershell.exe` with PowerShell
+5.1-compatible .NET SHA256 runtime fingerprints; no PowerShell 7/
+`pwsh` prerequisite is required for installation. The same native
+transaction, identity checks, owner approval and journal remain unchanged.
+
+**Single public-Core source boundary:** `packaging/unified/prepare.mjs` uses a
+positive Git archive allowlist excluding optional `extensions/` while still
+checking them for dirty tracked source. The native Linux builder consumes and
+validates that exact `.stage/core` artifact instead of `git archive HEAD` of
+the whole repository. The combined DEB merger additionally refuses any native
+or GUI Core file outside the same source manifest (including hidden optional
+extensions). This applies to **both** Linux locations
+`/usr/lib/chatgpt-remote-commander/app` and
+`/opt/Remote Commander/resources/core` and must be confirmed in the actual
+signed DEB. Previously owner-installed `dev.10` Core bytes are unchanged until
+a separately approved signed replacement; a clean local build is not an
+owner-host repair or Stable release acceptance. `--fresh` accepts only actual package absence
+with no owner profile/legacy state. An existing Windows legacy
+`HKCU/Uninstall/RemoteCommander` (or conflicting HKLM family) returns
+`UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED` **before any package effect**;
+this is a preserved migration baseline, never a fresh install, silent
+uninstall or permission to delete historic backups. Upgrade uses exact previous native
 binary; rollback from a clean install requires native absence. Unknown
 effects are reconciled before retry; a failed check is never a release PASS.
 For a clean initial installation, the manifest includes the single candidate
@@ -126,6 +147,161 @@ A single mismatch fails the PR gate. It does NOT claim identical rendered
 font pixels, identical native permissions or activated Full Power; these are
 separate acceptance gates. The job does not install or promote on owner hosts.
 
+
+### Shared Windows/Linux signed one-click owner package consent
+
+The same shared CLI supports the **opt-in** `--attested-gui-approval`
+for `--apply`, on **Windows and Linux**. It calls the official GitHub CLI
+`gh attestation verify` against the *actual local package bytes*, pinned
+repository `GOD13emad/ChatGPTRemoteCommander`, source commit from the
+declarative manifest and the fixed signed
+`.github/workflows/unified-installer-pilot.yml` workflow identity.
+Self-hosted runners are rejected. Only after successful independent Sigstore
+verification may it derive the local provenance-manifest SHA and pass it
+into the existing common byte-verifying native provenance validator.
+No developer-entered `OWNER-APPROVED` placeholder or manually typed SHA
+is a valid shortcut.
+
+Native owner package approval is separate and remains explicit: Linux uses
+`zenity`, Windows uses an actual current-owner-session WinForms Yes/No
+dialog via system Windows PowerShell. On Windows, the MessageBox is owned by an
+invisible topmost Form so it stays visible above another active browser window;
+No is the default and only an explicit Yes can approve. This is a visibility
+fix, not an input takeover or automatic authorization. No GUI session,
+denial, timeout, absent `gh`, failed attestation, changed manifest or source,
+or invalid manifest identity are all fail-closed. The old `--gui-approval`
+mode still requires an independently owner-pinned manifest SHA and HEAD;
+the existing exact-transaction-ID TTY mode is also retained for legacy
+owner-controlled operations.
+
+After attested candidate and current owner baseline have been vetted,
+one universal command on either OS is:
+
+```text
+node tools/universal-install/native-cli.mjs --apply --manifest ABSOLUTE_NATIVE_MANIFEST_PATH --attested-gui-approval
+```
+
+This mode is **package only / NoPromote**, does not change the active 0.11
+Core or Tunnel, does not enroll accounts, bind chats or grant J01 Worker
+rights. Signed candidate proof is **not** proof that the previous rollback
+installer was signed: on the present dev.9 Windows and Linux owner hosts
+the exact rollback asset has no matching GitHub attestation. Accordingly
+`--attested-gui-approval` is not an unrestricted signed rollback command;
+rollback continues to require the independent owner-pinned route and its
+separate native authorization. Release and deployment acceptance still need
+the applicable historical baseline and reversible install/rollback gates.
+For Linux system DEB operations, polkit may ask separately for native OS
+authorization. Windows per-user NSIS does not imply UAC elevation.
+
+Validation status 2026-11-23: real GitHub Sigstore checks for the *older*
+Windows source `258ca0dc6128ff3d263bd514c41e692dd020e2b8` and Linux
+source `be6d48a0ebdeeb69e9e842f18064c9120c16a8b2` PASS.
+These checks do **not** attest the new code. Linux isolated Xvfb GUI Yes/Cancel
+PASS; Windows native dialog code and signed-release policy must run on
+Windows CI and an owner-visible session before Windows canary acceptance.
+No installed package has been promoted by this code path.
+
+### Universal automatic update staging across Windows/Linux
+
+**Source-stage implementation**: `tools/universal-install/managed-updates.mjs`
+and `managed-update-scheduler.mjs` are the *same code on both OSes*.
+The `--check` path queries the public GitHub REST API over HTTPS **without
+GitHub account sign-in or `gh api`**, resolves tags to immutable SHA-1 commit
+identities and only accepts the train from that exact commit. A missing or
+unavailable release-train never counts as approval. Public discovery is
+not itself cryptographic attestation or permission to install. On `--stage`,
+the updater downloads only the exact release asset over GitHub HTTPS, confirms
+its SHA256 and byte count, downloads Sigstore bundles from GitHub's PUBLIC
+repository-attestations REST endpoint by SHA256, and verifies them with the
+**official GitHub CLI offline `--bundle` verifier** against this fixed
+repository, immutable source HEAD, trusted workflow signer and public Sigstore
+root. There is **NO GitHub login, token or manually entered SHA256**; however,
+the official `gh` executable is still needed locally for cryptographic
+verification. Its absence, an unavailable bundle, bad identity, missing signed
+rollback baseline, or owner refusal all FAIL CLOSED and cannot auto-install.
+This is a shared dependency, not an OS-specific signature-verification patch.
+On Windows the official GitHub CLI can be installed **without elevation** from
+Microsoft WinGet's verified user-scope portable package:
+`winget install --id GitHub.cli --exact --source winget --scope user --silent --accept-source-agreements --accept-package-agreements --disable-interactivity`.
+The shared verifier recognizes the default user-local
+`%LOCALAPPDATA%/Microsoft/WinGet/Links/gh.exe` alias even in a fresh Task
+Scheduler session whose PATH has not yet refreshed. This adds a vetted
+verification tool, NOT a GitHub account binding or package permission.
+On two Windows server hosts, the official WinGet v2.105.0 package was
+user-scope installed with WinGet SHA256 validation and returned an executable;
+both live Commander native dev.8 installations remained unchanged.
+The verifier also pins the immutable GitHub repository ID `1374266155`
+and owner ID `94546844`, in addition to exact source HEAD, workflow,
+Sigstore issuer and GitHub-hosted runner. Public API JSON alone never establishes
+authenticity. The `--attested-gui-approval` native CLI now uses the same
+public-bundle verification path before presenting a real owner Yes/Cancel dialog.
+Observed real proof on Linux: GitHub PUBLIC attestation for immutable
+`77831c3d` dev.10 DEB, anonymous `gh attestation verify --bundle`,
+`signedCandidateVerified:true`, `rollbackSignatureVerified:false` and
+`liveCoreChanged:false`; this is candidate acceptance only, not an
+automatic or unsigned rollback grant. If the native package is **absent**
+(as on the Saeid Windows owner account in the measured inventory), discovery
+returns `NATIVE_FIRST_INSTALL_REQUIRED` instead of treating missing native
+version as a broken updater. It must use the separately verified first-install
+native manifest and explicit owner consent, not an update or automatic grant.
+No login or privilege bypass is attempted.
+The owner-local scheduler runs `--stage` every 6 hours through systemd user
+timer (Linux) or a least-privilege Task Scheduler task (Windows). For each new
+**published stable release**, the update manager checks the source-tagged
+`docs/release-train-MAJOR.MINOR.json` and requires **all** of
+`publishApproved:true`, `autoupdateApproved:true`,
+`installedPromotionApproved:true`, `isStable:true`, `channel:stable`,
+a matching exact release tag and sourceVersion, and a newer version than
+the native installed package. It selects **only one uploaded artifact whose filename encodes the exact
+approved stable release version, platform and supported architecture**;
+a release containing only an older/dev package or a duplicate is rejected.
+It also verifies the local package against the GitHub asset digest and
+independent GitHub/Sigstore attestation pinned to the fixed repository,
+exact source commit and fixed workflow signer. Successful staging returns
+`candidatePath` for the later owner-approved native package transaction.
+It never treats a PR or NoPromote workflow artifact as an auto-promoted release.
+
+```text
+node tools/universal-install/managed-updates.mjs --check
+node tools/universal-install/managed-updates.mjs --stage
+node tools/universal-install/managed-update-scheduler.mjs --enable
+# For a later reviewed source revision, on an existing owner seat:
+node tools/universal-install/managed-update-scheduler.mjs --refresh-source
+```
+
+The scheduler deploys only small user-local manager code from the **reviewed
+source**, never starts an installer or claims a J01/Worker authorization.
+`--refresh-source` is an owner-local, rerunnable atomic replacement of those
+same two reviewed source files. It refuses alien/symlinked or group-writable
+Linux installs, retains one `*.previous` recovery copy, and does not alter the
+installed native package, Timer/Task Scheduler definitions, or privileged grants.
+This replaces the old per-machine manual updater-source patches; source origin
+must first be verified in the common GitHub branch/signed release.
+The result `SIGNED_UPDATE_STAGED_AWAITING_OWNER` means installation must
+still use the common owner-visible `--attested-gui-approval` path with a
+reversible native manifest, baseline and OS privileges where applicable.
+The current dev.10 train has `autoupdateApproved:false` and
+`publishApproved:false` and **NO qualified stable release**: expected live
+check output is `NO_APPROVED_NEW_RELEASE`. Its explicit owner-authorized
+signed canary remains separate. Production 0.11 Tunnel never auto-switches.
+Future stable-channel auto-install without a new owner click would require a
+separately accepted publisher/OS policy and audited rollback; it is **not**
+implemented by this staging scheduler.
+
+**Legacy-entrypoint migration**: do not launch typed-hash scripts or request
+`OWNER-APPROVED`/64-hex manifest values from the manager. The deprecated
+`/home/aliemad/.cache/rc012-be6d-native-artifact-stage-20261122/owner-tty-canary-20261123.sh`
+on Emad Linux is now a compatibility shim to the shared signed GUI command.
+For any staged owner manifest the canonical operation is:
+`node tools/universal-install/native-cli.mjs --apply --manifest ABS_NATIVE_MANIFEST.json --attested-gui-approval`.
+Linux GUI automatically discovers the *same owner's* KDE/X11 or Wayland
+seat from the user systemd manager if the remote command lacks DISPLAY;
+strict checks require a local display, owner-private Xauthority (or owner
+Wayland socket), and exact `/run/user/UID`. Missing, foreign or permissive
+credentials fail closed. No per-host DISPLAY patch or password input is needed.
+System package installation still requires separate polkit authorization. Other chats
+must reuse the GitHub source/PR and this one contract, not create divergent
+per-host verification prompts.
 
 ## Native owner-pair J01 validation without a signed Worker grant
 

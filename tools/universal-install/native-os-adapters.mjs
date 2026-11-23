@@ -63,9 +63,19 @@ function defaultRun(binary,argv,{timeoutMs=15000,checkExit=true}={}){
   if(checkExit)check(r.status===0,'UNIVERSAL_NATIVE_OS_COMMAND_REJECTED');
   return {code:r.status,stdout:r.stdout.trim(),stderr:r.stderr.trim()};
 }
-function ps(script,run,{timeoutMs=15000}={}){
+export function windowsNativePowerShell({env=process.env}={}){
+  // Windows PowerShell 5.1 is built into supported Windows hosts; do not
+  // make package installation depend on separately installed PowerShell 7.
+  const root=env.SystemRoot||String.raw`C:\Windows`;
+  check(typeof root==='string'&&path.win32.isAbsolute(root)
+    &&!/[\r\n\0]/.test(root),
+    'UNIVERSAL_NATIVE_WINDOWS_SYSTEMROOT_INVALID');
+  return path.win32.join(root,'System32','WindowsPowerShell',
+    'v1.0','powershell.exe');
+}
+function ps(script,run,{timeoutMs=30000}={}){
   const enc=Buffer.from(script,'utf16le').toString('base64');
-  return run('pwsh',['-NoLogo','-NoProfile','-NonInteractive',
+  return run(windowsNativePowerShell(),['-NoLogo','-NoProfile','-NonInteractive',
     '-EncodedCommand',enc],{timeoutMs}).stdout;
 }
 function shaOfRuntime(raw){
@@ -134,8 +144,11 @@ export function createNativeOsAdapter({
         "Select-Object LocalAddress,LocalPort,OwningProcess | "+
         "Sort-Object LocalAddress,LocalPort,OwningProcess)",
       "$canonical=($l|ConvertTo-Json -Depth 3 -Compress)",
-      "$hash=[Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($canonical))",
-      "[Console]::Out.Write([Convert]::ToHexString($hash).ToLowerInvariant())"
+      "$sha=[Security.Cryptography.SHA256]::Create()",
+      "try {",
+      " $hash=$sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))",
+      " [Console]::Out.Write([BitConverter]::ToString($hash).Replace('-','').ToLowerInvariant())",
+      "} finally { $sha.Dispose() }"
     ].join('\n');
     const digest=ps(script,run);
     check(HASH.test(digest),'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
@@ -201,7 +214,7 @@ export function createNativeOsAdapter({
           "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander' "+
           "-ErrorAction SilentlyContinue",
         "if($legacy -or $machine -or $legacyMachine -or $legacyWow)"+
-          "{throw 'COMMANDER_DUPLICATE_INSTALL_FAMILY'}",
+          "{[Console]::Out.Write('LEGACY_MIGRATION_REQUIRED');exit 0}",
         "$bin=Join-Path $env:LOCALAPPDATA 'Programs\\remote-commander-unified\\Remote Commander.exe'",
         "$ownerPairs=Join-Path $env:APPDATA 'ChatGPTRemoteCommander\\private-pair'",
         "if($hits.Count -eq 0){",
@@ -217,6 +230,10 @@ export function createNativeOsAdapter({
         "[Console]::Out.Write($v.DisplayVersion)"
       ].join('\n');
       version=ps(script,run);
+      // A verified legacy-family registry hit is NOT a clean fresh
+      // install and MUST NOT be auto-uninstalled or silently replaced.
+      if(version==='LEGACY_MIGRATION_REQUIRED')
+        fail('UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED');
       if(version!=='ABSENT')
         check(VERSION.test(version),'UNIVERSAL_NATIVE_WINDOWS_INSTALLED_VERSION_INVALID');
       else version=null;

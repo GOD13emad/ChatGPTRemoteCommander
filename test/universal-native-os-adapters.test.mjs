@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createNativeOsAdapter,cleanFreshLinuxOwnerState}
+import {createNativeOsAdapter,cleanFreshLinuxOwnerState,
+  windowsNativePowerShell}
   from '../tools/universal-install/native-os-adapters.mjs';
 import {executeNativeTransaction}
   from '../tools/universal-install/native-transaction.mjs';
@@ -43,7 +44,7 @@ function mockedAdapter(platform,events){
       if(bin==='pkexec'){installed=args[2].includes('dev.9')
         ?'0.12.0-dev.9':'0.12.0-dev.8';
         return {code:0,stdout:'',stderr:''};}
-    }else if(bin==='pwsh'){
+    }else if(bin.toLowerCase().endsWith('powershell.exe')){
       const src=Buffer.from(args.at(-1),'base64').toString('utf16le');
       if(src.includes('Get-NetTCPConnection'))
         return {code:0,stdout:'f'.repeat(64),stderr:''};
@@ -83,7 +84,7 @@ test('the one native transaction exercises both real OS command interfaces',asyn
       });
       assert.equal(plan.status,'READY_TO_APPLY');
       assert.equal(events.some(x=>x.bin==='pkexec'||(
-        x.bin==='pwsh'&&Buffer.from(x.args.at(-1),'base64')
+        x.bin.toLowerCase().endsWith('powershell.exe')&&Buffer.from(x.args.at(-1),'base64')
           .toString('utf16le').includes('Start-Process'))),false);
       const applied=await executeNativeTransaction({
         action:'apply',input,adapter:native.adapter,
@@ -98,10 +99,38 @@ test('the one native transaction exercises both real OS command interfaces',asyn
       assert.equal(rollback.status,'NATIVE_PACKAGE_ROLLED_BACK');
       assert.equal(native.installed,'0.12.0-dev.8');
       assert.equal(events.filter(x=>x.bin==='pkexec'
-        ||x.bin==='pwsh'&&Buffer.from(x.args.at(-1),'base64')
+        ||x.bin.toLowerCase().endsWith('powershell.exe')&&Buffer.from(x.args.at(-1),'base64')
         .toString('utf16le').includes('Start-Process')).length,2);
     }
   }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('native Windows adapter needs only built-in PowerShell 5.1 and standard .NET hashing',async()=>{
+  const executable=windowsNativePowerShell({env:{SystemRoot:'C:\\WINDOWS'}});
+  assert.equal(executable.toLowerCase(),
+    'c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe');
+  assert.throws(()=>windowsNativePowerShell({
+    env:{SystemRoot:'relative\\Windows'}
+  }),{code:'UNIVERSAL_NATIVE_WINDOWS_SYSTEMROOT_INVALID'});
+  const events=[];
+  const native=mockedAdapter('windows',events);
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-win51-adapter-'));
+  try{
+    const input=spec('windows',dir);
+    const plan=await executeNativeTransaction({action:'plan',input,adapter:native.adapter});
+    assert.equal(plan.status,'READY_TO_APPLY');
+    assert.ok(events.length>=4);
+    for(const event of events){
+      assert.match(event.bin,/powershell\.exe$/i);
+      assert.equal(event.args[0],'-NoLogo');
+    }
+    const runtime=events.find(e=>Buffer.from(e.args.at(-1),'base64')
+      .toString('utf16le').includes('Get-NetTCPConnection'));
+    assert.ok(runtime);
+    const source=Buffer.from(runtime.args.at(-1),'base64').toString('utf16le');
+    assert.match(source,/SHA256\]::Create\(\)/);
+    assert.match(source,/BitConverter\]::ToString/);
+    assert.doesNotMatch(source,/SHA256\]::HashData|Convert\]::ToHexString/);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('both native adapters reject changed package hashes before invoking OS package manager',async()=>{
   const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-adapter-qa-'));
@@ -178,6 +207,24 @@ test('fresh rollback uses OS-native dpkg remove and fixed user-local NSIS uninst
   }
 });
 
+test('legacy Windows Commander family is a migration gate, never clean fresh install',async()=>{
+  let registryInspections=0;
+  const adapter=createNativeOsAdapter({platform:'windows',architecture:'x64',
+    run:(binary,args)=>{
+      assert.match(binary,/powershell\.exe$/i);
+      const source=Buffer.from(args.at(-1),'base64').toString('utf16le');
+      assert.match(source,/Get-ChildItem/);
+      assert.match(source,/LEGACY_MIGRATION_REQUIRED/);
+      assert.doesNotMatch(source,/Start-Process/);
+      registryInspections++;
+      return {code:0,stdout:'LEGACY_MIGRATION_REQUIRED',stderr:''};
+    }
+  });
+  await assert.rejects(adapter.snapshot(),
+    {code:'UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED'});
+  assert.equal(registryInspections,1,
+    'must never read or mutate runtime after proving a legacy conflict');
+});
 test('fresh Linux state permits ONLY its own journal but rejects profiles and orphaned state',()=>{
   const home=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-blank-home-'));
   const root=path.join(home,'.local','state','chatgpt-remote-commander');
