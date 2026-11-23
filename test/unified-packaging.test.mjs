@@ -16,6 +16,29 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const resource=path.join(repo,'packaging/unified/.stage/core');
 const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
+test('minimatch remediation preserves patched build graph without assuming obsolete nested folders',()=>{
+ const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
+ const lock=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package-lock.json'),'utf8'));
+ assert.deepEqual(gui.overrides,{
+   'app-builder-lib':{minimatch:'11.0.9'},
+   '@electron/universal':{minimatch:'11.0.9'}
+ });
+ assert.equal(lock.packages['node_modules/minimatch'].version,'11.0.9');
+ const nested=Object.entries(lock.packages)
+   .filter(([name])=>/(?:^|\/)node_modules\/minimatch$/.test(name));
+ assert.ok(nested.length>=1);
+ for(const [name,meta] of nested){
+   const major=Number(meta.version.split('.')[0]);
+   assert.ok(Number.isSafeInteger(major)&&(major<7||major>=11),
+     'affected minimatch major must not ship: '+name);
+ }
+ for(const name of [
+   'node_modules/dir-compare/node_modules/minimatch',
+   'node_modules/glob/node_modules/minimatch']){
+   if(lock.packages[name])assert.match(lock.packages[name].version,/^3\./);
+ }
+});
+
 test('native Linux and Electron builder derive one exact prerelease version from Core, GUI, and release train',()=>{
  const core=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
