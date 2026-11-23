@@ -41,8 +41,13 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
       await deliver();
       return {ok:true};
     }
-    // Pairing is only exposed to extension-owned popup, never a page or content script.
-    if(sender.id!==chrome.runtime.id||sender.tab)throw Error('POPUP_ONLY');
+    // Sender metadata is browser-supplied. Electron's extension popup can
+    // legitimately have sender.tab, unlike the native Chrome action popup;
+    // origin URL is the security boundary, not the tab-presence heuristic.
+    // A content script cannot forge its sender.url as an extension page.
+    const popupUrl='chrome-extension://'+chrome.runtime.id+'/popup.html';
+    if(sender.id!==chrome.runtime.id||sender.url!==popupUrl)
+      throw Error('POPUP_ONLY');
     if(message?.kind==='STATUS')return {ok:true,paired:Boolean(await token())};
     if(message?.kind==='PAIR'){
       if(typeof message.code!=='string'||!/^[A-F0-9]{16}$/.test(message.code))

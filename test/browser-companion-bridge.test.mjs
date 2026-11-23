@@ -152,10 +152,15 @@ test('MV3 worker mock enforces content/popup separation and never exposes pairin
   await import('../extensions/chatgpt-companion/background.js?qa-protocol-v1');
   assert.equal(typeof listener,'function');
   const send=(m,sender)=>new Promise(resolve=>listener(m,sender,resolve));
-  const popup={id},page={id,tab:{id:5},url:'https://chatgpt.com/c/'+chatId};
+  const popup={id,url:'chrome-extension://'+id+'/popup.html'},
+    electronPopup={...popup,tab:{id:7}},
+    badPopup={id,url:'chrome-extension://'+id+'/other.html'},
+    page={id,tab:{id:5},url:'https://chatgpt.com/c/'+chatId};
   assert.equal((await send({kind:'STATUS'},popup)).paired,false);
   assert.equal((await send({kind:'PAIR',code:'A'.repeat(16)},page)).error,'POPUP_ONLY');
-  assert.equal((await send({kind:'PAIR',code:'A'.repeat(16)},popup)).paired,true);
+  assert.equal((await send({kind:'PAIR',code:'A'.repeat(16)},badPopup)).error,'POPUP_ONLY');
+  // Chrome popup and Electron-owned browser-window popup share exact origin identity.
+  assert.equal((await send({kind:'PAIR',code:'A'.repeat(16)},electronPopup)).paired,true);
   assert.equal(stores.commanderPairToken,'b'.repeat(64));
   assert.equal((await send({kind:'CHAT_URL'},page)).ok,true);
   const observed=requests.filter(x=>x.url.endsWith('/observation'));
@@ -164,7 +169,7 @@ test('MV3 worker mock enforces content/popup separation and never exposes pairin
   assert.equal(observed[0].headers.Authorization,'Bearer '+'b'.repeat(64));
   assert.ok(!JSON.stringify(observed[0].body).includes('messageText'));
   assert.ok(!(await send({kind:'CHAT_URL'},{id,tab:{id:6},url:'https://evil.example/'})).ok);
-  assert.equal((await send({kind:'DISCONNECT'},popup)).paired,false);
+  assert.equal((await send({kind:'DISCONNECT'},electronPopup)).paired,false);
   assert.equal(stores.commanderPairToken,undefined);
   assert.ok(requests.some(x=>x.url.endsWith('/revoke')));
 });
