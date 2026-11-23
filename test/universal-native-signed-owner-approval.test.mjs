@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {verifiedAttestationSubject,verifySignedNativeRelease,
   verifyPublicSignedNativeRelease,publicNativeAttestationBundles,
-  officialNativeVerifierBinary,assertSafeGhAttestationVersion}
+  officialNativeVerifierBinary,assertSafeGhAttestationVersion,withOfficialSystemCa}
   from '../tools/universal-install/signed-native-provenance.mjs';
 import {windowsGuiApprovalScript}
   from '../tools/universal-install/native-cli.mjs';
@@ -105,6 +105,40 @@ test('offline Sigstore rejects a renamed/re-owned repository even if subject mat
  assert.throws(()=>verifiedAttestationSubject(JSON.stringify(w),
    {name,sha256:candidateSha,expectedCommit:head}),/SIGSTORE_SUBJECT_MISMATCH/);
 });
+test('public attestation temporary system CAs preserve bundled roots and always restore',async()=>{
+  const original=['bundled-one','extra-owner-ca'];
+  const system=['os-trusted-root'];
+  let active=[...original],writes=0;
+  const tlsApi={
+    getCACertificates(type){
+      if(type==='default')return [...active];
+      if(type==='system')return [...system];
+      throw Error('Unexpected source');
+    },
+    setDefaultCACertificates(certs){active=[...certs];writes++;}
+  };
+  const result=await withOfficialSystemCa(async()=>{
+    assert.deepEqual(active,[...original,...system],
+      'trusted OS roots add to bundled roots, never replace them');
+    return 200;
+  },{tlsApi});
+  assert.equal(result,200);
+  assert.deepEqual(active,original,'temporary CA extension must be reverted');
+  await assert.rejects(withOfficialSystemCa(async()=>{
+    assert.deepEqual(active,[...original,...system]);
+    throw Error('network failed');
+  },{tlsApi}),/network failed/);
+  assert.deepEqual(active,original,'failure cannot leak changed CA policy');
+  assert.equal(writes,4);
+  await assert.rejects(withOfficialSystemCa(null,{tlsApi}),/SYSTEM_CA_ACTION_INVALID/);
+  assert.deepEqual(active,original);
+  const absent={...tlsApi,getCACertificates(type){
+    return type==='system'?[]:[...original];
+  }};
+  assert.equal(await withOfficialSystemCa(async()=>204,{tlsApi:absent}),204);
+  assert.deepEqual(active,original);
+});
+
 test('public attestation retrieval fails closed on missing or invalid bundles',async()=>{
   const d='f'.repeat(64);
   await assert.rejects(publicNativeAttestationBundles(d,{fetcher:async()=>({

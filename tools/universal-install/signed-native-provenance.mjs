@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
+import tls from 'node:tls';
 import {spawnSync} from 'node:child_process';
 
 const REPO='GOD13emad/ChatGPTRemoteCommander';
@@ -143,17 +144,42 @@ export function verifySignedNativeRelease({
  * The response is UNTRUSTED until the official gh offline bundle verifier
  * authenticates Sigstore certificate identity, source and exact artifact.
  */
+// Node 22+/24 may use only its bundled Mozilla roots; official system trust
+// additionally recognizes CA roots configured by the owner/OS. Never disable
+// TLS verification, replace default trust outright, or trust the public
+// attestation data without the independent Sigstore identity check below.
+// Scope this temporary TLS setting to the caller's current thread only.
+export async function withOfficialSystemCa(action,{tlsApi=tls}={}){
+  if(typeof action!=='function')
+    fail('UNIVERSAL_NATIVE_SYSTEM_CA_ACTION_INVALID');
+  if(typeof tlsApi.getCACertificates!=='function'
+    ||typeof tlsApi.setDefaultCACertificates!=='function')
+    return action();
+  const current=tlsApi.getCACertificates('default');
+  const system=tlsApi.getCACertificates('system');
+  if(!Array.isArray(current)||!Array.isArray(system)||system.length===0)
+    return action();
+  tlsApi.setDefaultCACertificates([...current,...system]);
+  try{return await action();}
+  finally{tlsApi.setDefaultCACertificates(current);}
+}
+
 export async function publicNativeAttestationBundles(sha256,{fetcher=fetch}={}){
   if(typeof sha256!=='string'||!SHA.test(sha256))
     fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_DIGEST_INVALID');
   let response;
   try{
-    response=await fetcher('https://api.github.com/repos/'+REPO+
+    const retrieve=()=>fetcher('https://api.github.com/repos/'+REPO+
       '/attestations/sha256:'+sha256,{
       headers:{Accept:'application/vnd.github+json',
         'User-Agent':'ChatGPTCommander-SignedNativeVerifier/0.12'},
       signal:AbortSignal.timeout(15000)
     });
+    // Apply platform CA roots only for the real network fetch; injected
+    // offline test transports never change process TLS settings.
+    response=fetcher===fetch
+      ? await withOfficialSystemCa(retrieve)
+      : await retrieve();
   }catch{fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNAVAILABLE');}
   if(response?.status!==200)
     fail('UNIVERSAL_NATIVE_PUBLIC_ATTESTATION_UNAVAILABLE');
