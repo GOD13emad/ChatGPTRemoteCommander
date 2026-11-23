@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {audit,auditExitCode} from '../tools/universal-install/native-baseline-audit.mjs';
+import {audit,auditExitCode,parseAuditArgs} from '../tools/universal-install/native-baseline-audit.mjs';
 
 const P=process.platform==='win32'?'C:\\test\\previous.exe':'/qa/previous.deb';
 const R=process.platform==='win32'?'C:\\test\\installed':'/qa/installed';
@@ -42,4 +42,14 @@ test('nonzero audit CLI exit codes prevent CI from mistaking partial parity or d
     {status:'ARCHIVE_MEMBERS_DIFFER',completeRestoreVerified:false},
     {status:'ARCHIVE_MEMBERS_MATCHED_ONLY',completeRestoreVerified:false}
   ]) assert.notEqual(auditExitCode(incomplete),0);
+});
+
+test('one portable audit supports optional native registration but never equates it to full restore',()=>{
+  const ordinary=parseAuditArgs(valid);
+  assert.equal(ordinary.observeRegistration,false);
+  assert.equal(parseAuditArgs([...valid,'--registration']).observeRegistration,true);
+  assert.throws(()=>parseAuditArgs([...valid,'--arbitrary']),
+    {code:'NATIVE_BASELINE_AUDIT_ARGS_INVALID'});
+  assert.throws(()=>parseAuditArgs([...valid,'--registration','--registration']),
+    {code:'NATIVE_BASELINE_AUDIT_ARGS_REQUIRED'});
 });

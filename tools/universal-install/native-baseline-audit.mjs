@@ -5,12 +5,18 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {compareNativePackageToInstalled}
   from './native-package-inventory.mjs';
+import {inspectNativeRegistration}
+  from './native-registration-evidence.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
-function parse(args){
-  if(args.length!==6)fail('NATIVE_BASELINE_AUDIT_ARGS_REQUIRED');
+export function parseAuditArgs(args){
+  if(args.length!==6&&args.length!==7)
+    fail('NATIVE_BASELINE_AUDIT_ARGS_REQUIRED');
+  const observeRegistration=args.length===7;
+  if(observeRegistration&&args[6]!=='--registration')
+    fail('NATIVE_BASELINE_AUDIT_ARGS_INVALID');
   const m=new Map();
-  for(let i=0;i<args.length;i+=2){
+  for(let i=0;i<6;i+=2){
     const k=args[i],v=args[i+1];
     if(!['--previous','--sha256','--installed-root'].includes(k)||
       m.has(k)||typeof v!=='string'||v.length>8192)
@@ -27,11 +33,13 @@ function parse(args){
   if(!platform)fail('NATIVE_BASELINE_AUDIT_OS_UNSUPPORTED');
   return {platform,packagePath:m.get('--previous'),
     expectedPackageSha256:m.get('--sha256'),
-    installedRoot:m.get('--installed-root')};
+    installedRoot:m.get('--installed-root'),observeRegistration};
 }
 export async function audit(args=process.argv.slice(2)){
-  const x=parse(args);
+  const x=parseAuditArgs(args);
   const result=await compareNativePackageToInstalled(x);
+  const registration=x.observeRegistration?
+    inspectNativeRegistration({platform:x.platform}):null;
   return Object.freeze({
     schema:'rc-native-baseline-audit-v1',
     platform:x.platform,
@@ -45,6 +53,7 @@ export async function audit(args=process.argv.slice(2)){
     different:result.different,unsafe:result.unsafe,
     mismatchNames:result.mismatches,
     archiveMembersVerified:result.archiveMembersVerified,
+    ...(registration===null?{}:{nativeRegistration:registration}),
     completeInventory:false,
     completeRestoreVerified:false,
     ownerApprovalIssued:false,
