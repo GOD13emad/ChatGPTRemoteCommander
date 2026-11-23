@@ -19,18 +19,16 @@ const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 test('minimatch remediation preserves patched build graph without assuming obsolete nested folders',()=>{
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
  const lock=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package-lock.json'),'utf8'));
- assert.deepEqual(gui.overrides,{
-   'app-builder-lib':{minimatch:'11.0.9'},
-   '@electron/universal':{minimatch:'11.0.9'}
- });
+ assert.deepEqual(gui.overrides,{'minimatch@>=7.0.0 <11.0.1':'11.0.9'});
  assert.equal(lock.packages['node_modules/minimatch'].version,'11.0.9');
  const nested=Object.entries(lock.packages)
    .filter(([name])=>/(?:^|\/)node_modules\/minimatch$/.test(name));
  assert.ok(nested.length>=1);
  for(const [name,meta] of nested){
-   const major=Number(meta.version.split('.')[0]);
-   assert.ok(Number.isSafeInteger(major)&&(major<7||major>=11),
-     'affected minimatch major must not ship: '+name);
+   const [major,minor,patch]=meta.version.split('.').map(Number);
+   assert.ok([major,minor,patch].every(Number.isSafeInteger)
+     &&(major<7||major>11||(major===11&&(minor>0||patch>0))),
+     'minimatch must be outside the overridden range: '+name);
  }
  for(const name of [
    'node_modules/dir-compare/node_modules/minimatch',
