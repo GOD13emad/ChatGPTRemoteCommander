@@ -106,7 +106,14 @@ async function openChatBrowser(){
       if(!ok)event.preventDefault();
     });
     created.on('closed',()=>{if(chatWindow===created){chatWindow=null;companionBridge?.observeOwned('about:blank');}});
-    await created.loadURL('https://chatgpt.com/');
+    try{
+      await created.loadURL('https://chatgpt.com/');
+    }catch(error){
+      // A failed first navigation must not leave a blank window that the
+      // next owner click incorrectly reports as an already-open ChatGPT UI.
+      if(!created.isDestroyed())created.destroy();
+      throw Error('CHAT_BROWSER_NAVIGATION_FAILED');
+    }
     return {ok:true,ownedProfile:true,signInByOwner:true,chatUiOpened:true,
       extensionLoaded:Boolean(chatExtensionId),extensionError:chatExtensionError,
       corePrivilegesGranted:false};
