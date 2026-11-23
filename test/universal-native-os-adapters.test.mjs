@@ -207,6 +207,24 @@ test('fresh rollback uses OS-native dpkg remove and fixed user-local NSIS uninst
   }
 });
 
+test('legacy Windows Commander family is a migration gate, never clean fresh install',async()=>{
+  let registryInspections=0;
+  const adapter=createNativeOsAdapter({platform:'windows',architecture:'x64',
+    run:(binary,args)=>{
+      assert.match(binary,/powershell\.exe$/i);
+      const source=Buffer.from(args.at(-1),'base64').toString('utf16le');
+      assert.match(source,/Get-ChildItem/);
+      assert.match(source,/LEGACY_MIGRATION_REQUIRED/);
+      assert.doesNotMatch(source,/Start-Process/);
+      registryInspections++;
+      return {code:0,stdout:'LEGACY_MIGRATION_REQUIRED',stderr:''};
+    }
+  });
+  await assert.rejects(adapter.snapshot(),
+    {code:'UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED'});
+  assert.equal(registryInspections,1,
+    'must never read or mutate runtime after proving a legacy conflict');
+});
 test('fresh Linux state permits ONLY its own journal but rejects profiles and orphaned state',()=>{
   const home=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-blank-home-'));
   const root=path.join(home,'.local','state','chatgpt-remote-commander');

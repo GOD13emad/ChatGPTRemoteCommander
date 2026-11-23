@@ -75,7 +75,11 @@ built-in `System32/WindowsPowerShell/v1.0/powershell.exe` with PowerShell
 5.1-compatible .NET SHA256 runtime fingerprints; no PowerShell 7/
 `pwsh` prerequisite is required for installation. The same native
 transaction, identity checks, owner approval and journal remain unchanged. `--fresh` accepts only actual package absence
-with no owner profile/legacy state. Upgrade uses exact previous native
+with no owner profile/legacy state. An existing Windows legacy
+`HKCU/Uninstall/RemoteCommander` (or conflicting HKLM family) returns
+`UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED` **before any package effect**;
+this is a preserved migration baseline, never a fresh install, silent
+uninstall or permission to delete historic backups. Upgrade uses exact previous native
 binary; rollback from a clean install requires native absence. Unknown
 effects are reconciled before retry; a failed check is never a release PASS.
 For a clean initial installation, the manifest includes the single candidate

@@ -214,7 +214,7 @@ export function createNativeOsAdapter({
           "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander' "+
           "-ErrorAction SilentlyContinue",
         "if($legacy -or $machine -or $legacyMachine -or $legacyWow)"+
-          "{throw 'COMMANDER_DUPLICATE_INSTALL_FAMILY'}",
+          "{[Console]::Out.Write('LEGACY_MIGRATION_REQUIRED');exit 0}",
         "$bin=Join-Path $env:LOCALAPPDATA 'Programs\\remote-commander-unified\\Remote Commander.exe'",
         "$ownerPairs=Join-Path $env:APPDATA 'ChatGPTRemoteCommander\\private-pair'",
         "if($hits.Count -eq 0){",
@@ -230,6 +230,10 @@ export function createNativeOsAdapter({
         "[Console]::Out.Write($v.DisplayVersion)"
       ].join('\n');
       version=ps(script,run);
+      // A verified legacy-family registry hit is NOT a clean fresh
+      // install and MUST NOT be auto-uninstalled or silently replaced.
+      if(version==='LEGACY_MIGRATION_REQUIRED')
+        fail('UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED');
       if(version!=='ABSENT')
         check(VERSION.test(version),'UNIVERSAL_NATIVE_WINDOWS_INSTALLED_VERSION_INVALID');
       else version=null;
