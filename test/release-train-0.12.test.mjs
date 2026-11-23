@@ -13,7 +13,7 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.deepEqual(manifest.fleetCoverage.acceptedHostIds,[]);
  assert.equal(manifest.fleetCoverage.mappingVerified,false);
  assert.equal(manifest.fleetCoverage.bootLoginAndRollbackVerified,false);
- assert.equal(manifest.sourceVersion,'0.12.0-dev.11');
+ assert.equal(manifest.sourceVersion,'0.12.0-dev.12');
  assert.equal(compareReleaseVersions(manifest.sourceVersion,'0.12.0-dev.10'),1,'new candidate advances installed dev.10');
  assert.equal(compareReleaseVersions('0.12.0',manifest.sourceVersion),1,'must remain development, never Stable');
  assert.equal(manifest.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
