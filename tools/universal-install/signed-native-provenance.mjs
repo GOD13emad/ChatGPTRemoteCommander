@@ -199,8 +199,15 @@ export async function verifyPublicSignedNativeRelease(args,{
     fs.chmodSync(dir,0o700);
     fs.writeFileSync(bundlePath,bundles.map(b=>JSON.stringify(b)).join('\n')+'\n',
       {flag:'wx',mode:0o600});
-    return verifySignedNativeRelease(args,{run:(exe,argv,opts)=>
-      run(exe,[...argv,'--bundle',bundlePath],opts)});
+    // The bundle is an option of `gh attestation verify`, not `gh --version`.
+    // Preserve the independent minimum-version check exactly as issued.
+    return verifySignedNativeRelease(args,{run:(exe,argv,opts)=>{
+      if(argv.length===1&&argv[0]==='--version')
+        return run(exe,argv,opts);
+      if(argv[0]!=='attestation'||argv[1]!=='verify')
+        fail('UNIVERSAL_NATIVE_SIGSTORE_GH_COMMAND_INVALID');
+      return run(exe,[...argv,'--bundle',bundlePath],opts);
+    }});
   }finally{
     fs.rmSync(dir,{recursive:true,force:true});
   }

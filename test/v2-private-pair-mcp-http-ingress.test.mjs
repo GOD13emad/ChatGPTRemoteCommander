@@ -395,7 +395,7 @@ test('PRIVATE MCP supports stateless modern 2026-07-28 discovery, list and exact
   assert.equal(found.data.result.resultType,'complete');
   assert.ok(found.data.result.supportedVersions.includes('2026-07-28'));
   assert.equal(found.data.result.cacheScope,'private');
-  assert.equal(found.data.result._meta['io.modelcontextprotocol/serverInfo'].version,'0.12.0-dev.10');
+  assert.equal(found.data.result._meta['io.modelcontextprotocol/serverInfo'].version,'0.12.0-dev.11');
   assert.equal(f.state.bound,0);
   const list=modernMessage('tools/list');
   const tools=await f.send(list,modernOptions(list));

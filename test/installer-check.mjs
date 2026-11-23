@@ -124,9 +124,13 @@ function validateTrainInNode(minor,version){
 // the Linux-only release-train predicates in Node without another dependency.
 // Linux additionally executes the actual embedded Python validator, preserving
 // its independent runtime admission check.
+const currentNativeTrainVersion=JSON.parse(readFileSync('package.json','utf8')).version;
+if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(currentNativeTrainVersion))
+  throw new Error('CURRENT_NATIVE_RELEASE_TRAIN_SOURCE_INVALID');
 for (const [minor,version,accepted] of [
   ['11','0.11.0-dev.105',true],
-  ['12','0.12.0-dev.10',true],
+  ['12',currentNativeTrainVersion,true],
+  ['12','0.12.0-dev.10',false],
   ['12','0.12.0-dev.9',false],
   ['12','0.12.0-dev.8',false],
   ['12','0.12.0-dev.2',false],
