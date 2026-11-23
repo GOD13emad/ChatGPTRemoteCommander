@@ -124,6 +124,8 @@ test('No broad browser permissions and embedded archive includes the companion',
   assert.match(file('packaging/unified/electron-builder.yml'),/browser-companion-bridge.cjs/);
   assert.match(file('packaging/unified/main.cjs'),/partition='persist:commander-owned-chat'/);
   assert.match(file('packaging/unified/main.cjs'),/session\.fromPartition\(partition\)/);
+  assert.match(file('.github/workflows/unified-installer-pilot.yml'),/companion-electron-smoke\.cjs/);
+  assert.match(file('packaging/unified/companion-electron-smoke.cjs'),/ELECTRON_MV3_WORKER_NOT_RESPONDING/);
   assert.ok(fs.statSync(path.join(root,'extensions/chatgpt-companion/popup.html')).size>100);
 });
 
