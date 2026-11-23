@@ -184,3 +184,30 @@ test('native Windows owner resolver rejects malformed SID output and PowerShell 
     await rejectsCode(resolver(),'NATIVE_WORKER_KEY_OWNER_UNAVAILABLE');
   });
 });
+
+test('ambient SystemRoot and PSModulePath cannot redirect native worker SID PowerShell',async()=>{
+  const previousRoot=process.env.SystemRoot;
+  const previousModules=process.env.PSModulePath;
+  let observed;
+  try{
+    process.env.SystemRoot='Z:\\untrusted-worker-image';
+    process.env.PSModulePath='Z:\\untrusted-worker-modules';
+    const resolver=createWindowsNativeOwnerSidHashResolver({
+      platform:'win32',verifyExecutable:()=>{},
+      execFileImpl:(file,args,options,callback)=>{
+        observed={file,options};
+        callback(null,OWNER,'');
+      }
+    });
+    assert.equal(await resolver(),OWNER);
+    assert.equal(observed.file,POWERSHELL);
+    assert.equal(observed.options.env.SystemRoot.toLowerCase(),'c:\\windows');
+    assert.doesNotMatch(observed.options.env.PATH,/untrusted-worker-image/i);
+    assert.doesNotMatch(observed.options.env.PSModulePath,/untrusted-worker-modules/i);
+  }finally{
+    if(previousRoot===undefined)delete process.env.SystemRoot;
+    else process.env.SystemRoot=previousRoot;
+    if(previousModules===undefined)delete process.env.PSModulePath;
+    else process.env.PSModulePath=previousModules;
+  }
+});

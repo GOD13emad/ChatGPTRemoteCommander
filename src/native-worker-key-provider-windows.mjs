@@ -7,6 +7,7 @@ import {
 import {execFile as execFileDefault} from 'node:child_process';
 import fs from 'node:fs';
 import {win32} from 'node:path';
+import {WINDOWS_SYSTEM_ROOT,WINDOWS_SYSTEM_POWERSHELL_EXE} from './platform.mjs';
 
 const PROFILE=/^[A-Za-z0-9_-]{1,64}$/;
 const HASH=/^[a-f0-9]{64}$/;
@@ -23,10 +24,8 @@ function localWindowsPath(value,code){
     fail(code);
   return normalized;
 }
-function defaultPowerShellPath(env=process.env){
-  const root=typeof env.SystemRoot==='string'&&/^[A-Za-z]:\\[^\0]*$/.test(env.SystemRoot)
-    ?env.SystemRoot:'C:\\Windows';
-  return win32.join(root,'System32','WindowsPowerShell','v1.0','powershell.exe');
+function defaultPowerShellPath(){
+  return WINDOWS_SYSTEM_POWERSHELL_EXE;
 }
 function assertTrustedPowerShell(file,verifyExecutable){
   try{verifyExecutable(file);}
@@ -40,16 +39,13 @@ function encodedPowerShell(script){
   return Buffer.from(script,'utf16le').toString('base64');
 }
 function powerShellEnvironment(){
-  const root=typeof process.env.SystemRoot==='string'&&process.env.SystemRoot
-    ?process.env.SystemRoot:'C:\\Windows';
+  const root=WINDOWS_SYSTEM_ROOT;
   const modulePath=win32.join(root,'System32','WindowsPowerShell','v1.0','Modules');
   const env={
     SystemRoot:root,WINDIR:root,
     PATH:[win32.join(root,'System32'),root,
       win32.join(root,'System32','WindowsPowerShell','v1.0')].join(';'),
-    PSModulePath:[modulePath].concat(
-      typeof process.env.PSModulePath==='string'?process.env.PSModulePath.split(';'):[]
-    ).filter(Boolean).join(';')
+    PSModulePath:modulePath
   };
   for(const key of ['TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','HOMEDRIVE','HOMEPATH']){
     const value=process.env[key];
