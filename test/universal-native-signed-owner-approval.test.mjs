@@ -182,6 +182,27 @@ test('offline parsed certificate rejects a same-repository workflow prefix colli
     name,sha256:candidateSha,expectedCommit:head
   }),/UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
 });
+test('real sigstore-go parsed URI SAN shape honors exact signer workflow boundary',()=>{
+ const name='Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb';
+ const result=JSON.parse(verifiedJson(name));
+ const cert=result[0].verificationResult.signature.certificate;
+ cert.subjectAlternativeName={type:'URI',value:workflowSan};
+ assert.equal(verifiedAttestationSubject(JSON.stringify(result),{
+   name,sha256:candidateSha,expectedCommit:head
+ }),true);
+ for(const invalid of [
+   {type:'URI',value:workflowSan.replace('.yml@','.yml-OTHER@')},
+   {type:'URI',value:workflowSan+'@refs/heads/fake'},
+   {type:'URI',value:workflowSan.replace('@refs/','@')},
+   {type:'DNS',value:workflowSan},
+   {type:'URI',value:null}
+ ]){
+   cert.subjectAlternativeName=invalid;
+   assert.throws(()=>verifiedAttestationSubject(JSON.stringify(result),{
+     name,sha256:candidateSha,expectedCommit:head
+   }),/UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
+ }
+});
 test('user-local WinGet CLI path is consistent across fresh shell and scheduled task',()=>{
  const home='C:\\Users\\owner\\AppData\\Local';
  const expected=path.join(home,'Microsoft','WinGet','Links','gh.exe');
