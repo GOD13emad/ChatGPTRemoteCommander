@@ -127,7 +127,11 @@ test('public offline bundle verifier demands official gh success and pinned subj
        verificationMaterial:{},dsseEnvelope:{}}}]})};
   };
   const fakeVerifier=(_exe,args)=>{
-   if(args[0]==='--version')return ghOk;
+   if(args[0]==='--version'){
+     assert.deepEqual(args,['--version'],'gh version gate must never receive a Sigstore bundle');
+     return ghOk;
+   }
+   assert.deepEqual(args.slice(0,2),['attestation','verify']);
    const i=args.indexOf('--bundle');
    assert.ok(i>0);
    verifiedBundlePath=args[i+1];
