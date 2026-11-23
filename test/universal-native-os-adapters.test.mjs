@@ -130,6 +130,9 @@ test('native Windows adapter needs only built-in PowerShell 5.1 and standard .NE
     assert.match(source,/SHA256\]::Create\(\)/);
     assert.match(source,/BitConverter\]::ToString/);
     assert.doesNotMatch(source,/SHA256\]::HashData|Convert\]::ToHexString/);
+    const registry=events.map(e=>Buffer.from(e.args.at(-1),'base64')
+      .toString('utf16le')).find(s=>s.includes('Get-ChildItem -LiteralPath $root'));
+    assert.match(registry,/\$hits=@\(\)\s+if\(Test-Path -LiteralPath \$root -ErrorAction Stop\)/);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('both native adapters reject changed package hashes before invoking OS package manager',async()=>{

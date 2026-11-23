@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {verifiedAttestationSubject,verifySignedNativeRelease,
   verifyPublicSignedNativeRelease,publicNativeAttestationBundles,
-  officialNativeVerifierBinary,assertSafeGhAttestationVersion,withOfficialSystemCa}
+  officialNativeVerifierBinary,assertSafeGhAttestationVersion,publicAttestationHttpsAgent}
   from '../tools/universal-install/signed-native-provenance.mjs';
 import {windowsGuiApprovalScript}
   from '../tools/universal-install/native-cli.mjs';
@@ -105,38 +105,31 @@ test('offline Sigstore rejects a renamed/re-owned repository even if subject mat
  assert.throws(()=>verifiedAttestationSubject(JSON.stringify(w),
    {name,sha256:candidateSha,expectedCommit:head}),/SIGSTORE_SUBJECT_MISMATCH/);
 });
-test('public attestation temporary system CAs preserve bundled roots and always restore',async()=>{
-  const original=['bundled-one','extra-owner-ca'];
-  const system=['os-trusted-root'];
-  let active=[...original],writes=0;
+test('public attestation uses independent agents and never changes the thread CA list',()=>{
+  const current=['bundled-one','extra-owner-ca'];
+  const system=['os-trusted-root','extra-owner-ca'];
   const tlsApi={
     getCACertificates(type){
-      if(type==='default')return [...active];
+      if(type==='default')return [...current];
       if(type==='system')return [...system];
       throw Error('Unexpected source');
     },
-    setDefaultCACertificates(certs){active=[...certs];writes++;}
+    setDefaultCACertificates(){assert.fail('default TLS trust was modified');}
   };
-  const result=await withOfficialSystemCa(async()=>{
-    assert.deepEqual(active,[...original,...system],
-      'trusted OS roots add to bundled roots, never replace them');
-    return 200;
-  },{tlsApi});
-  assert.equal(result,200);
-  assert.deepEqual(active,original,'temporary CA extension must be reverted');
-  await assert.rejects(withOfficialSystemCa(async()=>{
-    assert.deepEqual(active,[...original,...system]);
-    throw Error('network failed');
-  },{tlsApi}),/network failed/);
-  assert.deepEqual(active,original,'failure cannot leak changed CA policy');
-  assert.equal(writes,4);
-  await assert.rejects(withOfficialSystemCa(null,{tlsApi}),/SYSTEM_CA_ACTION_INVALID/);
-  assert.deepEqual(active,original);
-  const absent={...tlsApi,getCACertificates(type){
-    return type==='system'?[]:[...original];
-  }};
-  assert.equal(await withOfficialSystemCa(async()=>204,{tlsApi:absent}),204);
-  assert.deepEqual(active,original);
+  const a=publicAttestationHttpsAgent({tlsApi,proxyEnv:{}});
+  const b=publicAttestationHttpsAgent({tlsApi,proxyEnv:{}});
+  try{
+    assert.notEqual(a,b);
+    assert.deepEqual(a.options.ca,[...current,system[0]]);
+    assert.deepEqual(b.options.ca,[...current,system[0]]);
+    assert.notEqual(a.options.ca,b.options.ca);
+    assert.equal(a.options.keepAlive,false);
+    assert.equal(a.options.rejectUnauthorized,true);
+  }finally{a.destroy();b.destroy();}
+  assert.equal(publicAttestationHttpsAgent({tlsApi:{}}),null);
+  assert.equal(publicAttestationHttpsAgent({
+    tlsApi:{getCACertificates:()=>[]}
+  }),null);
 });
 
 test('public attestation retrieval fails closed on missing or invalid bundles',async()=>{

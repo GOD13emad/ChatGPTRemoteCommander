@@ -55,6 +55,7 @@ test('one package contract covers both operating systems and all nine accepted c
   for(const f of contract.requiredEmbeddedCoreFiles)
     assert.ok(contract.requiredSourceFiles.includes(f) || f==='config.json',f);
   for(const p of ['packaging/unified/package.json',
+    'packaging/unified/owner-dpapi-profile-recovery.ps1',
     'packaging/unified/owner-systemd-creds-profile-recovery.sh']){
     assert.ok(contract.requiredEmbeddedCoreFiles.includes(p),p);
     assert.ok(contract.requiredSourceFiles.includes(p),p);

@@ -181,6 +181,7 @@ test('public Core embeds owner cutover and recovery dependencies only under audi
  const required=['packaging/unified/owner-pinned-provenance.mjs',
    'packaging/unified/migration-preflight.mjs',
    'packaging/unified/package.json',
+   'packaging/unified/owner-dpapi-profile-recovery.ps1',
    'packaging/unified/owner-systemd-creds-profile-recovery.sh',
    'tools/plan-owner-private-tunnel-cutover.mjs',
    'tools/inspect-owner-private-tunnel-cutover.mjs'];
@@ -201,8 +202,9 @@ test('public Core embeds owner cutover and recovery dependencies only under audi
    'packaging/unified/owner-pinned-provenance.mjs',
    'packaging/unified/migration-preflight.mjs',
    'packaging/unified/package.json',
+   'packaging/unified/owner-dpapi-profile-recovery.ps1',
    'packaging/unified/owner-systemd-creds-profile-recovery.sh'
- ].sort(),'packaging must not widen beyond the four audited public recovery dependencies');
+ ].sort(),'packaging must not widen beyond the audited public recovery dependencies');
  const planner=await import(pathToFileURL(path.join(resource,
    'tools/plan-owner-private-tunnel-cutover.mjs')).href);
  assert.equal(typeof planner.planOwnerPrivateTunnelCutover,'function',
@@ -434,7 +436,7 @@ test('preview upgrade refuses oversized runtime data without replacing current C
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
-test('hosted public native DEB path policy admits only four audited packaging files and rejects private paths', {
+test('hosted public native DEB path policy admits audited packaging files and rejects private paths', {
   skip: process.platform!=='linux'
 },()=>{
   const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
@@ -444,6 +446,7 @@ test('hosted public native DEB path policy admits only four audited packaging fi
     'packaging/unified','packaging/unified/owner-pinned-provenance.mjs',
     'packaging/unified/migration-preflight.mjs',
     'packaging/unified/package.json',
+    'packaging/unified/owner-dpapi-profile-recovery.ps1',
     'packaging/unified/owner-systemd-creds-profile-recovery.sh'];
   const execute=(paths)=>{
     const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
@@ -475,7 +478,8 @@ test('hosted public native DEB path policy admits only four audited packaging fi
     assert.match(invalid.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   }
   for(const required of ['packaging/unified/migration-preflight.mjs',
-    'packaging/unified/package.json','packaging/unified/owner-systemd-creds-profile-recovery.sh']){
+    'packaging/unified/package.json','packaging/unified/owner-dpapi-profile-recovery.ps1',
+    'packaging/unified/owner-systemd-creds-profile-recovery.sh']){
     const missing=execute(base.filter(p=>p!==required));
     assert.notEqual(missing.status,0,'must reject missing required '+required);
     assert.match(missing.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
