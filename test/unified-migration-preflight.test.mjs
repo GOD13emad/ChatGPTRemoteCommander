@@ -762,7 +762,7 @@ test('Debian dev.10 candidate is strictly ahead of dev.6 without implying instal
  const app=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
  const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
- assert.equal(app.version,'0.12.0-dev.10');
+ assert.equal(app.version,'0.12.0-dev.11');
  assert.equal(app.version,gui.version);
  assert.equal(train.sourceVersion,app.version);
  assert.equal(train.installedPromotionApproved,false);

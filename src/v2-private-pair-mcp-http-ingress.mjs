@@ -13,7 +13,7 @@ const TOOL=/^[a-z][a-z0-9_]{0,79}$/;
 const RESERVED=new Set(['v2_private_owner_bind','v2_workflow_step']);
 const MODERN_VERSION='2026-07-28';
 const LEGACY_VERSIONS=Object.freeze(['2025-11-25']);
-const SERVER_INFO=Object.freeze({name:'commander-v012-private-candidate',version:'0.12.0-dev.10'});
+const SERVER_INFO=Object.freeze({name:'commander-v012-private-candidate',version:'0.12.0-dev.11'});
 const SERVER_META=Object.freeze({'io.modelcontextprotocol/serverInfo':SERVER_INFO});
 function snapshotTrustedCatalog(value){
   if(!Array.isArray(value)||isProxy(value)||value.length>512)

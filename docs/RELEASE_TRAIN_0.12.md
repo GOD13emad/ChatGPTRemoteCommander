@@ -1,4 +1,10 @@
-# Release Train 0.12 — `0.12.0-dev.10` candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.11` candidate (NoPromote)
+
+## Dev.11 upgrade-source proposal (23 November 2026)
+
+The shared source identity advances Core, Desktop, NSIS, DEB and plugin templates to dev.11. Owner Linux already has dev.10 and must not be reinstalled with a same-version candidate. This proposal derives from tested PR 556 source 8240784705a4e2802a4c70be43e71f4922f52ed0.
+
+Status remains INTEGRATION_CANDIDATE_NOT_FINAL, NoPromote. The new exact-source signed binaries, operator authorization, current-chat grants, service rollback and live cutover require independent validation. Historical Dev.10 evidence below is not transferred to the next SHA.
 
 ## Dev.10 source preparation (22 November 2026)
 
