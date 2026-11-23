@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {createOwnerPrivatePairBootstrap}
   from '../src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs';
 import {createV012PrivateCoreRuntime}
-  from '/usr/lib/chatgpt-remote-commander/app/src/v012-private-core-runtime.mjs';
+  from '../src/v012-private-core-runtime.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function post({port,ca,cert,key,method,name,timeoutMs=5000}){

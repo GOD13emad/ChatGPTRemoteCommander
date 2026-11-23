@@ -39,15 +39,6 @@ const d=process.argv[2],k=generateKeyPairSync('ed25519');
 fs.writeFileSync(path.join(d,'private.pem'),k.privateKey.export({format:'pem',type:'pkcs8'}),{flag:'wx',mode:0o600});
 fs.writeFileSync(path.join(d,'public.pem'),k.publicKey.export({format:'pem',type:'spki'}),{flag:'wx',mode:0o600});
 JS
-cat > "$qa/loader.mjs" <<EOF
-export async function resolve(specifier,context,nextResolve){
- const r=await nextResolve(specifier,context);
- if(r.url==='file:///usr/lib/chatgpt-remote-commander/app/src/native-owner-session-provider-linux.mjs')
-   return {url:'file://$root/src/native-owner-session-provider-linux.mjs',shortCircuit:true};
- return r;
-}
-EOF
-chmod 600 "$qa/loader.mjs"
 systemd-run --user --quiet --unit="$brokerUnit" -p NoNewPrivileges=yes \
  -p RuntimeMaxSec=50s -E RC012_NATIVE_BROKER_SCOPE=READ_ONLY_OWNER_WITNESS \
  "$node" "$root/tools/linux-native-tunnel-observer-broker.mjs" \
@@ -70,7 +61,6 @@ systemd-run --user --quiet --pipe --wait --collect --unit="$qaUnit" \
  -E RC012_OWNER_WITNESS_SOCKET_PATH="$qa/proof.sock" \
  -E RC012_OWNER_WITNESS_PUBLIC_KEY_PATH="$qa/public.pem" \
  -E RC012_OWNER_PAIR_DIR="$dir" \
- "$node" --experimental-loader "$qa/loader.mjs" \
- "$root/tools/qa-v012-broker-core-no-grant-linux.mjs"
+ "$node" "$root/tools/qa-v012-broker-core-no-grant-linux.mjs"
 [ "$original" = "$(systemctl --user show "$mainUnit" -p MainPID --value)" ] || { echo RC012_ORIGINAL_CORE_PID_CHANGED;exit 2;}
 echo RC012_PRODUCTION_CORE_AND_TUNNEL_UNCHANGED_NO_GRANT_QA_COMPLETE
