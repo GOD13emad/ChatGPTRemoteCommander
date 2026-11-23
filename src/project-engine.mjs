@@ -168,8 +168,11 @@ export function createProjectEngine({directory,planner,workerPlanner,execute,obs
     provider:planner.describe?.()??{},workerProvider:workerEnabled?(workerPlanner.describe?.()??{}):null});
   const engineDirectory=privateDirectory(directory);
   const location=path.join(engineDirectory,'project-runs.sqlite');
-  for(const suffix of ['','-journal','-wal','-shm']) if(fs.existsSync(location+suffix)) {
-    const stat=fs.lstatSync(location+suffix);
+  // Concurrent SQLite DELETE-mode transactions may delete their journal
+  // between a presence check and lstat. Check once and fail closed if present.
+  for(const suffix of ['','-journal','-wal','-shm']) {
+    const stat=fs.lstatSync(location+suffix,{throwIfNoEntry:false});
+    if(!stat)continue;
     if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1) error('PROJECT_STATE_ALIAS');
   }
   const db=new DatabaseSync(location,{allowExtension:false});

@@ -142,9 +142,12 @@ export class V2GrantRegistry {
     this.now = now;
     this.directory = assertPrivatePath(directory);
     this.location = path.join(this.directory, 'v2-access.sqlite');
+    // SQLite may delete a transient rollback journal between an existence probe
+    // and lstat while another process commits. A single no-entry-tolerant lstat
+    // preserves fail-closed validation for entries that are actually present.
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
-      if (!fs.existsSync(this.location + suffix)) continue;
-      const info = fs.lstatSync(this.location + suffix);
+      const info = fs.lstatSync(this.location + suffix, { throwIfNoEntry: false });
+      if (!info) continue;
       if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) fail('V2_GRANT_ALIAS_NOT_ALLOWED');
     }
     this.db = new DatabaseSync(this.location, { allowExtension: false });

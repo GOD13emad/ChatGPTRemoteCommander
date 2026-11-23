@@ -5,7 +5,7 @@ const {app,BrowserWindow,session}=require('electron');
 const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
-const {createHash}=require('node:crypto');
+const {validateBundledCompanion}=require('./companion-integrity.cjs');
 const {createCompanionBridge}=require('./browser-companion-bridge.cjs');
 const roots=path.resolve(__dirname,'.stage/companion');
 const compartment='persist:rc012-ci-companion';
@@ -18,20 +18,7 @@ const fail=(error)=>{
   process.exitCode=2;
 };
 function stage(){
-  const receipt=JSON.parse(fs.readFileSync(path.join(roots,'source-manifest.json'),'utf8'));
-  if(receipt.schema!==1||receipt.kind!=='COMMANDER_OPTIONAL_BROWSER_COMPANION'
-      ||receipt.count!==8||Object.keys(receipt.files??{}).length!==8)
-    throw Error('STAGE_RECEIPT_INVALID');
-  const dir=path.join(roots,'extensions/chatgpt-companion');
-  for(const [rel,hash] of Object.entries(receipt.files)){
-    if(!/^extensions\/chatgpt-companion\/[A-Za-z0-9._-]+$/.test(rel)
-      ||!/^[a-f0-9]{64}$/.test(hash))throw Error('STAGE_ENTRY_INVALID');
-    const file=path.join(roots,...rel.split('/')),stat=fs.lstatSync(file);
-    if(!stat.isFile()||stat.isSymbolicLink()
-      ||createHash('sha256').update(fs.readFileSync(file)).digest('hex')!==hash)
-      throw Error('STAGE_SHA_MISMATCH');
-  }
-  return dir;
+  return validateBundledCompanion(roots,path.resolve(__dirname,'.stage/core'));
 }
 function cleanup(){
   if(timer){clearTimeout(timer);timer=null;}

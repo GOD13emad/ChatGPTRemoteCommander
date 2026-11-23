@@ -8,6 +8,7 @@ files:
   - preload.cjs
   - pilot-runtime.cjs
   - browser-companion-bridge.cjs
+  - companion-integrity.cjs
   - browser-companion-targets.cjs
   - migration-preflight.mjs
   - owner-windows-legacy-migrate.ps1

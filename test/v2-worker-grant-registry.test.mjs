@@ -316,6 +316,34 @@ test('V2 schema v2 upgrades additively to v3 and preserves existing route grants
   }finally{registry.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('transient SQLite journal disappearance does not fail grant admission or relax alias checks',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-grant-journal-race-'));
+  const directory=path.join(root,'secure');
+  fs.mkdirSync(directory,{recursive:true,mode:0o700});
+  const journal=path.join(directory,'v2-access.sqlite-journal');
+  const originalExists=fs.existsSync;
+  const create=()=>new V2GrantRegistry({directory,authorizeAdministration:()=>true});
+  try{
+    // Deterministic stale presence result: the rollback journal is gone at
+    // lstat time, as observed during two-process CI concurrency.
+    fs.existsSync=(entry)=>entry===journal ? true : originalExists(entry);
+    let registry;
+    try{
+      registry=create();
+      assert.equal(registry.db.prepare('PRAGMA journal_mode').get().journal_mode,'delete');
+    }finally{
+      registry?.close();
+      fs.existsSync=originalExists;
+    }
+    // A present non-regular journal still fails closed.
+    fs.mkdirSync(journal);
+    assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);
+  }finally{
+    fs.existsSync=originalExists;
+    fs.rmSync(root,{recursive:true,force:true});
+  }
+});
+
 test('separate Node processes cannot both win the same initial worker-grant revision',async()=>{
   const f=fixture();
   try{
