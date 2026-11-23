@@ -206,10 +206,14 @@ export async function executeNativeTransaction({
     'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED');
   await journal.claim(plan.transactionId);
   try{
-    const fresh=await adapter.snapshot();
-    exactSnapshot(fresh);
-    assert(fresh.version===before.version&&sameRuntime(before,fresh),
-      'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+    try{
+      const fresh=exactSnapshot(await adapter.snapshot());
+      assert(fresh.version===before.version&&sameRuntime(before,fresh),
+        'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+    }catch(error){
+      await journal.write('ABORTED_BEFORE_NATIVE_EFFECT',{action});
+      throw error;
+    }
     const primary=action==='apply'||spec.installationKind==='fresh'
       ?spec.candidate:spec.previous;
     const desiredVersion=action==='rollback'&&spec.installationKind==='fresh'

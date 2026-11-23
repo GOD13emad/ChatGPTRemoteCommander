@@ -63,11 +63,144 @@ function defaultRun(binary,argv,{timeoutMs=15000,checkExit=true}={}){
   if(checkExit)check(r.status===0,'UNIVERSAL_NATIVE_OS_COMMAND_REJECTED');
   return {code:r.status,stdout:r.stdout.trim(),stderr:r.stderr.trim()};
 }
-function ps(script,run,{timeoutMs=15000}={}){
+export function windowsNativePowerShell({env=process.env}={}){
+  // Windows PowerShell 5.1 is built into supported Windows hosts; do not
+  // make package installation depend on separately installed PowerShell 7.
+  const root=env.SystemRoot||String.raw`C:\Windows`;
+  check(typeof root==='string'&&path.win32.isAbsolute(root)
+    &&!/[\r\n\0]/.test(root),
+    'UNIVERSAL_NATIVE_WINDOWS_SYSTEMROOT_INVALID');
+  return path.win32.join(root,'System32','WindowsPowerShell',
+    'v1.0','powershell.exe');
+}
+function ps(script,run,{timeoutMs=30000}={}){
   const enc=Buffer.from(script,'utf16le').toString('base64');
-  return run('pwsh',['-NoLogo','-NoProfile','-NonInteractive',
+  return run(windowsNativePowerShell(),['-NoLogo','-NoProfile','-NonInteractive',
     '-EncodedCommand',enc],{timeoutMs}).stdout;
 }
+// Owner-bound Commander runtime census. Foreign TCP listeners are deliberately excluded.
+// Fail closed on owner-SID mismatch, process reuse/exit, or census drift.
+const windowsRuntimeSource=String.raw`$ErrorActionPreference='Stop'
+function Sha([string]$v) {
+ $digest=[Security.Cryptography.SHA256]::Create()
+ try {return [BitConverter]::ToString($digest.ComputeHash([Text.Encoding]::UTF8.GetBytes($v))).Replace('-','').ToLowerInvariant()}
+ finally {$digest.Dispose()}
+}
+$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+if(!$sid -or $sid -eq 'S-1-5-18') {throw 'UNTRUSTED_OWNER_SESSION'}
+$roots=@(
+ (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'),
+ (Join-Path $env:LOCALAPPDATA 'CommanderV2'),
+ (Join-Path $env:LOCALAPPDATA 'CommanderTransferPilot'),
+ (Join-Path $env:LOCALAPPDATA 'Programs\remote-commander-unified'),
+ (Join-Path $env:ProgramData 'ChatGPTRemoteCommander')
+) | ForEach-Object {([IO.Path]::GetFullPath($_).TrimEnd('\')+'\').ToLowerInvariant()}
+function InRoot([string]$v) {
+ if(!$v -or ![IO.Path]::IsPathRooted($v)){return $false}
+ try{$n=[IO.Path]::GetFullPath($v).ToLowerInvariant()}catch{return $false}
+ foreach($r in $roots){if($n.StartsWith($r,[StringComparison]::OrdinalIgnoreCase)){return $true}}
+ return $false
+}
+function Candidate([object]$p){
+ $exe=[string]$p.ExecutablePath
+ if(InRoot $exe){return $exe}
+ if(!$exe -or !$p.CommandLine){return ''}
+ $name=[IO.Path]::GetFileName($exe).ToLowerInvariant()
+ if($name -notin @('node.exe','pwsh.exe','powershell.exe','python.exe','pythonw.exe')){return ''}
+ $line=[string]$p.CommandLine
+ if($name -match '^(pwsh|powershell)\.exe$'){
+  if($line -match '(?i)(?:^|\s)-(?:EncodedCommand|Command)\b'){return ''}
+  $m=[regex]::Match($line,'(?i)(?:^|\s)-File\s+(?:"([^"]+)"|(\S+))')
+  if(!$m.Success){return ''}
+  $file=if($m.Groups[1].Success){$m.Groups[1].Value}else{$m.Groups[2].Value}
+  if((InRoot $file) -and $file -match '(?i)\.ps1$'){return $file}
+  return ''
+ }
+ $tokens=@([regex]::Matches($line,'(?:"([^"]+)"|(\S+))')|ForEach-Object {
+  if($_.Groups[1].Success){$_.Groups[1].Value}else{$_.Groups[2].Value}
+ })
+ if($tokens.Count -lt 2){return ''}
+ $skipNext=$false
+ for($i=1;$i -lt $tokens.Count;$i++){
+  $v=[string]$tokens[$i]
+  if($skipNext){$skipNext=$false;continue}
+  if($v -in @('-e','--eval','-p','--print')){return ''}
+  if($v -in @('-r','--require','--import','--loader')){$skipNext=$true;continue}
+  if($v.StartsWith('-')){continue}
+  if((InRoot $v) -and $v -match '(?i)\.(mjs|cjs|js|ps1|py|pyw)$'){return $v}
+  return ''
+ }
+ return ''
+}
+function SnapshotCandidates($procs){
+ $result=@()
+ foreach($p in $procs){
+  $entry=Candidate $p
+  # Per-call operation worker is not the persistent Core/Tunnel identity.
+  if([IO.Path]::GetFileName($entry) -ieq 'operation-worker.mjs'){continue}
+  if(!$entry){continue}
+  if(!$p.ProcessId -or !$p.CreationDate -or !$p.ExecutablePath){throw 'COMMANDER_PROCESS_UNREADABLE'}
+  $result+= [pscustomobject]@{
+   pid=[int]$p.ProcessId
+   created=([datetime]$p.CreationDate).ToUniversalTime().ToString('o')
+   exe=([IO.Path]::GetFullPath($p.ExecutablePath)).ToLowerInvariant()
+   entry=([IO.Path]::GetFullPath($entry)).ToLowerInvariant()
+   cmdHash=Sha([string]$p.CommandLine)
+  }
+ }
+ return @($result |Sort-Object pid)
+}
+$records=@(SnapshotCandidates @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop))
+foreach($row in $records){
+ $p=Get-CimInstance Win32_Process -Filter ('ProcessId='+[string]$row.pid) -ErrorAction Stop
+ if(!$p -or !$p.CreationDate -or ([datetime]$p.CreationDate).ToUniversalTime().ToString('o') -cne $row.created) {
+  throw 'COMMANDER_PROCESS_CHANGED_DURING_OWNER_ATTESTATION'
+ }
+ $owner=Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -ErrorAction Stop
+ if($owner.ReturnValue -ne 0 -or $owner.Sid -cne $sid){
+  throw 'COMMANDER_PROCESS_OWNER_MISMATCH'
+ }
+}
+$tcp=@(Get-NetTCPConnection -State Listen -ErrorAction Stop)
+$pidset=@{};foreach($p in $records){$pidset[[string]$p.pid]=$true}
+$listeners=@($tcp|Where-Object{$pidset.ContainsKey([string]$_.OwningProcess)}|ForEach-Object{
+ [pscustomobject]@{pid=[int]$_.OwningProcess;addr=[string]$_.LocalAddress;port=[int]$_.LocalPort}
+}|Sort-Object pid,port,addr)
+$tasks=@(Get-ScheduledTask -ErrorAction Stop|Where-Object {
+ $_.TaskName -match '^(?i:ChatGPTRemoteCommander-|CommanderV[12]-|CommanderTransferMeshPilot)'
+}|ForEach-Object {
+ $t=$_
+ [pscustomobject]@{
+  key=([string]$t.TaskPath+[string]$t.TaskName).ToLowerInvariant()
+  state=[string]$t.State
+  principal=([string]$t.Principal.UserId).ToLowerInvariant()
+  actions=@($t.Actions|ForEach-Object {
+   [pscustomobject]@{
+    exe=([string]$_.Execute).ToLowerInvariant()
+    args=Sha([string]$_.Arguments)
+    cwd=([string]$_.WorkingDirectory).ToLowerInvariant()
+   }
+  })
+ }
+}|Sort-Object key)
+# The native installed artifact is INTENTIONALLY not a runtime witness:
+# the same authorized native package transaction changes its bytes/version.
+# Native snapshot() checks HKCU uninstall registration + binary FileVersion,
+# and the owner-pinned provenance checks the exact candidate/rollback hashes.
+# Runtime equality must cover independent running Core/Tunnel identities only.
+# The verification census detects concurrent start, exit or PID reuse.
+$again=@(SnapshotCandidates @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop))
+$canonical0=ConvertTo-Json -InputObject $records -Depth 5 -Compress
+$canonical1=ConvertTo-Json -InputObject $again -Depth 5 -Compress
+if($canonical0 -cne $canonical1){throw 'COMMANDER_PROCESS_CENSUS_CHANGED'}
+$data=[ordered]@{
+ schema=1;ownerSid=$sid;tasks=@($tasks);
+ processes=@($records);listeners=@($listeners)
+}
+$body=ConvertTo-Json -InputObject $data -Depth 12 -Compress
+[Console]::Out.Write((Sha($body)))
+`;
+
 function shaOfRuntime(raw){
   check(typeof raw==='string'&&raw.length<100000&&raw.length>0,
     'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
@@ -128,16 +261,7 @@ export function createNativeOsAdapter({
         fail('UNIVERSAL_NATIVE_FRESH_ACTIVE_LEGACY_CORE');
       return shaOfRuntime(inactive?'NO_ACTIVE_COMMANDER_CORE':r.stdout);
     }
-    const script=[
-      "$ErrorActionPreference='Stop'",
-      "$l=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | "+
-        "Select-Object LocalAddress,LocalPort,OwningProcess | "+
-        "Sort-Object LocalAddress,LocalPort,OwningProcess)",
-      "$canonical=($l|ConvertTo-Json -Depth 3 -Compress)",
-      "$hash=[Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($canonical))",
-      "[Console]::Out.Write([Convert]::ToHexString($hash).ToLowerInvariant())"
-    ].join('\n');
-    const digest=ps(script,run);
+    const digest=ps(windowsRuntimeSource,run,{timeoutMs:60000});
     check(HASH.test(digest),'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');
     return digest;
   }
@@ -185,8 +309,10 @@ export function createNativeOsAdapter({
       const script=[
         "$ErrorActionPreference='Stop'",
         "$root='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'",
-        "$hits=@(Get-ChildItem -LiteralPath $root | Where-Object {"+
-          " $_.PSChildName -eq "+shellQuote(WIN_KEY)+" })",
+        // A new Windows account may not have an Uninstall branch yet.
+        "$hits=@(if(Test-Path -LiteralPath $root -PathType Container){"+
+          "Get-ChildItem -LiteralPath $root | Where-Object {"+
+          " $_.PSChildName -eq "+shellQuote(WIN_KEY)+" }})",
         "if($hits.Count -gt 1){throw 'COMMANDER_NSIS_REGISTRY_INVALID'}",
         // One NSIS family per user: never coexist with legacy Inno or HKLM.
         "$legacy=Get-ItemProperty -LiteralPath ($root+'\\RemoteCommander') "+
@@ -201,7 +327,7 @@ export function createNativeOsAdapter({
           "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\RemoteCommander' "+
           "-ErrorAction SilentlyContinue",
         "if($legacy -or $machine -or $legacyMachine -or $legacyWow)"+
-          "{throw 'COMMANDER_DUPLICATE_INSTALL_FAMILY'}",
+          "{[Console]::Out.Write('LEGACY_MIGRATION_REQUIRED');exit 0}",
         "$bin=Join-Path $env:LOCALAPPDATA 'Programs\\remote-commander-unified\\Remote Commander.exe'",
         "$ownerPairs=Join-Path $env:APPDATA 'ChatGPTRemoteCommander\\private-pair'",
         "if($hits.Count -eq 0){",
@@ -217,6 +343,10 @@ export function createNativeOsAdapter({
         "[Console]::Out.Write($v.DisplayVersion)"
       ].join('\n');
       version=ps(script,run);
+      // A verified legacy-family registry hit is NOT a clean fresh
+      // install and MUST NOT be auto-uninstalled or silently replaced.
+      if(version==='LEGACY_MIGRATION_REQUIRED')
+        fail('UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED');
       if(version!=='ABSENT')
         check(VERSION.test(version),'UNIVERSAL_NATIVE_WINDOWS_INSTALLED_VERSION_INVALID');
       else version=null;

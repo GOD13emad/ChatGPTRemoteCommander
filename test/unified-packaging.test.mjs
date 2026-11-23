@@ -56,19 +56,18 @@ test('native Linux and Electron builder derive one exact prerelease version from
      'native build and delivery must not pin one stale candidate revision');
 });
 
-test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{
- const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
- const shared='src tools vendor assets config.json package.json packaging/unified/owner-pinned-provenance.mjs';
- assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
- assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
- const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
- assert.ok(prepare.includes("'src','tools','vendor','assets','config.json','package.json'"));
- const hosted=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
- assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/);
- assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/);
- assert.ok(hosted.includes('python3 - "$OLD" "$NEW"'));
+test('Linux final DEB must match exact public Core manifest in BOTH native and GUI roots',()=>{
+ const builder=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
+ const merge=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ assert.equal(builder.includes('git -C "$ROOT" archive --format=tar "$HEAD"'),false,
+   'whole-repository native source archive reintroduces optional extensions');
+ assert.ok(builder.includes('node "$ROOT/packaging/unified/prepare.mjs"'));
+ assert.ok(builder.includes('validateCore(installed)'));
+ assert.ok(merge.includes('RC012_MERGE_UNMANIFESTED_PUBLIC_CORE_'));
+ assert.ok(merge.includes("for label,root in [('native',core),('gui',gui_core)]"));
+ assert.ok(merge.includes('observed!=allowed'));
+ assert.ok(merge.includes('RC012_MERGE_PUBLIC_CORE_EXTENSION_LEAK_'));
 });
-
 test('one installer definition uses Windows NSIS per user and Linux DEB, not old host repairs',()=>{
  const y=fs.readFileSync(path.join(repo,'packaging/unified/electron-builder.yml'),'utf8');
  assert.match(y,/target: nsis/);
@@ -132,6 +131,16 @@ test('PRIVATE ingress source changes trigger both native package jobs at the exa
  assert.match(y,/upload-artifact@v4/);
 });
 
+test('staged exact-head public Core manifest excludes ALL optional extension files',()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(resource,'source-manifest.json'),'utf8'));
+ assert.equal(manifest.schema,2);
+ assert.equal(manifest.count,Object.keys(manifest.files).length);
+ assert.ok(manifest.files['src/server-v0.3.mjs']);
+ const optional=Object.keys(manifest.files).filter(p=>p==='extensions'||p.startsWith('extensions/'));
+ assert.deepEqual(optional,[],'no optional extensions may ship in public Core');
+ assert.equal(fs.existsSync(path.join(resource,'extensions')),false,
+   'distributable public Core must physically exclude optional extensions');
+});
 test('immutable packaged source and restricted preview boot',async()=>{
  const manifest=validateCore(resource);
  assert.match(manifest.head,/^[0-9a-f]{40}$/);
@@ -363,7 +372,7 @@ test('hosted public native DEB path policy allows only the exact generic provena
   const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
   const section=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]+?)\r?\nPUBLIC_APP_BOUNDARY/u);
   assert.ok(section,'execute the same Python policy embedded in the actual hosted native upgrade test');
-  const base=['src/server-v0.3.mjs','config.json','package.json','packaging',
+  const base=['src/server-v0.3.mjs','config.json','package.json','source-manifest.json','packaging',
     'packaging/unified','packaging/unified/owner-pinned-provenance.mjs'];
   const execute=(paths)=>{
     const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
@@ -381,12 +390,14 @@ test('hosted public native DEB path policy allows only the exact generic provena
   assert.equal(allowed.status,0,allowed.stderr);
   assert.match(allowed.stdout,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/u);
   for(const forbidden of ['packaging/unified/private.mjs','packaging/secret.json',
-    'extensions/specialist.mjs','docs/PROJECT_BRAIN.md']){
+    'extensions/specialist.mjs','docs/PROJECT_BRAIN.md','source-manifest.json.bak']){
     const rejected=execute([...base,forbidden]);
     assert.notEqual(rejected.status,0,'must reject '+forbidden);
     assert.match(rejected.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   }
-  const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
-  assert.notEqual(missingProvenance.status,0);
-  assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  for(const file of ['packaging/unified/owner-pinned-provenance.mjs','source-manifest.json']){
+    const missing=execute(base.filter(p=>p!==file));
+    assert.notEqual(missing.status,0,'must require '+file);
+    assert.match(missing.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  }
 });

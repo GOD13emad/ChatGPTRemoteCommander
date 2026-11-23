@@ -162,6 +162,33 @@ test('success journal releases only the owned lock, never records secrets',async
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('a rejected pre-effect baseline releases the journal for a newly authorized attempt',async()=>{
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-native-qa-'));
+  const directory=path.join(root,'journal');
+  try{
+    const f=fixture();
+    const approveWithDrift=async plan=>{
+      f.setDrift(true);
+      return f.approve(plan);
+    };
+    await assert.rejects(executeNativeTransaction({
+      action:'apply',...f,journal:createNativeFileJournal({directory}),
+      approve:approveWithDrift
+    }),{code:'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT'});
+    assert.deepEqual(f.invocations,[]);
+    assert.equal(fs.existsSync(path.join(directory,'install.lock')),false);
+    const stages=fs.readFileSync(path.join(directory,'events.jsonl'),'utf8')
+      .trim().split('\n').map(line=>JSON.parse(line).stage);
+    assert.deepEqual(stages,['ABORTED_BEFORE_NATIVE_EFFECT']);
+
+    const result=await executeNativeTransaction({
+      action:'apply',...f,journal:createNativeFileJournal({directory})
+    });
+    assert.equal(result.status,'NATIVE_PACKAGE_UPGRADED');
+    assert.deepEqual(f.invocations,['install']);
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 
 test('fresh first-install uses SAME Windows/Linux transaction and native uninstall rollback',async()=>{
   for(const platform of ['windows','linux']){

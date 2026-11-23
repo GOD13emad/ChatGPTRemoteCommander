@@ -59,7 +59,13 @@ const linuxOnlyTest = process.platform === 'linux' ? test : test.skip;
 linuxOnlyTest('one native Linux package installs one dpkg-owned code root shared by all owner profiles',()=>{
   assert.equal(spawnSync('bash',['-n',builderPath]).status,0);
   assert.match(source,/dpkg-deb --root-owner-group --build/);
-  assert.match(source,/git -C "\$ROOT" archive --format=tar "\$HEAD"/);
+  assert.doesNotMatch(source,/git -C "\$ROOT" archive --format=tar "\$HEAD"/,
+    'native Core must not embed whole tracked repository');
+  assert.match(source,/node "\$ROOT\/packaging\/unified\/prepare\.mjs"/,
+    'both GUI and Linux Core must use one reviewed source allowlist');
+  assert.match(source,/cp -a -- "\$PUBLIC_CORE\/\." "\$APP\/"/);
+  assert.match(source,/RC012_NATIVE_PUBLIC_CORE_ALLOWLIST_PASS/);
+  assert.match(source,/validateCore\(installed\)/);
   assert.match(source,/PACKAGE_DIR=\/usr\/lib\/chatgpt-remote-commander/);
   assert.match(source,/native-package-output-guard\.mjs" absent/);
   assert.match(source,/EXPECTED_PACKAGE_SHA256/);

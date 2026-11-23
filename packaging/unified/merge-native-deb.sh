@@ -103,6 +103,26 @@ for rel, digest in manifest['files'].items():
     h=lambda f:hashlib.sha256(f.read_bytes()).hexdigest()
     if h(a)!=digest or h(b)!=digest:
         raise SystemExit('RC012_MERGE_SOURCE_DRIFT '+rel)
+# A partial positive-hash check is not enough: old native app builders
+# archived the WHOLE repository, silently adding optional extensions under
+# /usr/lib/.../app even after the GUI Core allowlist had been cleaned.
+allowed=set(manifest['files'])|{'source-manifest.json'}
+for label,root in [('native',core),('gui',gui_core)]:
+    observed=set()
+    for base,dirs,files in os.walk(root,topdown=True,followlinks=False):
+        for name in list(dirs)+files:
+            p=pathlib.Path(base)/name
+            if p.is_symlink():
+                raise SystemExit('RC012_MERGE_PUBLIC_CORE_SYMLINK '+label)
+            if p.is_file():
+                observed.add(p.relative_to(root).as_posix())
+    extra=observed-allowed
+    if extra:
+        raise SystemExit('RC012_MERGE_UNMANIFESTED_PUBLIC_CORE_'+label+' '+sorted(extra)[0])
+    if observed!=allowed:
+        raise SystemExit('RC012_MERGE_PUBLIC_CORE_INCOMPLETE_'+label)
+    if any(p.startswith('extensions/') for p in observed):
+        raise SystemExit('RC012_MERGE_PUBLIC_CORE_EXTENSION_LEAK_'+label)
 required=[
     runtime/'runtime/node',
     runtime/'tunnel/native-tunnel-launch.sh',
