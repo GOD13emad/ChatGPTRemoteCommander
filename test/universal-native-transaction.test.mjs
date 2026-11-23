@@ -24,7 +24,22 @@ function fixture(platform='linux'){
     runtime:{fingerprint:drift?'0'.repeat(64):H,
       liveCoreCutover:false,ownerGrantIssued:false,existingTunnelModified:false}
   });
+  let proofReads=0;
   const adapter={
+    proveRestoreBaseline:async(previous,before)=>{
+      proofReads++;
+      const valid=mode!=='hybrid-installed-payload';
+      const changed=mode==='proof-drift'&&proofReads>2;
+      return {
+        schema:'rc-universal-native-baseline-proof-v1',
+        artifactSha256:previous.sha256,version:previous.version,
+        archivedPayloadSha256:P,
+        installedPayloadSha256:valid&&!changed?P:C,
+        runtimeFingerprint:before.runtime.fingerprint,
+        completeInventory:true,nativeRegistrationVerified:true,
+        ownerRestoreVerified:true,provenanceVerified:mode!=='unsigned-previous'
+      };
+    },
     inspect:async artifact=>({
       ...artifact,product:input.product,format:'native',
       platform,architecture:'x64'
@@ -50,6 +65,45 @@ function fixture(platform='linux'){
     setMode:x=>{mode=x;},setDrift:x=>{drift=x;},
     setVersion:x=>{version=x;},getVersion:()=>version};
 }
+test('hybrid or unsigned previous payload never becomes an approved upgrade plan',async()=>{
+  for(const platform of ['windows','linux']){
+    for(const mode of ['hybrid-installed-payload','unsigned-previous']){
+      const f=fixture(platform);f.setMode(mode);
+      const plan=await executeNativeTransaction({action:'plan',input:f.input,adapter:f.adapter});
+      assert.equal(plan.status,'BASELINE_RESTORE_UNVERIFIED');
+      assert.equal(plan.plan.rollbackArtifactVerified,false);
+      assert.equal(plan.plan.previousArtifactHashVerified,true);
+      await assert.rejects(executeNativeTransaction({
+        action:'apply',...f
+      }),{code:'UNIVERSAL_NATIVE_BASELINE_RESTORE_UNVERIFIED'});
+      assert.deepEqual(f.invocations,[]);
+    }
+  }
+});
+test('missing independent restore provider blocks plan and effect on both OSes',async()=>{
+  for(const platform of ['windows','linux']){
+    const f=fixture(platform);
+    delete f.adapter.proveRestoreBaseline;
+    const plan=await executeNativeTransaction({action:'plan',input:f.input,adapter:f.adapter});
+    assert.equal(plan.status,'BASELINE_RESTORE_UNVERIFIED');
+    assert.equal(plan.plan.baselineRestoreVerified,false);
+    await assert.rejects(executeNativeTransaction({action:'apply',...f}),
+      {code:'UNIVERSAL_NATIVE_BASELINE_RESTORE_UNVERIFIED'});
+    assert.deepEqual(f.invocations,[]);
+  }
+});
+test('baseline proof is retested after native approval, before any package mutation',async()=>{
+  const f=fixture('windows');f.setMode('proof-drift');
+  const first=await executeNativeTransaction({action:'plan',input:f.input,adapter:f.adapter});
+  assert.equal(first.status,'READY_TO_APPLY');
+  await assert.rejects(executeNativeTransaction({action:'apply',...f}),
+    {code:'UNIVERSAL_NATIVE_BASELINE_RESTORE_UNVERIFIED'});
+  // Approval succeeded, but the second native receipt was no longer exact.
+  // No INTENT_COMMITTED and no platform-native installer was invoked.
+  assert.deepEqual(f.events,['claim','close']);
+  assert.deepEqual(f.invocations,[]);
+});
+
 test('one OS-neutral plan identity and DENY-by-default for Windows/Linux',async()=>{
   for(const platform of ['windows','linux']){
     const f=fixture(platform);
