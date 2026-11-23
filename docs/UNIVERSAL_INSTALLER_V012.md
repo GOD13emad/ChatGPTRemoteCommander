@@ -70,7 +70,11 @@ pinned release provenance → owner OS consent → exclusive journal lock →
 native package effect → independent version, integrity and runtime checks →
 commit / verified rollback or stop`. Windows uses the existing per-user
 NSIS appId; Linux uses the same dpkg identity and polkit for owner-visible
-privileged package operations. `--fresh` accepts only actual package absence
+privileged package operations. The Windows native adapter uses only the
+built-in `System32/WindowsPowerShell/v1.0/powershell.exe` with PowerShell
+5.1-compatible .NET SHA256 runtime fingerprints; no PowerShell 7/
+`pwsh` prerequisite is required for installation. The same native
+transaction, identity checks, owner approval and journal remain unchanged. `--fresh` accepts only actual package absence
 with no owner profile/legacy state. Upgrade uses exact previous native
 binary; rollback from a clean install requires native absence. Unknown
 effects are reconciled before retry; a failed check is never a release PASS.
