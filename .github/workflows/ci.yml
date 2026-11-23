@@ -59,8 +59,8 @@ jobs:
         run: npm run test:v012-owner-worker-admission
       # Keep R157's validated Windows qualification command grammar intact.
       # Run shared installer QA once per OS, as one independent CI step.
-      - name: Verify scoped Browser Core companion and extension pairing (NoPromote)
-        run: node --test test/browser-companion-bridge.test.mjs
+      - name: Verify Browser Core companion, packed byte integrity and extension pairing (NoPromote)
+        run: node --test test/browser-companion-bridge.test.mjs test/verify-compiled-companion.test.mjs
       - name: Verify universal installer transactions and native parity contracts
         run: npm run test:universal-install
       - name: Reject specialist payloads in public Release ZIPs (negative fixtures)

@@ -55,6 +55,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
+      - name: Verify optional Companion manifest path, hash and permission fail-closed guards
+        run: node --test test/verify-compiled-companion.test.mjs
       - name: Verify identical native transaction and OS adapter contracts
         run: node --test test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs
       - name: Verify native owner/Worker denial and DPAPI custody on both OSes
@@ -180,6 +182,10 @@ jobs:
             --core-root "$dest/opt/Remote Commander/resources/core" \
             --source-manifest "$(pwd)/packaging/unified/.stage/core/source-manifest.json" \
             --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+          node test/verify-compiled-companion.mjs \
+            --companion-root "$dest/opt/Remote Commander/resources/companion" \
+            --source-manifest "$(pwd)/packaging/unified/.stage/companion/source-manifest.json" \
+            --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Verify actual Windows NSIS embeds SHA-pinned public Core
         if: runner.os == 'Windows'
         shell: pwsh
@@ -192,9 +198,10 @@ jobs:
           if (-not (Test-Path -LiteralPath $zipPath)) { throw 'NATIVE_CORE_NATIVE_7Z_MISSING' }
           $dest = Join-Path $env:RUNNER_TEMP 'rc012-compiled-nsis-verify'
           New-Item -ItemType Directory -Path $dest -Force | Out-Null
-          & $zipPath x -t7z -y "-o$dest" $exes[0].FullName 'resources\core\*'
+          & $zipPath x -t7z -y "-o$dest" $exes[0].FullName 'resources\core\*' 'resources\companion\*'
           if ($LASTEXITCODE -ne 0) { throw 'NATIVE_CORE_NSIS_EXTRACT_FAILED' }
           node test/native-compiled-core-verifier.mjs --core-root (Join-Path $dest 'resources/core') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/core/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
+          node test/verify-compiled-companion.mjs --companion-root (Join-Path $dest 'resources/companion') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/companion/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
       - name: Artifact fingerprint (Linux)
         if: runner.os == 'Linux'
         run: sha256sum dist/unified/*.deb
