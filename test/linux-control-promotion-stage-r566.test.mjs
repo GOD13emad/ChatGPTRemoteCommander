@@ -46,7 +46,7 @@ function promoteInFixture(f,stage,commit,ref='refs/heads/rollback-r521'){
     promote,
     'promote_control "$1" "$2"'
   ].join('\n');
-  return spawnSync('bash',['-c',sh,'rc-r566',commit,ref],{
+  return spawnSync('bash',['-s','--',commit,ref],{input:sh,
     encoding:'utf8',timeout:20000,
     env:{...process.env,GIT_TERMINAL_PROMPT:'0',GIT_CONFIG_GLOBAL:'/dev/null',GIT_CONFIG_SYSTEM:'/dev/null',GIT_ALLOW_PROTOCOL:'file'}
   });
