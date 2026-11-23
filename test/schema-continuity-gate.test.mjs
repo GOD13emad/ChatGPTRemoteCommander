@@ -141,3 +141,30 @@ test('SSRF guard blocks redirects from a loopback schema endpoint to a different
   }),/redirect|fetch failed/i);
  }finally{await close(source);}
 });
+
+test('schema endpoint reconstruction retains canonical permitted loopback forms',()=>{
+  for(const host of ['127.0.0.1','localhost','[::1]']){
+    for(const endpoint of ['/mcp','/router/status']){
+      const input=`http://${host}:47831${endpoint}`;
+      const role=endpoint==='/mcp'?'mcp':'router';
+      assert.equal(validateLocalSchemaEndpoint(input,role),input);
+    }
+  }
+});
+
+test('schema preflight rejects an unsafe later endpoint before contacting the first',async()=>{
+  let requests=0;
+  const source=server((_req,res)=>{requests+=1;res.end('{}');});
+  const port=await listen(source);
+  const safe=`http://127.0.0.1:${port}/mcp`;
+  try{
+    await assert.rejects(evaluateSchemaContinuity({
+      oldUrl:safe,candidateUrl:'http://example.com:47832/mcp',
+      routerUrl:'http://127.0.0.1:47833/router/status'
+    }),/SCHEMA_ENDPOINT_LOOPBACK_REQUIRED/);
+    await assert.rejects(evaluateSchemaContinuity({
+      oldUrl:safe,candidateUrl:safe,routerUrl:'http://10.0.0.1:47833/router/status'
+    }),/SCHEMA_ENDPOINT_LOOPBACK_REQUIRED/);
+    assert.equal(requests,0);
+  }finally{await close(source);}
+});
