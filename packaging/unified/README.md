@@ -210,11 +210,7 @@ Windows NSIS installer or Linux DEB, its SHA-256, and an absolute installed
 payload root. It uses only host-native bsdtar/tar or dpkg-deb; it does
 **not** install, elevate, restart, switch tunnels or issue an owner grant.
 
-    node tools/universal-install/native-baseline-audit.mjs \
-      --previous <absolute-native-installer-path> \
-      --sha256 <64-character-lowercase-sha256> \
-      --installed-root <absolute-installed-payload-root> \
-      --registration
+    node tools/universal-install/native-baseline-audit.mjs --previous "ABSOLUTE_NATIVE_INSTALLER" --sha256 "64_LOWERCASE_HEX_SHA256" --installed-root "ABSOLUTE_INSTALLED_PAYLOAD_ROOT" --registration
 
 The optional --registration flag also observes native registration without
 changing it. Windows checks the fixed current-user NSIS key, uninstaller
