@@ -36,9 +36,8 @@ import subprocess, sys
 prefix="./usr/lib/chatgpt-remote-commander/app/"
 allowed_dirs={"src","tools","vendor","assets"}
 allowed_files={"config.json","package.json"}
-# The one explicitly pinned provenance module is shared between GUI and
-# Native source archives. Its parents are directories only; never allow
-# arbitrary packaging/ files or symlinks into the public Native Core.
+# Only the pinned provenance file and its actual directory parents may join
+# the public Core. No extra packaging children or symlink substitutions.
 provenance_dirs={"packaging","packaging/unified"}
 provenance_file="packaging/unified/owner-pinned-provenance.mjs"
 for pkg in sys.argv[1:]:
@@ -59,7 +58,7 @@ for pkg in sys.argv[1:]:
             seen.add(relative)
             continue
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
-    required={"package.json","config.json","src/server-v0.3.mjs"}
+    required={"package.json","config.json","src/server-v0.3.mjs","packaging/unified/owner-pinned-provenance.mjs"}
     if not required.issubset(seen):
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING")
 print("RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS")
