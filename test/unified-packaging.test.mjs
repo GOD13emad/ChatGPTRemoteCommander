@@ -386,7 +386,7 @@ test('hosted public native DEB path policy allows only the exact generic provena
   const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
   const section=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]+?)\r?\nPUBLIC_APP_BOUNDARY/u);
   assert.ok(section,'execute the same Python policy embedded in the actual hosted native upgrade test');
-  const base=['src/server-v0.3.mjs','config.json','package.json','packaging',
+  const base=['src/server-v0.3.mjs','config.json','package.json','source-manifest.json','packaging',
     'packaging/unified','packaging/unified/owner-pinned-provenance.mjs'];
   const execute=(paths)=>{
     const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
@@ -408,6 +408,14 @@ test('hosted public native DEB path policy allows only the exact generic provena
     const rejected=execute([...base,forbidden]);
     assert.notEqual(rejected.status,0,'must reject '+forbidden);
     assert.match(rejected.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+  }
+  const missingSourceManifest=execute(base.filter(p=>p!=='source-manifest.json'));
+  assert.notEqual(missingSourceManifest.status,0);
+  assert.match(missingSourceManifest.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  for(const unexpected of ['source-manifest.json.bak','source-manifest.json/secret']) {
+    const invalid=execute([...base,unexpected]);
+    assert.notEqual(invalid.status,0);
+    assert.match(invalid.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   }
   const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
   assert.notEqual(missingProvenance.status,0);

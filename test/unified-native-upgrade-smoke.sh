@@ -35,7 +35,7 @@ python3 - "$OLD" "$NEW" <<'PUBLIC_APP_BOUNDARY'
 import subprocess, sys
 prefix="./usr/lib/chatgpt-remote-commander/app/"
 allowed_dirs={"src","tools","vendor","assets"}
-allowed_files={"config.json","package.json","packaging/unified/owner-pinned-provenance.mjs"}
+allowed_files={"config.json","package.json","source-manifest.json","packaging/unified/owner-pinned-provenance.mjs"}
 allowed_scaffolding={"packaging","packaging/unified"}
 for pkg in sys.argv[1:]:
     listing=subprocess.check_output(["dpkg-deb","--contents",pkg],text=True)
@@ -50,7 +50,7 @@ for pkg in sys.argv[1:]:
             seen.add(relative)
             continue
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
-    required={"package.json","config.json","src/server-v0.3.mjs","packaging/unified/owner-pinned-provenance.mjs"}
+    required={"package.json","config.json","source-manifest.json","src/server-v0.3.mjs","packaging/unified/owner-pinned-provenance.mjs"}
     if not required.issubset(seen):
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING")
 print("RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS")
