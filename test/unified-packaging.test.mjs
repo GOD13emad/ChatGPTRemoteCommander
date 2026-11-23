@@ -16,6 +16,15 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const resource=path.join(repo,'packaging/unified/.stage/core');
 const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
+test('the patched packager matcher preserves the callable legacy dir-compare dependency',()=>{
+  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
+  const lock=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package-lock.json'),'utf8'));
+  assert.deepEqual(gui.overrides,{'minimatch@>=7.0.0 <11.0.1':'11.0.9'});
+  assert.equal(lock.packages['node_modules/minimatch'].version,'11.0.9');
+  assert.match(lock.packages['node_modules/dir-compare/node_modules/minimatch'].version,/^3\./);
+  assert.match(lock.packages['node_modules/glob/node_modules/minimatch'].version,/^3\./);
+});
+
 test('native Linux and Electron builder derive one exact prerelease version from Core, GUI, and release train',()=>{
  const core=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
