@@ -119,6 +119,16 @@ test('PRIVATE ingress source changes trigger both native package jobs at the exa
  assert.match(y,/upload-artifact@v4/);
 });
 
+test('staged exact-head public Core manifest excludes ALL optional extension files',()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(resource,'source-manifest.json'),'utf8'));
+ assert.equal(manifest.schema,2);
+ assert.equal(manifest.count,Object.keys(manifest.files).length);
+ assert.ok(manifest.files['src/server-v0.3.mjs']);
+ const optional=Object.keys(manifest.files).filter(p=>p==='extensions'||p.startsWith('extensions/'));
+ assert.deepEqual(optional,[],'no optional extensions may ship in public Core');
+ assert.equal(fs.existsSync(path.join(resource,'extensions')),false,
+   'distributable public Core must physically exclude optional extensions');
+});
 test('immutable packaged source and restricted preview boot',async()=>{
  const manifest=validateCore(resource);
  assert.match(manifest.head,/^[0-9a-f]{40}$/);
