@@ -1,7 +1,7 @@
 const status=document.getElementById('status'),code=document.getElementById('code');
 function show(x){status.textContent=x;}
 async function send(msg){return await chrome.runtime.sendMessage(msg);}
-async function refresh(){try{const r=await send({kind:'STATUS'});show(r.paired?'Paired':'Not connected');}catch{show('Extension unavailable');}}
+async function refresh(){try{const r=await send({kind:'STATUS'});show(r.paired?'Paired':r.bridgeUnverified?'Reconnect: Commander pairing unavailable':'Not connected');}catch{show('Extension unavailable');}}
 document.getElementById('pair').addEventListener('click',async()=>{
   const value=code.value.trim().toUpperCase();
   if(!/^[A-F0-9]{16}$/.test(value)){show('Enter the 16-character code');return;}

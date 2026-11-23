@@ -58,10 +58,16 @@ function createCompanionBridge({port=41267, now=()=>Date.now(), maxClients=8}={}
     return {code:pairCode,expiresAtEpochMs:pairExpiry};
   }
   newCode();
-  const observe=()=>[...clients.values()].map(x=>({
-    origin:x.origin,lastSeenAtEpochMs:x.lastSeenAtEpochMs,
-    phase:x.phase,localRef:x.localRef
-  }));
+  // A stopped content script, closed tab or suspended MV3 worker must not
+  // continue presenting its last observed chat as currently active.
+  const observe=()=>[...clients.values()].map(x=>{
+    const fresh=now()-x.lastSeenAtEpochMs<=90000;
+    return {
+      origin:x.origin,lastSeenAtEpochMs:x.lastSeenAtEpochMs,
+      phase:fresh?x.phase:'STALE',
+      localRef:fresh?x.localRef:null
+    };
+  });
   function status(){return {
     app:APP,schema:1,port:state.port,listening:state.listening,
     pairedBrowsers:clients.size,observationsReceived:state.received,
@@ -81,7 +87,7 @@ function createCompanionBridge({port=41267, now=()=>Date.now(), maxClients=8}={}
         'Access-Control-Max-Age':'300','Vary':'Origin'
       });res.end();return;
     }
-    if(req.method!=='POST'||!['/pair','/observation','/revoke'].includes(req.url))
+    if(req.method!=='POST'||!['/pair','/observation','/revoke','/status'].includes(req.url))
       return json(res,404,{ok:false,code:'ROUTE_DENIED'},origin);
     let body;try{body=await readBody(req);}
     catch{return json(res,400,{ok:false,code:'BODY_INVALID'},origin);}
@@ -107,6 +113,9 @@ function createCompanionBridge({port=41267, now=()=>Date.now(), maxClients=8}={}
     if(req.url==='/revoke'){
       clients.delete(digest);
       return json(res,200,{ok:true,revoked:true},origin);
+    }
+    if(req.url==='/status'){
+      return json(res,200,{ok:true,app:APP,paired:true},origin);
     }
     if(body.schema!==1||!['CHAT_OPEN','CHAT_OTHER','NO_CHAT'].includes(body.phase)
       ||(body.phase==='CHAT_OPEN'&&!CHAT_ID.test(body.conversationId))

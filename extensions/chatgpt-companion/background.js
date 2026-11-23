@@ -3,6 +3,17 @@ const APP='REMOTE_COMMANDER_CHAT_COMPANION';
 const ENDPOINT='http://127.0.0.1:41267';
 const PAIR_KEY='commanderPairToken';
 let inFlight=false,latest=null,latestEpoch=0;
+const observedTabs=new Map();
+const FRESH_MS=90000;
+function latestFromObservedTabs(){
+  const now=Date.now();
+  for(const [id,record] of observedTabs){
+    if(now-record.at>FRESH_MS)observedTabs.delete(id);
+  }
+  const newest=[...observedTabs.values()].sort((a,b)=>b.at-a.at)[0];
+  latest=newest?.observation??{schema:1,phase:'NO_CHAT'};
+  latestEpoch++;
+}
 async function token(){const data=await chrome.storage.local.get(PAIR_KEY);return data[PAIR_KEY]??null;}
 async function call(route,body,credential=null){
   const result=await fetch(ENDPOINT+route,{method:'POST',
@@ -37,7 +48,14 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
          ||url.username||url.password||url.port)
         throw Error('CONTENT_ORIGIN_DENIED');
       // Always use the browser-authenticated sender URL, never a page-provided URL.
-      latest=observationFromUrl(sender.url);latestEpoch++;
+      if(!Number.isSafeInteger(sender.tab.id)||sender.tab.id<0)
+        throw Error('CONTENT_TAB_INVALID');
+      if(observedTabs.size>=32&&!observedTabs.has(sender.tab.id)){
+        const oldest=[...observedTabs.entries()].sort((a,b)=>a[1].at-b[1].at)[0];
+        if(oldest)observedTabs.delete(oldest[0]);
+      }
+      observedTabs.set(sender.tab.id,{at:Date.now(),observation:observationFromUrl(sender.url)});
+      latestFromObservedTabs();
       await deliver();
       return {ok:true};
     }
@@ -48,7 +66,18 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     const popupUrl='chrome-extension://'+chrome.runtime.id+'/popup.html';
     if(sender.id!==chrome.runtime.id||sender.url!==popupUrl)
       throw Error('POPUP_ONLY');
-    if(message?.kind==='STATUS')return {ok:true,paired:Boolean(await token())};
+    if(message?.kind==='STATUS'){
+      const credential=await token();
+      if(!credential)return {ok:true,paired:false};
+      try {
+        const reply=await call('/status',{},credential);
+        return {ok:true,paired:reply.app===APP&&reply.paired===true};
+      }catch{
+        // Never equate an old stored token or unavailable bridge with a live
+        // browser pairing. Keep the token only for owner-led recovery.
+        return {ok:true,paired:false,bridgeUnverified:true};
+      }
+    }
     if(message?.kind==='PAIR'){
       if(typeof message.code!=='string'||!/^[A-F0-9]{16}$/.test(message.code))
         throw Error('CODE_INVALID');
@@ -70,3 +99,10 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   return true;
 });
 chrome.runtime.onStartup?.addListener(()=>{void deliver();});
+
+// The basic onRemoved event needs no blanket tabs/read-history permission.
+chrome.tabs?.onRemoved?.addListener(tabId=>{
+  if(!observedTabs.delete(tabId))return;
+  latestFromObservedTabs();
+  void deliver();
+});

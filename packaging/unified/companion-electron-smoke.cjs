@@ -83,6 +83,31 @@ async function check(){
   }
   if(pairingText!=='Paired'||bridge.status().pairedBrowsers!==1)
     throw Error('ELECTRON_EXTENSION_PAIRING_TIMEOUT_'+pairingText.replace(/[^A-Za-z0-9_]/g,'_').slice(0,48));
+  const pairedCheck=await window.webContents.executeJavaScript(
+    "chrome.runtime.sendMessage({kind:'STATUS'})",true);
+  if(!pairedCheck?.paired)throw Error('ELECTRON_PAIRING_STATUS_UNVERIFIED');
+  // Simulate a Commander GUI/Bridge restart without touching the real profile.
+  await bridge.stop();
+  bridge=createCompanionBridge();
+  await bridge.start();
+  const restartCheck=await window.webContents.executeJavaScript(
+    "chrome.runtime.sendMessage({kind:'STATUS'})",true);
+  if(restartCheck?.paired!==false||restartCheck?.bridgeUnverified!==true)
+    throw Error('ELECTRON_STALE_TOKEN_WRONGLY_TRUSTED');
+  const refreshCode=bridge.newCode().code;
+  await window.webContents.executeJavaScript(
+    "document.querySelector('#code').value="+JSON.stringify(refreshCode)+
+    ";document.querySelector('#pair').click()",true);
+  const resumedUntil=Date.now()+10000;
+  let resumed='';
+  while(Date.now()<resumedUntil){
+    resumed=await window.webContents.executeJavaScript(
+      "document.querySelector('#status')?.textContent||''",true);
+    if(resumed==='Paired'&&bridge.status().pairedBrowsers===1)break;
+    await new Promise(resolve=>setTimeout(resolve,200));
+  }
+  if(resumed!=='Paired'||bridge.status().pairedBrowsers!==1)
+    throw Error('ELECTRON_OWNER_REPAIR_AFTER_RESTART_FAILED');
   await window.webContents.executeJavaScript(
     "document.querySelector('#disconnect').click()",true);
   const revokedUntil=Date.now()+10000;
@@ -98,6 +123,7 @@ async function check(){
   process.stdout.write(JSON.stringify({
     result:'RC012_ELECTRON_MV3_COMPANION_PASS',extensionLoaded:true,
     workerPopupMessage:true,actualPairing:true,actualRevocation:true,
+    restartRevalidation:true,staleTokenDenied:true,ownerRepaired:true,
     isolatedSession:true,chatgptLoginTested:false,coreAuthorityGranted:false
   })+'\n');
 }

@@ -14,7 +14,7 @@ const chromium='chrome-extension://'+'a'.repeat(32),chromium2='chrome-extension:
 const chatId='11111111-1111-4111-8111-111111111111';
 const post=(port,origin,route,body={},token='')=>new Promise((resolve,reject)=>{
   const payload=JSON.stringify(body);
-  const req=http.request({hostname:'127.0.0.1',port,path:route,method:'POST',timeout:2500,headers:{
+  const req=http.request({hostname:'127.0.0.1',port,path:route,method:'POST',timeout:2500,agent:false,headers:{
     Host:'127.0.0.1:'+port,Origin:origin,'Content-Type':'application/json',
     'Content-Length':Buffer.byteLength(payload),...(token?{'Authorization':'Bearer '+token}:{})
   }},res=>{
@@ -41,6 +41,8 @@ test('Companion is explicitly paired to exact extension origin and can revoke',a
   const token=joined.data.token;
   assert.match(token,/^[0-9a-f]{64}$/);
   assert.equal((await post(port,chromium,'/pair',{code})).status,403); // one-time
+  assert.equal((await post(port,chromium,'/status',{},token)).data.paired,true);
+  assert.equal((await post(port,chromium2,'/status',{},token)).status,403);
   assert.equal((await post(port,chromium2,'/observation',{schema:1,phase:'CHAT_OTHER'},token)).status,403);
   const observation={schema:1,phase:'CHAT_OPEN',conversationId:chatId};
   const accepted=await post(port,chromium,'/observation',observation,token);
@@ -55,6 +57,7 @@ test('Companion is explicitly paired to exact extension origin and can revoke',a
   assert.equal((await post(port,chromium,'/revoke',{},token)).status,200);
   assert.equal(bridge.status().pairedBrowsers,0);
   assert.equal((await post(port,chromium,'/observation',observation,token)).status,403);
+  assert.equal((await post(port,chromium,'/status',{},token)).status,403);
 });
 test('Bad JSON schema, non-extension origins and unpaired clients always fail closed',async t=>{
   const bridge=createCompanionBridge({port:0});await bridge.start();t.after(()=>bridge.stop());
@@ -83,6 +86,24 @@ test('Bridge pairing is short-lived and cannot be silently replayed',async t=>{
   assert.equal((await post(port,chromium2,'/pair',{code:bridge.newCode().code})).status,409);
   assert.equal(bridge.status().pairedBrowsers,1);
 });
+test('Old bridge tokens do not survive process restart and stale metadata expires',async t=>{
+  let now=1000;
+  const first=createCompanionBridge({port:0,now:()=>now});
+  await first.start();
+  const port=first.status().port;
+  const token=(await post(port,chromium,'/pair',{code:first.newCode().code})).data.token;
+  const observation={schema:1,phase:'CHAT_OPEN',conversationId:chatId};
+  assert.equal((await post(port,chromium,'/observation',observation,token)).status,200);
+  now+=90001;
+  assert.equal(first.observe()[0].phase,'STALE');
+  assert.equal(first.observe()[0].localRef,null);
+  await first.stop();
+  const second=createCompanionBridge({port,now:()=>now});
+  await second.start();t.after(()=>second.stop());
+  assert.equal((await post(port,chromium,'/status',{},token)).status,403);
+  assert.equal(second.status().pairedBrowsers,0);
+});
+
 test('Only exact ChatGPT hosts and canonical conversation URLs become observations',()=>{
   assert.equal(chatFromUrl('https://chatgpt.com/c/'+chatId),chatId);
   assert.equal(chatFromUrl('https://chatgpt.com/g/g-xyz/c/'+chatId),chatId);
@@ -133,9 +154,10 @@ test('MV3 worker mock enforces content/popup separation and never exposes pairin
   const oldChrome=globalThis.chrome,oldFetch=globalThis.fetch;
   t.after(()=>{globalThis.chrome=oldChrome;globalThis.fetch=oldFetch;});
   const id='a'.repeat(32),stores={},requests=[];
-  let listener=null;
+  let listener=null,tabRemoved=null;
   globalThis.chrome={
     runtime:{id,onMessage:{addListener(fn){listener=fn;}},onStartup:{addListener(){}}},
+    tabs:{onRemoved:{addListener(fn){tabRemoved=fn;}}},
     storage:{local:{
       async get(key){return {[key]:stores[key]};},
       async set(obj){Object.assign(stores,obj);},
@@ -146,6 +168,9 @@ test('MV3 worker mock enforces content/popup separation and never exposes pairin
     requests.push({url,body:JSON.parse(opts.body),headers:opts.headers});
     if(url.endsWith('/pair'))return {ok:true,async json(){return {
       ok:true,app:'REMOTE_COMMANDER_CHAT_COMPANION',token:'b'.repeat(64)
+    };}};
+    if(url.endsWith('/status'))return {ok:true,async json(){return {
+      ok:true,app:'REMOTE_COMMANDER_CHAT_COMPANION',paired:true
     };}};
     return {ok:true,async json(){return {ok:true,receipt:1};}};
   };
@@ -162,6 +187,7 @@ test('MV3 worker mock enforces content/popup separation and never exposes pairin
   // Chrome popup and Electron-owned browser-window popup share exact origin identity.
   assert.equal((await send({kind:'PAIR',code:'A'.repeat(16)},electronPopup)).paired,true);
   assert.equal(stores.commanderPairToken,'b'.repeat(64));
+  assert.equal((await send({kind:'STATUS'},electronPopup)).paired,true);
   assert.equal((await send({kind:'CHAT_URL'},page)).ok,true);
   const observed=requests.filter(x=>x.url.endsWith('/observation'));
   assert.equal(observed.length,1);
@@ -169,6 +195,16 @@ test('MV3 worker mock enforces content/popup separation and never exposes pairin
   assert.equal(observed[0].headers.Authorization,'Bearer '+'b'.repeat(64));
   assert.ok(!JSON.stringify(observed[0].body).includes('messageText'));
   assert.ok(!(await send({kind:'CHAT_URL'},{id,tab:{id:6},url:'https://evil.example/'})).ok);
+  assert.equal(typeof tabRemoved,'function');
+  tabRemoved(5);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(requests.filter(x=>x.url.endsWith('/observation')).at(-1).body.phase,'NO_CHAT');
+  // A stored token does not prove liveness after the server stops.
+  const savedFetch=globalThis.fetch;
+  globalThis.fetch=async()=>{throw Error('BRIDGE_OFFLINE');};
+  const status=await send({kind:'STATUS'},electronPopup);
+  assert.deepEqual(status,{ok:true,paired:false,bridgeUnverified:true});
+  globalThis.fetch=savedFetch;
   assert.equal((await send({kind:'DISCONNECT'},electronPopup)).paired,false);
   assert.equal(stores.commanderPairToken,undefined);
   assert.ok(requests.some(x=>x.url.endsWith('/revoke')));
