@@ -812,3 +812,24 @@ test('Windows owner DPAPI six-file proof is strictly bound to native success rec
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,'RC012_WINDOWS_OWNER_DPAPI_RESTORE_SIMULATION_PASS files=6'),false);
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(null,marker),false);
 });
+test('Windows read-only DPAPI preflight pins machine PowerShell independently of ambient ProgramFiles',async()=>{
+  const {windowsOwnerDpapiPowerShellExecutable}=await import(
+    '../packaging/unified/migration-preflight.mjs');
+  assert.equal(typeof windowsOwnerDpapiPowerShellExecutable,'function',
+    'the DPAPI executable selector must be explicit and independently testable');
+  const expected=path.win32.join('C:\\Program Files','PowerShell','7','pwsh.exe');
+  const old=process.env.ProgramFiles;
+  try{
+    for(const forged of ['Z:\\untrusted\\PowerShell\\7',
+      'C:\\Users\\untrusted\\bin','..\\outside','']){
+      process.env.ProgramFiles=forged;
+      assert.equal(windowsOwnerDpapiPowerShellExecutable(),expected);
+    }
+  }finally{
+    if(old===undefined)delete process.env.ProgramFiles;
+    else process.env.ProgramFiles=old;
+  }
+  const actual=fs.readFileSync(modulePath,'utf8');
+  assert.doesNotMatch(actual,/const exe=path\.win32\.join\(programFiles,/,
+    'never derive the executable from user-controllable ProgramFiles');
+});

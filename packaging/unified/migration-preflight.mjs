@@ -756,14 +756,19 @@ export function windowsOwnerDpapiVerifyOutputAccepted(status,stdout){
   return status===0 && typeof stdout==='string'
     && stdout.trim()==='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
 }
+export function windowsOwnerDpapiPowerShellExecutable(){
+  // The reviewed machine-wide MSI default: never trust caller-controlled
+  // ProgramFiles, PATH or another ambient executable discovery source.
+  // Non-default installations fail closed instead of running an untrusted exe.
+  return path.win32.join('C:\\Program Files','PowerShell','7','pwsh.exe');
+}
 function verifyWindowsOwnerDpapiBackup(profileName='chatgpt-remote-commander'){
   if(process.platform!=='win32'||typeof profileName!=='string'
     ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
     ||profileName==='.'||profileName==='..')return false;
-  const programFiles=process.env.ProgramFiles,appData=process.env.APPDATA;
-  if(typeof programFiles!=='string'||!path.win32.isAbsolute(programFiles)
-    ||typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
-  const exe=path.win32.join(programFiles,'PowerShell','7','pwsh.exe');
+  const appData=process.env.APPDATA;
+  if(typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
+  const exe=windowsOwnerDpapiPowerShellExecutable();
   const script=path.join(path.dirname(fileURLToPath(import.meta.url)),
     'owner-dpapi-profile-recovery.ps1');
   try{
