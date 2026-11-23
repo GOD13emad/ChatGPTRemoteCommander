@@ -9,7 +9,7 @@ import {Readable} from 'node:stream';
 import {createV2PrivatePairMcpIngress} from '../src/v2-private-pair-mcp-http-ingress.mjs';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 const require=createRequire(import.meta.url);
 const {validateCore,preparePreviewCore,previewConfig}=require('../packaging/unified/pilot-runtime.cjs');
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -155,6 +155,27 @@ test('staged exact-head public Core manifest excludes ALL optional extension fil
  assert.equal(fs.existsSync(path.join(resource,'extensions')),false,
    'distributable public Core must physically exclude optional extensions');
 });
+test('public Core embeds owner tunnel cutover transitive source exactly and no other packaging paths',async()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(resource,'source-manifest.json'),'utf8'));
+ const required=['packaging/unified/owner-pinned-provenance.mjs',
+   'packaging/unified/migration-preflight.mjs',
+   'tools/plan-owner-private-tunnel-cutover.mjs',
+   'tools/inspect-owner-private-tunnel-cutover.mjs'];
+ for(const rel of required){
+   assert.equal(manifest.files[rel],sha(path.join(resource,rel)),
+     'embedded Core missing exact imported file: '+rel);
+ }
+ const packagedPaths=Object.keys(manifest.files).filter(x=>x.startsWith('packaging/')).sort();
+ assert.deepEqual(packagedPaths,[
+   'packaging/unified/owner-pinned-provenance.mjs',
+   'packaging/unified/migration-preflight.mjs'
+ ].sort(),'packaging must not widen beyond the two audited public modules');
+ const planner=await import(pathToFileURL(path.join(resource,
+   'tools/plan-owner-private-tunnel-cutover.mjs')).href);
+ assert.equal(typeof planner.planOwnerPrivateTunnelCutover,'function',
+   'owner cutover planner must load from shipped Core in isolation');
+});
+
 test('immutable packaged source and restricted preview boot',async()=>{
  const manifest=validateCore(resource);
  assert.match(manifest.head,/^[0-9a-f]{40}$/);
@@ -380,14 +401,15 @@ test('preview upgrade refuses oversized runtime data without replacing current C
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
-test('hosted public native DEB path policy allows only the exact generic provenance file and rejects private paths', {
+test('hosted public native DEB path policy allows only the two exact public packaging modules and rejects private paths', {
   skip: process.platform!=='linux'
 },()=>{
   const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
   const section=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]+?)\r?\nPUBLIC_APP_BOUNDARY/u);
   assert.ok(section,'execute the same Python policy embedded in the actual hosted native upgrade test');
   const base=['src/server-v0.3.mjs','config.json','package.json','source-manifest.json','packaging',
-    'packaging/unified','packaging/unified/owner-pinned-provenance.mjs'];
+    'packaging/unified','packaging/unified/owner-pinned-provenance.mjs',
+    'packaging/unified/migration-preflight.mjs'];
   const execute=(paths)=>{
     const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
     const code=[
@@ -417,6 +439,9 @@ test('hosted public native DEB path policy allows only the exact generic provena
     assert.notEqual(invalid.status,0);
     assert.match(invalid.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   }
+  const missingMigration=execute(base.filter(p=>p!=='packaging/unified/migration-preflight.mjs'));
+  assert.notEqual(missingMigration.status,0);
+  assert.match(missingMigration.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
   const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
   assert.notEqual(missingProvenance.status,0);
   assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
