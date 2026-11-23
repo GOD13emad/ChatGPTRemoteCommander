@@ -52,7 +52,7 @@ test('R171 tag-only publication gate skips post-tag main without re-signing or r
  const invoke=(event,ref)=>{
    fs.writeFileSync(output,'');
    const env={...process.env,GITHUB_OUTPUT:output,GITHUB_EVENT_NAME:event,GITHUB_REF:ref};
-   const r=spawnSync(bash,['-c',script],{cwd:repo,env,encoding:'utf8',timeout:16000});
+   const r=spawnSync(bash,['-s'],{input:script,cwd:repo,env,encoding:'utf8',timeout:16000});
    assert.equal(r.error,undefined,String(r.error));
    return {r,output:fs.readFileSync(output,'utf8')};
  };
@@ -191,7 +191,7 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
    'tag','-a','v0.12.0','-m','synthetic not-approved tag');
  const out=path.join(dir,'result.txt');
  fs.writeFileSync(out,'');
- const result=spawnSync(bash,['-c',script],{
+ const result=spawnSync(bash,['-s'],{input:script,
    cwd:repo,env:{...process.env,GITHUB_OUTPUT:out,GITHUB_EVENT_NAME:'push',
      GITHUB_REF:'refs/tags/v0.12.0'},encoding:'utf8',timeout:16000
  });
