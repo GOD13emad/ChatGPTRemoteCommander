@@ -1,4 +1,17 @@
-# Release Train 0.12 — `0.12.0-dev.11` candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.12` source candidate (NoPromote)
+
+## Dev.12 source-only package closure candidate (23 November 2026)
+
+This monotonic source revision is stacked on the exact owner Tunnel planner
+import-closure fix in PR #558, SHA 889329f69d61e53c44ad6bb33397da67db8bee89.
+It aligns Core, unified GUI/NSIS/DEB metadata, Desktop Assembly/FileVersion,
+plugin templates, release-train manifest and exact-version tests.
+This change alone does not build, install, authorize or publish an artifact.
+Only a **newly signed** dev.12 package, accepted by an independent reviewer
+and verified at its exact SHA, can be considered for owner-local QA installation.
+The signed historic dev.11 package, running services and Tunnel remain unchanged.
+J01/Worker consent, live mTLS migration, rollback, and Stable release are OPEN.
+
 
 ## Dev.11 upgrade-source proposal (23 November 2026)
 
