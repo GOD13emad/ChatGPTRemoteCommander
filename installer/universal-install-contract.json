@@ -95,7 +95,8 @@
     "tools/universal-install/native-os-adapters.mjs",
     "tools/universal-install/native-journal.mjs",
     "tools/universal-install/native-manifest.mjs",
-    "packaging/unified/owner-pinned-provenance.mjs"
+    "packaging/unified/owner-pinned-provenance.mjs",
+    "packaging/unified/migration-preflight.mjs"
   ],
   "nativeCandidateRoot": "packaging/unified",
   "qaTransactionHelper": "tools/universal-install/engine.mjs",
@@ -114,7 +115,8 @@
     "tools/universal-install/native-os-adapters.mjs",
     "tools/universal-install/native-journal.mjs",
     "tools/universal-install/native-manifest.mjs",
-    "packaging/unified/owner-pinned-provenance.mjs"
+    "packaging/unified/owner-pinned-provenance.mjs",
+    "packaging/unified/migration-preflight.mjs"
   ],
   "nativeTransactionalEngine": {
     "schema": "rc-universal-native-transaction-v1",
