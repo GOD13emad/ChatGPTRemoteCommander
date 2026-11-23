@@ -165,3 +165,23 @@ test('binary failure diagnostics stay bounded while rejecting a one-byte mutatio
   assert.throws(()=>assertBytesEqual(actual,expected,'injected mismatch'),error=>error.code==='ERR_ASSERTION'&&error.message.length<512&&JSON.parse(error.message).firstMismatch===524288);
   assertBytesEqual(expected,Buffer.from(expected),'identical');
 });
+
+test('tunnel logger preserves required control-plane credential but excludes unrelated OpenAI credential before child spawn', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'rc-tunnel-env-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const log = path.join(dir, 'tunnel.log');
+  const status = path.join(dir, 'status.json');
+  // Synthetic values only. Report presence booleans, never credential bytes.
+  const env = Object.fromEntries(Object.entries(process.env).filter(
+    ([key]) => !['CONTROL_PLANE_API_KEY', 'OPENAI_API_KEY'].includes(key.toUpperCase())
+  ));
+  env.CONTROL_PLANE_API_KEY = 'fixture-control-only';
+  env.OpenAI_Api_Key = 'fixture-unrelated';
+  const result = await run([
+    runner, '--log-file', log, '--status-file', status, '--',
+    process.execPath, '-e',
+    "console.log(JSON.stringify({control:process.env.CONTROL_PLANE_API_KEY==='fixture-control-only',unrelated:Object.keys(process.env).some(k=>k.toUpperCase()==='OPENAI_API_KEY')}))"
+  ], { env });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(await readFile(log, 'utf8')), { control: true, unrelated: false });
+});

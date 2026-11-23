@@ -209,6 +209,12 @@ writeStatus(true, { lastRotationReason: rotations ? 'startup-legacy-oversize' : 
 
 const [exe, ...args] = cfg.child;
 const childEnv = { ...process.env };
+// The tunnel needs its control-plane credential, not a provider API key.
+// Filter before spawning; deleting from this object afterwards cannot
+// revoke the environment already copied into the child process.
+for (const key of Object.keys(childEnv)) {
+  if (key.toUpperCase() === 'OPENAI_API_KEY') delete childEnv[key];
+}
 child = spawn(exe, args, {
   stdio: ['ignore', 'pipe', 'pipe'],
   shell: false,
