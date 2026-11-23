@@ -110,20 +110,21 @@ test('source regression owner-recovery batches respect native test deadlines wit
   assert.match(source,/new Set\(batches\.flat\(\)\)\.size!==files\.length/);
 });
 
-test('Linux native archive list exactly matches unified public Core archive list',()=>{
+test('Linux native package consumes and verifies the shared public Core stage',()=>{
   const prepare=read('packaging/unified/prepare.mjs');
   const builder=read('tools/build-native-linux-package.sh');
   const staged=prepare.match(/'archive','--format=tar','--output',tar,head,\s*([\s\S]*?)\],\{/u);
-  const native=builder.match(/git -C "\$ROOT" archive --format=tar "\$HEAD" -- ([^|\r\n]+) \| tar -xf - -C "\$APP"/u);
-  assert.ok(staged&&native,'both exact committed-source archive commands must exist');
+  assert.ok(staged,'the shared Core must be archived from the pinned commit');
   const stagedPaths=[...staged[1].matchAll(/'([^']+)'/gu)].map(m=>m[1]);
-  const nativePaths=native[1].trim().split(/\s+/u);
-  assert.deepEqual(nativePaths,stagedPaths,'Linux DEB and unified stage must carry identical public Core source files');
-  assert.ok(nativePaths.includes(contract.nativeTransactionalEngine.provenanceModule),
+  assert.match(builder,/^node "\$ROOT\/packaging\/unified\/prepare\.mjs"\r?\nPUBLIC_CORE="\$ROOT\/packaging\/unified\/\.stage\/core"\r?\ncp -a -- "\$PUBLIC_CORE\/\." "\$APP\/"$/mu);
+  assert.match(builder,/\bvalidateCore\(stage\).*\bvalidateCore\(installed\)/u);
+  assert.match(builder,/JSON\.stringify\(staged\.files\)!==JSON\.stringify\(native\.files\)/u);
+  assert.doesNotMatch(builder,/^\s*git .*\barchive\b/mu);
+  assert.ok(stagedPaths.includes(contract.nativeTransactionalEngine.provenanceModule),
     'the runtime owner-pinned provenance verifier must be embedded in both Core payloads');
-  assert.ok(!nativePaths.includes('extensions'),'specialty/private extensions must not enter the public Core');
+  assert.ok(!stagedPaths.includes('extensions'),'specialty/private extensions must not enter the public Core');
   for(const required of contract.requiredEmbeddedCoreFiles){
-    assert.ok(nativePaths.some(p=>required===p||required.startsWith(p+'/')),
+    assert.ok(stagedPaths.some(p=>required===p||required.startsWith(p+'/')),
       'required runtime source is absent from the shared archive roots: '+required);
   }
 });
