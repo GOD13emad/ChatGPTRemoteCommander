@@ -60,7 +60,7 @@ jobs:
       # Keep R157's validated Windows qualification command grammar intact.
       # Run shared installer QA once per OS, as one independent CI step.
       - name: Verify Browser Core companion, packed byte integrity and extension pairing (NoPromote)
-        run: node --test test/browser-companion-bridge.test.mjs test/verify-compiled-companion.test.mjs
+        run: node --test test/browser-companion-bridge.test.mjs test/verify-compiled-companion.test.mjs test/browser-companion-targets.test.mjs
       - name: Verify universal installer transactions and native parity contracts
         run: npm run test:universal-install
       - name: Reject specialist payloads in public Release ZIPs (negative fixtures)

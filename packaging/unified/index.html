@@ -18,6 +18,10 @@
 <button id="companion-stop" type="button">Stop companion</button>
 <button id="companion-code" type="button">New pairing code</button>
 <button id="companion-folder" type="button">Open extension folder</button>
+<p><label for="companion-browser-target">Attach to an existing browser</label>
+<select id="companion-browser-target" aria-label="Choose browser"></select>
+<button id="companion-browser-open" type="button">Open selected browser extension manager</button></p>
+<p><small>In your chosen Chromium browser, enable Developer mode and choose Load unpacked. Select the extension folder bundled by this Installer. Enabling is always your choice. Firefox needs a separately tested and signed extension.</small></p>
 <pre id="companion-result" role="status" aria-live="polite"></pre></section>
 <p><small>Not a signed Stable release. Privileged access, ChatGPT account enrollment, MeshCentral and Playwright browser integration require separate acceptance.</small></p>
 <script src="./renderer.js" defer></script></body></html>

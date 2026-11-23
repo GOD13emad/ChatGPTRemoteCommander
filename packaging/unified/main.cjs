@@ -1,6 +1,7 @@
 'use strict';
 const {app,BrowserWindow,ipcMain,session,shell}=require('electron');
 const {createCompanionBridge}=require('./browser-companion-bridge.cjs');
+const {discover,openExtensionManager}=require('./browser-companion-targets.cjs');
 const {spawn}=require('node:child_process');
 const {createServer}=require('node:net');
 const http=require('node:http');
@@ -264,6 +265,14 @@ else{
     ipcMain.handle('commander:companion:stop',()=>companionStop());
     ipcMain.handle('commander:companion:pair-code',()=>companionPairCode());
     ipcMain.handle('commander:companion:extension-folder',()=>showCompanionFolder());
+    ipcMain.handle('commander:companion:browser-list',(event)=>{
+      if(event.sender!==window?.webContents)throw Error('COMPANION_OWNER_WINDOW_REQUIRED');
+      return discover().map(({id,label,installed,supported})=>({id,label,installed,supported}));
+    });
+    ipcMain.handle('commander:companion:browser-open',(event,id)=>{
+      if(event.sender!==window?.webContents)throw Error('COMPANION_OWNER_WINDOW_REQUIRED');
+      return openExtensionManager(id);
+    });
     ipcMain.handle('commander:chat:open',()=>openChatBrowser());
     ipcMain.handle('commander:chat:extension-popup',()=>openInternalCompanionPopup());
     createWindow();

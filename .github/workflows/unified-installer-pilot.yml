@@ -56,7 +56,7 @@ jobs:
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
       - name: Verify optional Companion manifest path, hash and permission fail-closed guards
-        run: node --test test/verify-compiled-companion.test.mjs
+        run: node --test test/verify-compiled-companion.test.mjs test/browser-companion-targets.test.mjs
       - name: Verify identical native transaction and OS adapter contracts
         run: node --test test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs
       - name: Verify native owner/Worker denial and DPAPI custody on both OSes

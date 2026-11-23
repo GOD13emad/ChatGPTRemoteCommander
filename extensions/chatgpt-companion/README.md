@@ -5,6 +5,21 @@ The companion service is a loopback-only, unprivileged pairing bridge within the
 
 This is **NOT** CoS's complete conversation automation or a production ChatGPT session attestation. No automatic sending, granting tools, Full Access, background chat continuation, screen control or migration of existing browser profiles is enabled. CoS inspiration: https://github.com/totec448-spec/chat-on-steroids (MIT); no upstream source code is copied.
 
+## Choose a browser in Commander
+Open **Browser Companion → Attach to an existing browser**. Choose an installed
+Chrome, Edge, Brave or Chromium and click **Open selected browser extension
+manager**. Then choose **Open extension folder**, enable Developer mode in the
+browser and **Load unpacked** from that same folder. The installer stages the
+extension; it does not force-install it into personal browser profiles or claim
+that all browsers support Chrome Manifest V3. Native Firefox requires a separately
+reviewed/signed compatible XPI.
+
+The Companion reports only ChatGPT tab-presence metadata. It does not
+programmatically extract ChatGPT messages or Output. ChatGPT conversations
+remain user-operated inside the dedicated Browser Core window; full automated
+output/workflow integration would need a separately approved provider-supported
+API and account authorization.
+
 ## Chromium load unpacked
 Open chrome://extensions (Chrome), edge://extensions (Edge), or brave://extensions (Brave); enable Developer mode, choose Load unpacked, and select this **chatgpt-companion** directory. Activate the requested limited permissions. Do **not** extract/transfer personal browser cookies.
 
