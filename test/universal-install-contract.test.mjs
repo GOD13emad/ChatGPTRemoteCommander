@@ -58,6 +58,14 @@ test('immutable public Core tar omits optional extension bundle path',()=>{
  assert.doesNotMatch(native,/'archive','--format=tar','--output',tar,head,\s*'src','tools','vendor','assets','extensions'/u);
 });
 
+test('native Linux DEB keeps the same exact pinned provenance source as GUI Core',()=>{
+  const nativeDeb=read('tools/build-native-linux-package.sh');
+  assert.ok(nativeDeb.includes('config.json package.json packaging/unified/owner-pinned-provenance.mjs'));
+  assert.ok(!nativeDeb.includes('src tools vendor assets extensions'));
+  const core=read('packaging/unified/prepare.mjs');
+  assert.ok(core.includes("'packaging/unified/owner-pinned-provenance.mjs'"));
+});
+
 test('an exact-source installer QA pass cannot authorize v0.12 stable or all-account Full Power',()=>{
   assert.equal(release.publishApproved,false);
   assert.equal(release.installedPromotionApproved,false);

@@ -69,12 +69,18 @@ test('Linux native package uses the shared positive runtime Core allowlist, neve
  const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
  const shared='src tools vendor assets config.json package.json packaging/unified/owner-pinned-provenance.mjs';
  assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
+ assert.ok(!native.includes('src tools vendor assets extensions'));
+
  assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
  const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
  assert.ok(prepare.includes("'src','tools','vendor','assets','config.json','package.json'"));
  const hosted=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
  assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/);
  assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/);
+ assert.ok(hosted.includes('provenance_dirs={"packaging","packaging/unified"}'));
+ assert.ok(hosted.includes('provenance_file="packaging/unified/owner-pinned-provenance.mjs"'));
+ assert.ok(hosted.includes('relative in provenance_dirs and row.startswith("d")'));
+ assert.ok(hosted.includes('relative==provenance_file and row.startswith("-")'));
  assert.ok(hosted.includes('python3 - "$OLD" "$NEW"'));
 });
 
@@ -374,8 +380,11 @@ test('hosted public native DEB path policy allows only the exact generic provena
   assert.ok(section,'execute the same Python policy embedded in the actual hosted native upgrade test');
   const base=['src/server-v0.3.mjs','config.json','package.json','packaging',
     'packaging/unified','packaging/unified/owner-pinned-provenance.mjs'];
-  const execute=(paths)=>{
-    const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
+  const execute=(paths,types={})=>{
+    const listing=paths.map(rel=>{
+      const kind=types[rel]??(['packaging','packaging/unified'].includes(rel)?'drwxr-xr-x':'-rw-r--r--');
+      return kind+' root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel;
+    }).join('\n');
     const code=[
       'import sys, subprocess',
       'listing=sys.argv[1]',
@@ -398,4 +407,10 @@ test('hosted public native DEB path policy allows only the exact generic provena
   const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
   assert.notEqual(missingProvenance.status,0);
   assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  const badFileType=execute(base,{'packaging/unified/owner-pinned-provenance.mjs':'lrwxrwxrwx'});
+  assert.notEqual(badFileType.status,0,'pinned file must not be a symlink');
+  assert.match(badFileType.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+  const badParentType=execute(base,{'packaging/unified':'-rw-r--r--'});
+  assert.notEqual(badParentType.status,0,'provenance parent must be a directory');
+  assert.match(badParentType.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
 });

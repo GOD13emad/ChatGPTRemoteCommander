@@ -35,8 +35,11 @@ python3 - "$OLD" "$NEW" <<'PUBLIC_APP_BOUNDARY'
 import subprocess, sys
 prefix="./usr/lib/chatgpt-remote-commander/app/"
 allowed_dirs={"src","tools","vendor","assets"}
-allowed_files={"config.json","package.json","packaging/unified/owner-pinned-provenance.mjs"}
-allowed_scaffolding={"packaging","packaging/unified"}
+allowed_files={"config.json","package.json"}
+# Only the pinned provenance file and its actual directory parents may join
+# the public Core. No extra packaging children or symlink substitutions.
+provenance_dirs={"packaging","packaging/unified"}
+provenance_file="packaging/unified/owner-pinned-provenance.mjs"
 for pkg in sys.argv[1:]:
     listing=subprocess.check_output(["dpkg-deb","--contents",pkg],text=True)
     seen=set()
@@ -46,7 +49,12 @@ for pkg in sys.argv[1:]:
         relative=row[at+len(prefix):].split(" -> ",1)[0].strip().rstrip("/")
         if not relative: continue
         head=relative.split("/",1)[0]
-        if relative in allowed_files or relative in allowed_scaffolding or head in allowed_dirs:
+        if relative in allowed_files or head in allowed_dirs:
+            seen.add(relative)
+            continue
+        if relative in provenance_dirs and row.startswith("d"):
+            continue
+        if relative==provenance_file and row.startswith("-"):
             seen.add(relative)
             continue
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
