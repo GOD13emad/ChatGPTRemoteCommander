@@ -58,9 +58,13 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
     // name in the same repository must never inherit its signer authority.
     const workflowPrefix='https://github.com/'+WORKFLOW+'@refs/';
     const san=cert?.subjectAlternativeName;
-    const exactWorkflow=typeof san==='string'
-      &&san.startsWith(workflowPrefix)
-      &&/^[A-Za-z0-9._/-]+$/.test(san.slice(workflowPrefix.length));
+    // sigstore-go exposes X.509 URI SAN as {type:'URI',value:'...'};
+    // some verification transports expose the same URI as a string.
+    const sanUri=typeof san==='string' ? san
+      :san?.type==='URI'&&typeof san?.value==='string' ? san.value : null;
+    const exactWorkflow=typeof sanUri==='string'
+      &&sanUri.startsWith(workflowPrefix)
+      &&/^[A-Za-z0-9._/-]+$/.test(sanUri.slice(workflowPrefix.length));
     return statement?.predicateType==='https://slsa.dev/provenance/v1'
       &&Array.isArray(statement.subject)
       &&statement.subject.some(s=>s?.name===name&&s?.digest?.sha256===sha256)
