@@ -197,19 +197,26 @@ export async function nativeCli(argv=process.argv.slice(2)){
   if(mode!=='plan'){
     if(signedApproval&&mode!=='apply')
       fail('UNIVERSAL_NATIVE_SIGNED_ROLLBACK_OWNER_BASELINE_REQUIRED');
+    const fresh=input.installationKind==='fresh'&&input.previous===null;
+    // An attestation covers the candidate only. An upgrade may execute the
+    // previous package after a failed verification, so its manifest needs an
+    // independent pin even when the candidate is attested.
+    const needsOwnerPin=!signedApproval||!fresh;
+    const ownerDigest=process.env.RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256;
+    const ownerHead=process.env.RC012_OWNER_PINNED_SOURCE_HEAD;
+    if(!provenanceManifestPath||needsOwnerPin&&(
+      ownerHead!==input.expectedCommit||typeof ownerDigest!=='string'
+      ||!/^[a-f0-9]{64}$/.test(ownerDigest)))
+      fail('UNIVERSAL_NATIVE_INDEPENDENT_PROVENANCE_REQUIRED');
     const signed=signedApproval?await verifyPublicSignedNativeRelease({
       manifestPath:provenanceManifestPath,candidatePath:input.candidate.path,
       expectedCommit:input.expectedCommit,platform:os}):null;
-    const pinned=signedApproval?signed.manifestSha256
-      :process.env.RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256;
-    const head=signedApproval?signed.sourceHead
-      :process.env.RC012_OWNER_PINNED_SOURCE_HEAD;
-    if(!provenanceManifestPath||head!==input.expectedCommit
-      ||typeof pinned!=='string'||!/^[a-f0-9]{64}$/.test(pinned))
-      fail('UNIVERSAL_NATIVE_INDEPENDENT_PROVENANCE_REQUIRED');
+    const pinned=needsOwnerPin?ownerDigest:signed.manifestSha256;
+    const head=signed?.sourceHead??ownerHead;
+    if(signed&&(signed.manifestSha256!==pinned||head!==input.expectedCommit))
+      fail('UNIVERSAL_NATIVE_PROVENANCE_MISMATCH');
     const provenance=await import(
       '../../packaging/unified/owner-pinned-provenance.mjs');
-    const fresh=input.installationKind==='fresh'&&input.previous===null;
     const proof=fresh
       ?await provenance.verifyOwnerPinnedFreshNativeRelease({
         manifestPath:provenanceManifestPath,

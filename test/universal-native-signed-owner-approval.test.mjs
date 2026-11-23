@@ -11,7 +11,8 @@ import {windowsGuiApprovalScript}
   from '../tools/universal-install/native-cli.mjs';
 
 const candidateSha='b'.repeat(64),head='a'.repeat(40);
-const workflowSan='https://github.com/GOD13emad/ChatGPTRemoteCommander/.github/workflows/unified-installer-pilot.yml@refs/heads/review';
+const sourceRef='refs/heads/review';
+const workflowSan='https://github.com/GOD13emad/ChatGPTRemoteCommander/.github/workflows/unified-installer-pilot.yml@'+sourceRef;
 const ghOk={status:0,stdout:'gh version 2.103.2 (2026-10-23)\n'};
 function verifiedJson(name,sha=candidateSha){
   return JSON.stringify([{
@@ -24,6 +25,10 @@ function verifiedJson(name,sha=candidateSha){
         sourceRepositoryURI:'https://github.com/GOD13emad/ChatGPTRemoteCommander',
         sourceRepositoryDigest:head,runnerEnvironment:'github-hosted',
         issuer:'https://token.actions.githubusercontent.com',
+        sourceRepositoryRef:sourceRef,githubWorkflowRef:sourceRef,
+        githubWorkflowRepository:'GOD13emad/ChatGPTRemoteCommander',
+        githubWorkflowSHA:head,buildSignerDigest:head,
+        buildSignerURI:workflowSan,buildConfigURI:workflowSan,
         subjectAlternativeName:workflowSan
       }},
       verifiedIdentity:{subjectAlternativeName:{regexp:'verified-by-cli'}}
@@ -185,6 +190,16 @@ test('offline parsed certificate rejects a same-repository workflow prefix colli
   assert.throws(()=>verifiedAttestationSubject(JSON.stringify(result),{
     name,sha256:candidateSha,expectedCommit:head
   }),/UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
+  cert.subjectAlternativeName=workflowSan;
+  for(const field of ['githubWorkflowRef','githubWorkflowSHA','buildSignerDigest',
+    'buildConfigURI','buildSignerURI']){
+    const original=cert[field];
+    cert[field]='unmatched';
+    assert.throws(()=>verifiedAttestationSubject(JSON.stringify(result),{
+      name,sha256:candidateSha,expectedCommit:head
+    }),/UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
+    cert[field]=original;
+  }
 });
 test('real sigstore-go parsed URI SAN shape honors exact signer workflow boundary',()=>{
  const name='Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb';

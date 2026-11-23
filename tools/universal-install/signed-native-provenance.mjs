@@ -54,17 +54,15 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
   const matched=results.some(v=>{
     const statement=v?.verificationResult?.statement;
     const cert=v?.verificationResult?.signature?.certificate;
-    // Match the full filename and the @refs/ boundary: a longer workflow
-    // name in the same repository must never inherit its signer authority.
-    const workflowPrefix='https://github.com/'+WORKFLOW+'@refs/';
+    const ref=cert?.sourceRepositoryRef;
+    const signer=typeof ref==='string'&&/^refs\/(?:heads|tags)\/[a-zA-Z0-9._/-]+$/.test(ref)
+      ?'https://github.com/'+WORKFLOW+'@'+ref:null;
     const san=cert?.subjectAlternativeName;
     // sigstore-go exposes X.509 URI SAN as {type:'URI',value:'...'};
     // some verification transports expose the same URI as a string.
     const sanUri=typeof san==='string' ? san
       :san?.type==='URI'&&typeof san?.value==='string' ? san.value : null;
-    const exactWorkflow=typeof sanUri==='string'
-      &&sanUri.startsWith(workflowPrefix)
-      &&/^[A-Za-z0-9._/-]+$/.test(sanUri.slice(workflowPrefix.length));
+    const source=cert?.sourceRepositoryDigest;
     return statement?.predicateType==='https://slsa.dev/provenance/v1'
       &&Array.isArray(statement.subject)
       &&statement.subject.some(s=>s?.name===name&&s?.digest?.sha256===sha256)
@@ -73,8 +71,12 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
       &&cert?.sourceRepositoryURI==='https://github.com/'+REPO
       &&cert?.runnerEnvironment==='github-hosted'
       &&cert?.issuer==='https://token.actions.githubusercontent.com'
-      &&exactWorkflow
-      &&(!expectedCommit||cert?.sourceRepositoryDigest===expectedCommit)
+      &&typeof source==='string'&&HEAD.test(source)
+      &&(!expectedCommit||source===expectedCommit)
+      &&cert?.githubWorkflowSHA===source&&cert?.buildSignerDigest===source
+      &&signer!==null&&sanUri===signer
+      &&cert?.buildSignerURI===signer&&cert?.buildConfigURI===signer
+      &&cert?.githubWorkflowRepository===REPO&&cert?.githubWorkflowRef===ref
       &&v.verificationResult?.verifiedIdentity?.subjectAlternativeName;
   });
   if(!matched)fail('UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH');

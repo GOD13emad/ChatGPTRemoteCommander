@@ -156,11 +156,12 @@ for `--apply`, on **Windows and Linux**. It calls the official GitHub CLI
 repository `GOD13emad/ChatGPTRemoteCommander`, source commit from the
 declarative manifest and the fixed signed
 `.github/workflows/unified-installer-pilot.yml` workflow identity.
-Self-hosted runners are rejected. Only after successful independent Sigstore
-verification may it derive the local provenance-manifest SHA and pass it
-into the existing common byte-verifying native provenance validator.
-No developer-entered `OWNER-APPROVED` placeholder or manually typed SHA
-is a valid shortcut.
+Self-hosted runners are rejected. For a clean first install, successful Sigstore
+verification derives the manifest SHA for the shared byte verifier. An upgrade
+also needs the independently accepted manifest SHA and Git head supplied by the
+owner's trusted release configuration through `RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256`
+and `RC012_OWNER_PINNED_SOURCE_HEAD`. The shared verifier checks both package
+files against that manifest before asking for native owner consent.
 
 Native owner package approval is separate and remains explicit: Linux uses
 `zenity`, Windows uses an actual current-owner-session WinForms Yes/No
