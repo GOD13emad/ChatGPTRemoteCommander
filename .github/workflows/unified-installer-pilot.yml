@@ -74,6 +74,8 @@ jobs:
       - name: Install pinned packaging tools
         working-directory: packaging/unified
         run: npm ci --no-audit --no-fund
+      - name: Verify installed legacy build-tool APIs after npm ci
+        run: node --test test/unified-build-tool-compat.test.mjs
       - name: Prefetch signed Ubuntu GUI dependencies before long packaging build
         if: runner.os == 'Linux'
         shell: bash

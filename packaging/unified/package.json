@@ -17,11 +17,6 @@
   "author": "Aliakbar Emadoddin <94546844+GOD13emad@users.noreply.github.com>",
   "homepage": "https://github.com/GOD13emad/ChatGPTRemoteCommander",
   "overrides": {
-    "app-builder-lib": {
-      "minimatch": "11.0.9"
-    },
-    "@electron/universal": {
-      "minimatch": "11.0.9"
-    }
+    "minimatch@>=7.0.0 <11.0.1": "11.0.9"
   }
 }
