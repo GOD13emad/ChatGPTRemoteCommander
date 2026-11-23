@@ -145,6 +145,33 @@ test('certificate SAN, signer URI, source ref and digest must name the exact wor
       {name,sha256:candidateSha,expectedCommit:head}),/SIGSTORE_SUBJECT_MISMATCH/);
   }
 });
+test('typed Sigstore-Go URI SAN is admitted only for the exact pinned signer',()=>{
+  const name='Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb';
+  const rows=JSON.parse(verifiedJson(name));
+  const cert=rows[0].verificationResult.signature.certificate;
+  cert.subjectAlternativeName={type:'URI',value:signer};
+  assert.equal(verifiedAttestationSubject(JSON.stringify(rows),{
+    name,sha256:candidateSha,expectedCommit:head
+  }),true);
+  for(const san of [
+    {type:'DNS',value:signer},
+    {type:'URI',value:signer.replace('.yml@','.yml-OTHER@')},
+    {type:'URI',value:signer+'@refs/heads/fake'},
+    {type:'URI',value:123},
+    {type:'URI'},
+    null
+  ]){
+    cert.subjectAlternativeName=san;
+    assert.throws(()=>verifiedAttestationSubject(JSON.stringify(rows),{
+      name,sha256:candidateSha,expectedCommit:head
+    }),/UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
+  }
+  cert.subjectAlternativeName={type:'URI',value:signer};
+  cert.sourceRepositoryRef='refs/heads/other';
+  assert.throws(()=>verifiedAttestationSubject(JSON.stringify(rows),{
+    name,sha256:candidateSha,expectedCommit:head
+  }),/UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
+});
 test('public attestation retrieval fails closed on missing or invalid bundles',async()=>{
   const d='f'.repeat(64);
   await assert.rejects(publicNativeAttestationBundles(d,{fetcher:async()=>({
