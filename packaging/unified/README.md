@@ -43,10 +43,12 @@ digests, and refuses existing output and version-order drift. It is **not**
 independent release trust: a digest calculated from the download itself is
 self-asserted. For a **package-only** `--apply`, the preferred signed mode on Linux and Windows is
 `node tools/universal-install/native-cli.mjs --apply --manifest ABS_NATIVE_MANIFEST.json --attested-gui-approval`.
-It independently verifies the actual candidate using official GitHub/Sigstore
-attestation pinned to the exact source HEAD and workflow signer, derives the
-local provenance manifest digest automatically, and shows an owner-native
-Yes/Cancel window. **No manually typed SHA256 or transaction ID.**
+It verifies the actual candidate using GitHub/Sigstore attestation pinned to the
+exact source HEAD and workflow signer. A clean first install can derive the local
+manifest digest from that verification. For an upgrade, the trusted release
+configuration supplies the independently approved manifest digest and source HEAD
+through the variables below. Once these checks pass, approval uses the native
+owner dialog.
 The alternative unsigned/legacy route still requires separately accepted
 release-manifest SHA-256 and Git HEAD through
 `RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256` and

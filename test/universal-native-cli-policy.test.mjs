@@ -115,6 +115,36 @@ test('GUI approval cannot bypass independently established provenance',()=>{
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 
+test('attested upgrades require an independently pinned rollback package before verification',()=>{
+  if(!['linux','windows'].includes(osName))return;
+  const dir=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-cli-rollback-pin-qa-'));
+  try{
+    const file=path.join(dir,'manifest.json');
+    const expectedCommit='a'.repeat(40);
+    fs.writeFileSync(file,JSON.stringify({
+      schema:'rc-universal-native-install-manifest-v1',
+      platform:osName,expectedCommit,architecture:process.arch,
+      product:'ChatGPTRemoteCommander',installationKind:'upgrade',
+      candidate:{path:path.join(dir,'candidate.pkg'),sha256:'b'.repeat(64),version:'0.12.0-dev.10'},
+      previous:{path:path.join(dir,'previous.pkg'),sha256:'c'.repeat(64),version:'0.12.0-dev.9'},
+      provenanceManifestPath:path.join(dir,'provenance.json')
+    }),{mode:0o600});
+    const env={...process.env};
+    delete env.RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256;
+    delete env.RC012_OWNER_PINNED_SOURCE_HEAD;
+    const args=['--apply','--manifest',file,'--attested-gui-approval'];
+    for(const pins of [{},{RC012_OWNER_PINNED_NATIVE_MANIFEST_SHA256:'d'.repeat(64),
+      RC012_OWNER_PINNED_SOURCE_HEAD:'e'.repeat(40)}]){
+      const r=run(args,{...env,...pins});
+      assert.equal(r.status,2);
+      const receipt=JSON.parse(r.stderr);
+      assert.equal(receipt.code,'UNIVERSAL_NATIVE_INDEPENDENT_PROVENANCE_REQUIRED');
+      assert.equal(receipt.liveCoreChanged,false);
+    }
+    assert.deepEqual(fs.readdirSync(dir),['manifest.json']);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 test('Linux shared CLI rejects foreign/missing owner GUI authority without prompt',async()=>{
   if(process.platform!=='linux')return;
   const {resolveLinuxOwnerGuiSession}=await import('../tools/universal-install/native-cli.mjs');
