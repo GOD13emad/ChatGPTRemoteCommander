@@ -13,16 +13,19 @@ async function freePort(){
   const s=net.createServer();s.listen(0,'127.0.0.1');await once(s,'listening');
   const port=s.address().port;await new Promise(resolve=>s.close(resolve));return port;
 }
-async function startServer(serverRoot,configPath){
+async function startServer(serverRoot,configPath,fixturePort){
+  if (!Number.isSafeInteger(fixturePort) || fixturePort < 1 || fixturePort > 65535)
+    throw new Error('HTTP_FIXTURE_PORT_INVALID');
+  const healthUrl = 'http://127.0.0.1:' + fixturePort + '/health';
   const child=spawn(process.execPath,[path.join(serverRoot,'src','server-v0.3.mjs')],{
     cwd:serverRoot,env:{...process.env,REMOTE_COMMANDER_CONFIG:configPath},stdio:['ignore','pipe','pipe']
   });
   let stderr='';child.stderr.on('data',c=>{stderr+=c.toString('utf8');});
-  const config=JSON.parse(await fs.readFile(configPath,'utf8'));
+
   const startupDeadline=Date.now()+30000;
   while(Date.now()<startupDeadline){
     if(child.exitCode!==null)throw new Error(`server exited before healthy: exitCode=${child.exitCode}; stderr=${stderr}`);
-    try{const r=await fetch(`http://127.0.0.1:${config.port}/health`);if(r.ok)return {child,stderr:()=>stderr};}catch{}
+    try{const r=await fetch(healthUrl);if(r.ok)return {child,stderr:()=>stderr};}catch{}
     await wait(25);
   }
   child.kill();throw new Error(`server did not become healthy within 30000ms: stderr=${stderr}`);
@@ -51,7 +54,7 @@ test('accepted tool audit maps forwarded transport request ID to durable correla
     };
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
 
     const secret='RAW_CONTENT_MUST_NOT_ENTER_TOOL_ACCEPT';
     const authMarker='audit-must-not-store-this';
@@ -145,7 +148,7 @@ test('legacy FULL_POWER HTTP cannot mint transport retries, execute file mutatio
     };
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
     const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
     assert.equal(health.privilegedLegacyHttpQuarantined,true);
     for(const [method,params] of [
@@ -170,7 +173,7 @@ test('legacy FULL_POWER HTTP cannot mint transport retries, execute file mutatio
     await assert.rejects(fs.access(destination));
     assert.equal(await fs.readFile(source,'utf8'),'payload');
     await stop(running.child);running=null;
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
     const afterRestart=await fetch(`http://127.0.0.1:${port}/mcp`,{
       method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({jsonrpc:'2.0',id:101,method:'tools/call',
@@ -182,4 +185,11 @@ test('legacy FULL_POWER HTTP cannot mint transport retries, execute file mutatio
     if(running)await stop(running.child);
     await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
+});
+
+test('test-only health probe refuses invalid port before any fixture config read', async () => {
+  await assert.rejects(
+    startServer('not-a-server', 'not-a-fixture-config.json', 0),
+    /HTTP_FIXTURE_PORT_INVALID/
+  );
 });
