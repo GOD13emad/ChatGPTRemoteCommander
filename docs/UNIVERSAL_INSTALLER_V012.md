@@ -74,7 +74,20 @@ privileged package operations. The Windows native adapter uses only the
 built-in `System32/WindowsPowerShell/v1.0/powershell.exe` with PowerShell
 5.1-compatible .NET SHA256 runtime fingerprints; no PowerShell 7/
 `pwsh` prerequisite is required for installation. The same native
-transaction, identity checks, owner approval and journal remain unchanged. `--fresh` accepts only actual package absence
+transaction, identity checks, owner approval and journal remain unchanged.
+
+**Single public-Core source boundary:** `packaging/unified/prepare.mjs` uses a
+positive Git archive allowlist excluding optional `extensions/` while still
+checking them for dirty tracked source. The native Linux builder consumes and
+validates that exact `.stage/core` artifact instead of `git archive HEAD` of
+the whole repository. The combined DEB merger additionally refuses any native
+or GUI Core file outside the same source manifest (including hidden optional
+extensions). This applies to **both** Linux locations
+`/usr/lib/chatgpt-remote-commander/app` and
+`/opt/Remote Commander/resources/core` and must be confirmed in the actual
+signed DEB. Previously owner-installed `dev.10` Core bytes are unchanged until
+a separately approved signed replacement; a clean local build is not an
+owner-host repair or Stable release acceptance. `--fresh` accepts only actual package absence
 with no owner profile/legacy state. An existing Windows legacy
 `HKCU/Uninstall/RemoteCommander` (or conflicting HKLM family) returns
 `UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED` **before any package effect**;

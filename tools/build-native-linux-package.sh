@@ -72,7 +72,29 @@ mkdir -p "$APP" "$RUNTIME" "$DEB/DEBIAN" \
   "$DEB/usr/lib/systemd/user" \
   "$DEB/usr/share/doc/chatgpt-remote-commander" \
   "$DEB$PACKAGE_DIR/tunnel"
-git -C "$ROOT" archive --format=tar "$HEAD" | tar -xf - -C "$APP"
+# Reuse the ONE reviewed public-Core allowlist, not a second whole-repository
+# git archive that could restore optional extensions under /usr/lib/.../app.
+# Prepare is source-pinned and rebuilds the derived stage from the exact HEAD.
+node "$ROOT/packaging/unified/prepare.mjs"
+PUBLIC_CORE="$ROOT/packaging/unified/.stage/core"
+cp -a -- "$PUBLIC_CORE/." "$APP/"
+node - "$ROOT" "$PUBLIC_CORE" "$APP" "$HEAD" <<'PUBLIC_CORE_VERIFY'
+const fs=require('node:fs'),path=require('node:path');
+const [repo,stage,installed,head]=process.argv.slice(2);
+const {validateCore}=require(path.join(repo,'packaging/unified/pilot-runtime.cjs'));
+const staged=validateCore(stage),native=validateCore(installed);
+const expectedTree=require('node:child_process').execFileSync('git',
+ ['-C',repo,'rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim();
+const files=Object.keys(staged.files);
+if(staged.head!==head||native.head!==head||staged.tree!==expectedTree
+ ||native.tree!==expectedTree||staged.count!==native.count
+ ||files.some(p=>p==='extensions'||p.startsWith('extensions/'))
+ ||JSON.stringify(staged.files)!==JSON.stringify(native.files)
+ ||fs.existsSync(path.join(installed,'extensions')))
+ throw Error('RC012_NATIVE_PUBLIC_CORE_SOURCE_MISMATCH');
+console.log('RC012_NATIVE_PUBLIC_CORE_ALLOWLIST_PASS files='+files.length+
+ ' optionalExtensions=0');
+PUBLIC_CORE_VERIFY
 test "$(node -p 'require(process.argv[1]).version' "$APP/package.json")" = "$VERSION"
 # Every build of the single v0.12 Linux product MUST contain the real protected
 # Core + J01 + signed Worker implementation. Version strings alone are not proof.
