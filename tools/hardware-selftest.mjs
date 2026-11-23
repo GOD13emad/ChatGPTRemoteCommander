@@ -16,8 +16,18 @@ function parse(argv){
   }
   if(!o.url||!o.config)fail('SELFTEST_REQUIRED');
   if(!Number.isSafeInteger(o.timeoutMs)||o.timeoutMs<500||o.timeoutMs>60000)fail('SELFTEST_TIMEOUT');
-  const u=new URL(o.url);
-  if(!['127.0.0.1','localhost','::1','[::1]'].includes(u.hostname)||!u.pathname.endsWith('/mcp'))fail('SELFTEST_LOOPBACK_ONLY');
+  let u;
+  try{u=new URL(o.url);}catch{fail('SELFTEST_URL_INVALID');}
+  if(!['http:','https:'].includes(u.protocol)
+    ||!['127.0.0.1','localhost','[::1]'].includes(u.hostname)
+    ||u.username||u.password||u.search||u.hash||u.pathname!=='/mcp'
+    ||!u.port||!Number.isSafeInteger(Number(u.port))
+    ||Number(u.port)<1||Number(u.port)>65535)
+    fail('SELFTEST_LOOPBACK_ONLY');
+  const scheme=u.protocol==='http:'?'http':'https';
+  const host=u.hostname==='127.0.0.1'?'127.0.0.1'
+    :u.hostname==='localhost'?'localhost':'[::1]';
+  o.url=scheme+'://'+host+':'+Number(u.port)+'/mcp';
   return o;
 }
 async function readBounded(r){
