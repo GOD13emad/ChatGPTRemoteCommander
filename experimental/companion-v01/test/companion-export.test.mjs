@@ -290,3 +290,12 @@ test('real isolated modern MCP server supplies exact snapshot without workflow r
     fs.rmSync(owned, { recursive: true });
   }
 });
+
+test('endpoint refuses port zero even on a literal loopback MCP hostname', () => {
+  for (const endpoint of [
+    'http://127.0.0.1:0/mcp',
+    'http://[::1]:0/mcp'
+  ]) {
+    assert.throws(() => companionEndpoint(endpoint), /COMPANION_ENDPOINT_INVALID/, endpoint);
+  }
+});
