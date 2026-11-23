@@ -48,8 +48,12 @@ test('one portable audit supports optional native registration but never equates
   const ordinary=parseAuditArgs(valid);
   assert.equal(ordinary.observeRegistration,false);
   assert.equal(parseAuditArgs([...valid,'--registration']).observeRegistration,true);
+  assert.equal(parseAuditArgs([...valid,'--scan-extra-files']).scanExtraFiles,true);
+  const both=parseAuditArgs([...valid,'--registration','--scan-extra-files']);
+  assert.equal(both.observeRegistration,true);
+  assert.equal(both.scanExtraFiles,true);
   assert.throws(()=>parseAuditArgs([...valid,'--arbitrary']),
     {code:'NATIVE_BASELINE_AUDIT_ARGS_INVALID'});
   assert.throws(()=>parseAuditArgs([...valid,'--registration','--registration']),
-    {code:'NATIVE_BASELINE_AUDIT_ARGS_REQUIRED'});
+    {code:'NATIVE_BASELINE_AUDIT_ARGS_INVALID'});
 });

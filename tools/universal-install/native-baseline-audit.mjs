@@ -10,11 +10,14 @@ import {inspectNativeRegistration}
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 export function parseAuditArgs(args){
-  if(args.length!==6&&args.length!==7)
+  if(args.length<6||args.length>8)
     fail('NATIVE_BASELINE_AUDIT_ARGS_REQUIRED');
-  const observeRegistration=args.length===7;
-  if(observeRegistration&&args[6]!=='--registration')
+  const flags=args.slice(6);
+  if(flags.some(v=>!['--registration','--scan-extra-files'].includes(v))
+    ||new Set(flags).size!==flags.length)
     fail('NATIVE_BASELINE_AUDIT_ARGS_INVALID');
+  const observeRegistration=flags.includes('--registration');
+  const scanExtraFiles=flags.includes('--scan-extra-files');
   const m=new Map();
   for(let i=0;i<6;i+=2){
     const k=args[i],v=args[i+1];
@@ -33,7 +36,7 @@ export function parseAuditArgs(args){
   if(!platform)fail('NATIVE_BASELINE_AUDIT_OS_UNSUPPORTED');
   return {platform,packagePath:m.get('--previous'),
     expectedPackageSha256:m.get('--sha256'),
-    installedRoot:m.get('--installed-root'),observeRegistration};
+    installedRoot:m.get('--installed-root'),observeRegistration,scanExtraFiles};
 }
 export async function audit(args=process.argv.slice(2)){
   const x=parseAuditArgs(args);
@@ -54,6 +57,7 @@ export async function audit(args=process.argv.slice(2)){
     mismatchNames:result.mismatches,
     archiveMembersVerified:result.archiveMembersVerified,
     ...(registration===null?{}:{nativeRegistration:registration}),
+    ...(result.installedExtras?{installedExtras:result.installedExtras}:{}),
     completeInventory:false,
     completeRestoreVerified:false,
     ownerApprovalIssued:false,

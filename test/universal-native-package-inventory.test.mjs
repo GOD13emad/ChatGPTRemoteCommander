@@ -115,3 +115,57 @@ test('native archive inventory excludes symlinks, traversal, hostile platform an
     }
   }finally{fs.rmSync(f.temp,{recursive:true,force:true});}
 });
+
+test('optional bounded census detects extra installed payload without claiming complete rollback',async()=>{
+  const f=files();
+  try{
+    const original=await compareNativeArchiveToInstalled({
+      archivePath:f.inner,installedRoot:f.root,scanExtraFiles:true
+    });
+    assert.equal(original.installedExtras.scannedFiles,2);
+    assert.equal(original.installedExtras.extraFileCount,0);
+    assert.equal(original.completeInventory,false);
+    fs.mkdirSync(path.join(f.root,'generated'));
+    fs.writeFileSync(path.join(f.root,'generated','Uninstall Remote Commander.exe'),'SIGNED? NOT ATTESTED');
+    const witness=await compareNativeArchiveToInstalled({
+      archivePath:f.inner,installedRoot:f.root,scanExtraFiles:true
+    });
+    assert.equal(witness.payloadMatch,true);
+    assert.equal(witness.installedExtras.extraFileCount,1);
+    assert.deepEqual(witness.installedExtras.extraNames,['generated/Uninstall Remote Commander.exe']);
+    assert.equal(witness.installedExtras.fullRestoreVerified,false);
+    assert.equal(witness.completeInventory,false);
+    assert.equal(witness.installedExtras.scannedFiles,3);
+    const without=await compareNativeArchiveToInstalled({
+      archivePath:f.inner,installedRoot:f.root
+    });
+    assert.equal(Object.hasOwn(without,'installedExtras'),false);
+  }finally{fs.rmSync(f.temp,{recursive:true,force:true});}
+});
+test('extra file scanning refuses an OS filesystem root, not a global inventory',async()=>{
+  const f=files();
+  try{
+    await assert.rejects(compareNativeArchiveToInstalled({
+      archivePath:f.inner,installedRoot:path.parse(f.root).root,
+      scanExtraFiles:true
+    }),{code:'NATIVE_BASELINE_SURPLUS_HOST_ROOT_REFUSED'});
+    await assert.rejects(compareNativeArchiveToInstalled({
+      archivePath:f.inner,installedRoot:f.root,
+      scanExtraFiles:'yes'
+    }),{code:'NATIVE_BASELINE_SURPLUS_OPTION_INVALID'});
+  }finally{fs.rmSync(f.temp,{recursive:true,force:true});}
+});
+test('extra file census refuses symlinked paths and does not follow external targets',async()=>{
+  const f=files();
+  try{
+    const link=path.join(f.root,'untrusted-extra');
+    try{fs.symlinkSync(f.temp,link,'dir');}
+    catch(error){
+      if(['EPERM','EACCES','ENOTSUP'].includes(error?.code))return;
+      throw error;
+    }
+    await assert.rejects(compareNativeArchiveToInstalled({
+      archivePath:f.inner,installedRoot:f.root,scanExtraFiles:true
+    }),{code:'NATIVE_BASELINE_SURPLUS_UNSAFE_ENTRY'});
+  }finally{fs.rmSync(f.temp,{recursive:true,force:true});}
+});

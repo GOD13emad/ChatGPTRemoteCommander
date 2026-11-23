@@ -220,6 +220,13 @@ recorded paths and dpkg --verify to observe file integrity. These checks do
 **not** establish that the supplied previous package matches the registered
 installation: inspect the versions and archive-member evidence separately.
 
+The additional `--scan-extra-files` option performs a bounded, read-only
+file census only inside the selected application `--installed-root`. It
+refuses a filesystem root, symlinks, unsupported entries and large trees;
+this explicitly exposes extra generated files (for example the NSIS
+Uninstaller) without silently treating them as restorable. Never point this
+option at the Linux `/` installation root. Its result remains **partial**.
+
 Machine-readable exit codes are **2** (audit unavailable/invalid), **3**
 (archive-member mismatch), and **4** (archive-member parity only). This
 audit does **not** return zero or fullRestoreVerified=true. Even exact

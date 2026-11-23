@@ -165,7 +165,70 @@ function installedDigest(root,entries,wantHashes){
     mismatches:mismatches.slice(0,16)
   };
 }
-export async function compareNativeArchiveToInstalled({archivePath,installedRoot}){
+// Optional bounded, read-only surplus census of the *application root*, not
+// whole host filesystems. This cannot attest to native registration or owner
+// mutable data; never promote it to a complete restore proof.
+function scanExtraInstalledFiles(root,archiveEntries){
+  const local=path.resolve(root),parsed=path.parse(local);
+  check(local!==parsed.root,
+    'NATIVE_BASELINE_SURPLUS_HOST_ROOT_REFUSED');
+  const top=fs.lstatSync(local);
+  check(top.isDirectory()&&!top.isSymbolicLink(),
+    'NATIVE_BASELINE_SURPLUS_ROOT_UNSAFE');
+  const canonicalRoot=fs.realpathSync(local);
+  const base=canonicalRoot.endsWith(path.sep)?canonicalRoot:
+    canonicalRoot+path.sep;
+  const safeBase=windows?base.toLowerCase():base;
+  const expected=new Set(archiveEntries.filter(x=>x.mode==='-').map(x=>
+    windows?x.name.toLowerCase():x.name
+  ));
+  let visited=0,scannedFiles=0,extraFiles=0,extraBytes=0;
+  const extras=[];
+  const dirs=[{absolute:local,depth:0}];
+  while(dirs.length){
+    const {absolute,depth}=dirs.pop();
+    check(depth<=32,'NATIVE_BASELINE_SURPLUS_DEPTH_LIMIT');
+    const contents=fs.readdirSync(absolute,{withFileTypes:true});
+    for(const part of contents){
+      visited++;
+      check(visited<=MAX_ENTRIES,
+        'NATIVE_BASELINE_SURPLUS_ENTRY_LIMIT');
+      const full=path.join(absolute,part.name);
+      const st=fs.lstatSync(full);
+      check(!st.isSymbolicLink()&&!(st.isBlockDevice()||
+        st.isCharacterDevice()||st.isFIFO()||st.isSocket()),
+      'NATIVE_BASELINE_SURPLUS_UNSAFE_ENTRY');
+      const canonical=fs.realpathSync(full);
+      check((windows?canonical.toLowerCase():canonical)
+        .startsWith(safeBase),'NATIVE_BASELINE_SURPLUS_UNSAFE_ENTRY');
+      if(st.isDirectory()){
+        dirs.push({absolute:full,depth:depth+1});continue;
+      }
+      check(st.isFile(),'NATIVE_BASELINE_SURPLUS_UNSUPPORTED_ENTRY');
+      scannedFiles++;
+      const name=path.relative(local,full).split(path.sep).join('/');
+      const key=windows?name.toLowerCase():name;
+      check(!name.startsWith('../')&&!name.startsWith('/')
+        &&!name.includes('\\')&&!name.includes('\0'),
+      'NATIVE_BASELINE_SURPLUS_PATH_UNSAFE');
+      if(!expected.has(key)){
+        extraFiles++;
+        extraBytes+=st.size;
+        check(Number.isSafeInteger(extraBytes),
+          'NATIVE_BASELINE_SURPLUS_BYTES_LIMIT');
+        if(extras.length<32)extras.push(name);
+      }
+    }
+  }
+  return Object.freeze({status:'SCOPED_EXTRA_FILE_CENSUS_ONLY',
+    installedRootWasNotHostRoot:true,
+    scannedEntries:visited,scannedFiles,
+    extraFileCount:extraFiles,extraByteCount:extraBytes,
+    extraNames:extras.sort(),fullRestoreVerified:false});
+}
+export async function compareNativeArchiveToInstalled({
+  archivePath,installedRoot,scanExtraFiles=false
+}){
   check(path.isAbsolute(archivePath)&&path.isAbsolute(installedRoot),
     'NATIVE_BASELINE_PATH_NOT_ABSOLUTE');
   const archive=fs.lstatSync(archivePath);
@@ -175,8 +238,13 @@ export async function compareNativeArchiveToInstalled({archivePath,installedRoot
   const {entries,total}=listArchive(archivePath);
   const hashes=await tarPayloadHashes(archivePath,entries,total);
   const receipt=installedDigest(installedRoot,entries,hashes);
+  check(typeof scanExtraFiles==='boolean',
+    'NATIVE_BASELINE_SURPLUS_OPTION_INVALID');
+  const extra=scanExtraFiles?
+    scanExtraInstalledFiles(installedRoot,entries):null;
   return Object.freeze({
-    ...receipt,archiveEntries:entries.length,totalPayloadBytes:total,
+    ...receipt,...(extra?{installedExtras:extra}:{}),
+    archiveEntries:entries.length,totalPayloadBytes:total,
     archiveMembersVerified:receipt.missing===0&&receipt.unsafe===0,
     // Strictly archive-member scoped: cannot yet attest to extra installed
     // files, generated NSIS uninstaller, registry or mutable owner recovery.
@@ -253,7 +321,8 @@ async function unpackDebTar(input,dest){
   return n;
 }
 export async function compareNativePackageToInstalled({
-  platform,packagePath,installedRoot,expectedPackageSha256
+  platform,packagePath,installedRoot,expectedPackageSha256,
+  scanExtraFiles=false
 }){
   check(['windows','linux'].includes(platform)&&platform===
     (windows?'windows':'linux'),'NATIVE_BASELINE_PLATFORM_MISMATCH');
@@ -279,7 +348,7 @@ export async function compareNativePackageToInstalled({
     if(platform==='windows')extractNSIS7z(packagePath,extracted);
     else await unpackDebTar(packagePath,extracted);
     const result=await compareNativeArchiveToInstalled({
-      archivePath:extracted,installedRoot
+      archivePath:extracted,installedRoot,scanExtraFiles
     });
     return Object.freeze({...result,packageSha256:expectedPackageSha256});
   }finally{
