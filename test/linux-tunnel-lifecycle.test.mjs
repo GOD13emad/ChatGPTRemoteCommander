@@ -126,7 +126,7 @@ test('linux supervisor retains only explicit private backends and its original d
     for(const [name,port,extra,accepted] of cases){
       const target=path.join(tmp,name+'.yaml');
       fs.writeFileSync(target,'mcp:\n  server_urls:\n    - url: "http://127.0.0.1:'+port+'/mcp"\n');
-      const p=spawnSync(bash,['-c',fn+'\nprofile_matches "$1"','probe',target],{
+      const p=spawnSync(bash,['-s','--',target],{input:fn+'\nprofile_matches "$1"',
         encoding:'utf8',env:{...process.env,REMOTE_COMMANDER_TUNNEL_PRIVATE_TARGETS:extra}
       });
       assert.equal(p.status===0,accepted,name+' '+port+' allow='+extra+' error='+p.stderr);

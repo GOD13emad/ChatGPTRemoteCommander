@@ -4,6 +4,13 @@ import { spawn, spawnSync } from 'node:child_process';
 
 export const IS_WINDOWS = process.platform === 'win32';
 export const IS_LINUX = process.platform === 'linux';
+// SystemRoot is an ambient process variable, not authorization to pick a binary.
+// Nonstandard Windows installations fail closed or use the existing PID fallback.
+export const WINDOWS_SYSTEM_ROOT = 'C:\\Windows';
+export const WINDOWS_SYSTEM_POWERSHELL_EXE = path.win32.join(
+  WINDOWS_SYSTEM_ROOT,'System32','WindowsPowerShell','v1.0','powershell.exe');
+export const WINDOWS_SYSTEM_TASKKILL_EXE = path.win32.join(
+  WINDOWS_SYSTEM_ROOT,'System32','taskkill.exe');
 
 export function expandPathValue(value) {
   let text = String(value ?? '');
@@ -36,8 +43,7 @@ export function shellSpec(command, interactive = false) {
 export function terminateProcessTree(pid, { signal = 'SIGTERM', windowsTimeoutMs = 5000 } = {}) {
   if (!Number.isInteger(pid) || pid <= 0) return { requested: false, method: 'none' };
   if (IS_WINDOWS) {
-    const executable = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
-    const result = spawnSync(executable, ['/PID', String(pid), '/T', '/F'], {
+    const result = spawnSync(WINDOWS_SYSTEM_TASKKILL_EXE, ['/PID', String(pid), '/T', '/F'], {
       windowsHide: true, shell: false, stdio: 'ignore', timeout: windowsTimeoutMs
     });
     if (result.error) {

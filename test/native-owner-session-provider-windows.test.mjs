@@ -184,3 +184,27 @@ test('Windows native owner probe validates the real active user token (opt-in)',
   assert.match(a.osSessionId,/^windows-wts-[1-9][0-9]*$/);
   assert.equal(await p.resolveOwnerSidHash(),a.ownerSidHash);
 });
+
+test('ambient SystemRoot cannot select the native owner PowerShell image or Windows child roots',async()=>{
+  const previous=process.env.SystemRoot;
+  let observed;
+  try{
+    process.env.SystemRoot='Z:\\untrusted-owner-image';
+    const p=createWindowsNativeOwnerSessionProvider({
+      platform:'win32',script:SCRIPT,verifyFile:()=>{},
+      execFileImpl:(file,args,options,callback)=>{
+        observed={file,options};
+        callback(null,snapshot(),'');
+      },snapshotTimeoutMs:1000,dialogTimeoutMs:5000
+    });
+    const state=await p.getOwnerSessionSnapshot();
+    assert.equal(state.osSessionId,'windows-wts-2');
+    assert.equal(observed.file,POWERSHELL);
+    assert.equal(observed.options.env.SystemRoot.toLowerCase(),'c:\\windows');
+    assert.equal(observed.options.env.WINDIR.toLowerCase(),'c:\\windows');
+    assert.doesNotMatch(observed.options.env.PATH,/untrusted-owner-image/i);
+  }finally{
+    if(previous===undefined)delete process.env.SystemRoot;
+    else process.env.SystemRoot=previous;
+  }
+});

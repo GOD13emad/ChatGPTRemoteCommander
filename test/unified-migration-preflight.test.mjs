@@ -709,6 +709,28 @@ test('Linux encrypted backup guard independently decrypts an exact owner-local r
   const save=()=>fs.writeFileSync(receiptFile,JSON.stringify(payload),{mode:0o600});
   save();
   assert.equal(verify(),true);
+  // Ambient PATH cannot select the system credential or hashing executables.
+  const fakeBin=path.join(home,'untrusted-executables');
+  fs.mkdirSync(fakeBin,{mode:0o700});
+  const marker=path.join(home,'unexpected-exec-marker');
+  for(const name of ['sha256sum','systemd-creds','cut'])
+    fs.writeFileSync(path.join(fakeBin,name),
+      '#!/bin/sh\nprintf exec >> "$RC020_PATH_MARKER"\nexit 91\n',{mode:0o700});
+  const priorPath=process.env.PATH;
+  const priorMarker=process.env.RC020_PATH_MARKER;
+  let safe;
+  try{
+    process.env.PATH=fakeBin+path.delimiter+(priorPath??'');
+    process.env.RC020_PATH_MARKER=marker;
+    safe=verify();
+  }finally{
+    if(priorPath===undefined)delete process.env.PATH;else process.env.PATH=priorPath;
+    if(priorMarker===undefined)delete process.env.RC020_PATH_MARKER;
+    else process.env.RC020_PATH_MARKER=priorMarker;
+  }
+  assert.equal(fs.existsSync(marker),false,
+    'preflight must never run attacker-selectable executables from PATH');
+  assert.equal(safe,true,'owner-scoped backup remains valid with untrusted PATH');
   assert.equal(verify({profileName:'other-owner'}),false);
   assert.equal(verify({recoveryDir:undefined}),false);
   fs.chmodSync(sourceFile,0o644);
@@ -824,4 +846,25 @@ test('Windows owner DPAPI six-file proof is strictly bound to native success rec
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,marker+' extra'),false);
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,'RC012_WINDOWS_OWNER_DPAPI_RESTORE_SIMULATION_PASS files=6'),false);
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(null,marker),false);
+});
+test('Windows read-only DPAPI preflight pins machine PowerShell independently of ambient ProgramFiles',async()=>{
+  const {windowsOwnerDpapiPowerShellExecutable}=await import(
+    '../packaging/unified/migration-preflight.mjs');
+  assert.equal(typeof windowsOwnerDpapiPowerShellExecutable,'function',
+    'the DPAPI executable selector must be explicit and independently testable');
+  const expected=path.win32.join('C:\\Program Files','PowerShell','7','pwsh.exe');
+  const old=process.env.ProgramFiles;
+  try{
+    for(const forged of ['Z:\\untrusted\\PowerShell\\7',
+      'C:\\Users\\untrusted\\bin','..\\outside','']){
+      process.env.ProgramFiles=forged;
+      assert.equal(windowsOwnerDpapiPowerShellExecutable(),expected);
+    }
+  }finally{
+    if(old===undefined)delete process.env.ProgramFiles;
+    else process.env.ProgramFiles=old;
+  }
+  const actual=fs.readFileSync(modulePath,'utf8');
+  assert.doesNotMatch(actual,/const exe=path\.win32\.join\(programFiles,/,
+    'never derive the executable from user-controllable ProgramFiles');
 });

@@ -7,8 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const script=path.resolve(here,'../packaging/unified/owner-dpapi-profile-recovery.ps1');
-const pwsh=process.platform==='win32'?(process.env.ProgramFiles
-  ?path.join(process.env.ProgramFiles,'PowerShell','7','pwsh.exe'):'pwsh.exe'):'pwsh';
+const pwsh=process.platform==='win32'?'C:\\Program Files\\PowerShell\\7\\pwsh.exe':'pwsh';
 function execute(appData,mode,profileName=null){
  const args=['-NoLogo','-NoProfile','-NonInteractive',
    '-File',script,'-Mode',mode];
@@ -154,8 +153,12 @@ $meta.cipherSha256=[Convert]::ToHexString(
 [IO.File]::WriteAllText($r,($meta|ConvertTo-Json -Compress),
   [Text.UTF8Encoding]::new($false))
 `;
+   // Execute synthetic DPAPI compatibility script from test-owned local file,
+   // not by passing source in the PowerShell command argument.
+   const legacyFile=path.join(home,'rc012-legacy-capsule-qa.ps1');
+   fs.writeFileSync(legacyFile,legacyPs,{flag:'wx',mode:0o600});
    const makeLegacy=spawnSync(pwsh,['-NoProfile','-NonInteractive',
-     '-Command',legacyPs],{encoding:'utf8',windowsHide:true,timeout:10000,
+     '-File',legacyFile],{encoding:'utf8',windowsHide:true,timeout:10000,
        env:{...process.env,RC012_QA_LEGACY_DIR:capsule(names[1])}});
    assert.equal(makeLegacy.status,0,makeLegacy.stderr);
    assert.equal(execute(home,'Verify',names[1]).status,0,
