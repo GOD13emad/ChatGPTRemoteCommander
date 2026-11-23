@@ -26,6 +26,11 @@ on:
       - "test/v101-private-*.test.mjs"
       - ".github/workflows/unified-installer-pilot.yml"
   workflow_dispatch:
+    inputs:
+      signed_pair:
+        description: "Optional signed QA baseline and candidate [{run,head,version}, ...]"
+        type: string
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -33,6 +38,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   package:
+    if: ${{ !inputs.signed_pair }}
     name: ${{ matrix.os }} — source-pinned installer
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -337,3 +343,39 @@ jobs:
           $new=Join-Path $env:RUNNER_TEMP ('rc012-new-nsis/Remote-Commander-Unified-'+$version+'-Windows-x64.exe')
           & ./test/unified-windows-same-family-upgrade-smoke.ps1 -OldInstaller $old -CandidateInstaller $new
           if($LASTEXITCODE -ne 0){throw 'RC012_NSIS_SAME_FAMILY_NATIVE_QA_FAILED'}
+
+  existing-signed-package-cycle:
+    name: ${{ matrix.os }} — existing signed package upgrade and rollback (NoPromote)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.signed_pair != '' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+      - name: Install distro-signed Linux package dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get -o Acquire::Retries=3 update -qq
+          sudo apt-get -o Acquire::Retries=3 install -y -qq --no-install-recommends libnotify4 libsecret-1-0
+      - name: Verify both attestations, then install, upgrade, roll back and uninstall
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RC012_SIGNED_PAIR: ${{ inputs.signed_pair }}
+        run: |
+          set -euo pipefail
+          node test/universal-native-coordinator-hosted.mjs --run-signed-pair --expected-commit "$GITHUB_SHA"

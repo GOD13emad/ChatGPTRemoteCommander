@@ -1,29 +1,34 @@
 #!/usr/bin/env node
 // Hosted, disposable *real native package effect* proof for the exact shared
 // coordinator. Not an owner-host installer, grant, publisher trust or cutover.
-// Only GitHub-hosted runner, exact checked-out commit and one signed source
-// package. Native package operations remain OS-native, never custom shell code.
+// Only GitHub-hosted runners and an exact checked-out test commit. The signed
+// pair mode uses already-attested packages without rebuilding either release.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {admittedDisposableHost,inspectUnifiedNativeSource}
+import {admittedDisposableHost,inspectUnifiedNativeSource,nativeLifecycleSpec}
   from '../tools/universal-install/native-smoke.mjs';
 import {createNativeOsAdapter}
   from '../tools/universal-install/native-os-adapters.mjs';
-import {executeNativeTransaction}
+import {executeNativeTransaction,verifyNativePlanInput}
   from '../tools/universal-install/native-transaction.mjs';
 import {createNativeFileJournal}
   from '../tools/universal-install/native-journal.mjs';
+import {officialNativeVerifierBinary,verifySignedNativeRelease}
+  from '../tools/universal-install/signed-native-provenance.mjs';
+import {verifyCompiledCore} from './native-compiled-core-verifier.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const PKG='chatgpt-remote-commander';
+const REPO='GOD13emad/ChatGPTRemoteCommander';
+const SHA=/^[a-f0-9]{40}$/;
+const VERSION=/^0\.12\.0-dev\.([1-9][0-9]{0,8})$/;
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 const check=(condition,code)=>{if(!condition)fail(code);};
-let permittedArtifactPath=null;
-function nativeCommand(binary,args,opts={}){
+function nativeCommand(binary,args,opts={},permittedArtifacts=[]){
   const {timeoutMs=15000,checkExit=true}=opts;
   // The only substitute for polkit on an ephemeral, ownerless CI runner is
   // its preauthorized root package manager (sudo -n). Never expose this
@@ -34,7 +39,7 @@ function nativeCommand(binary,args,opts={}){
       &&args.length===3
       &&['--install','--remove'].includes(args[1])
       &&(args[1]==='--remove'?args[2]===PKG
-        :args[2]===permittedArtifactPath),
+        :permittedArtifacts.includes(args[2])),
       'RC012_HOSTED_NATIVE_EFFECT_ARGUMENT_DENIED');
     binary='sudo';args=['-n','--',...args];
   }
@@ -61,10 +66,66 @@ function hashFile(file){
 function gitHead(){
   return nativeCommand('git',['-C',root,'rev-parse','HEAD']).stdout;
 }
+export function parseSignedPair(raw){
+  const invalid='RC012_HOSTED_SIGNED_PAIR_INVALID';
+  check(typeof raw==='string'&&raw.length<=1024,invalid);
+  let pair;
+  try{pair=JSON.parse(raw);}catch{fail(invalid);}
+  check(Array.isArray(pair)&&pair.length===2,invalid);
+  for(const target of pair)
+    check(target&&Object.keys(target).sort().join(',')==='head,run,version'
+      &&typeof target.run==='string'&&/^[1-9][0-9]{0,15}$/.test(target.run)
+      &&typeof target.head==='string'&&SHA.test(target.head)
+      &&typeof target.version==='string'&&VERSION.test(target.version),invalid);
+  const [baseline,candidate]=pair;
+  check(baseline.run!==candidate.run&&baseline.head!==candidate.head
+    &&Number(VERSION.exec(baseline.version)[1])<Number(VERSION.exec(candidate.version)[1]),
+    invalid);
+  return pair;
+}
+function downloadSignedArtifact(target,directory,platform){
+  const gh=officialNativeVerifierBinary();
+  const name=platform==='windows'?'rc-unified-windows-nsis-qa':'rc-unified-linux-deb-qa';
+  const record=JSON.parse(nativeCommand(gh,[
+    'run','view',target.run,'--repo',REPO,'--json','headSha,conclusion,workflowName'
+  ],{timeoutMs:30000}).stdout);
+  check(record.headSha===target.head&&record.conclusion==='success'
+    &&record.workflowName==='Unified Installer Pilot (NoPromote)',
+    'RC012_HOSTED_SIGNED_PAIR_RUN_MISMATCH');
+  const assets=path.join(directory,target.run);
+  fs.mkdirSync(assets);
+  nativeCommand(gh,['run','download',target.run,'--repo',REPO,
+    '--name',name,'--dir',assets],{timeoutMs:180000});
+  const filename=path.basename(nativeLifecycleSpec(process.platform,target.version).artifact);
+  check(fs.readdirSync(assets).join()===filename,'RC012_HOSTED_SIGNED_PAIR_ASSET_MISMATCH');
+  const file=path.join(assets,filename),sha256=hashFile(file);
+  const manifestPath=path.join(directory,target.run+'.json');
+  fs.writeFileSync(manifestPath,JSON.stringify({sourceHead:target.head,
+    platform:process.platform,candidate:{sha256,bytes:fs.statSync(file).size}
+  }),{flag:'wx',mode:0o600});
+  const proof=verifySignedNativeRelease({manifestPath,candidatePath:file,
+    expectedCommit:target.head,platform});
+  check(proof.signedCandidateVerified&&proof.candidateSha256===sha256,
+    'RC012_HOSTED_SIGNED_PAIR_PROVENANCE_FAILED');
+  return {path:file,sha256,version:target.version};
+}
+function installedCoreProof(platform,head){
+  const base=platform==='windows'
+    ?path.join(process.env.LOCALAPPDATA,'Programs','remote-commander-unified')
+    :'/opt/Remote Commander';
+  const coreRoot=path.join(base,'resources','core');
+  const sourceManifest=path.join(coreRoot,'source-manifest.json');
+  const core=verifyCompiledCore({coreRoot,sourceManifest,expectedCommit:head});
+  return {files:core.files,manifestSha256:smallFileHash(sourceManifest),
+    executableSha256:hashFile(path.join(base,platform==='windows'
+      ?'Remote Commander.exe':'remote-commander-unified'))};
+}
+function smallFileHash(file){
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
 export async function hostedNativeCoordinatorProof(args=process.argv.slice(2)){
-  check(args.length===3&&args[0]==='--run'
-    &&args[1]==='--expected-commit'
-    &&/^[a-f0-9]{40}$/.test(args[2]),
+  check(args.length===3&&['--run','--run-signed-pair'].includes(args[0])
+    &&args[1]==='--expected-commit'&&SHA.test(args[2]),
     'RC012_HOSTED_NATIVE_COORDINATOR_ARGUMENTS_INVALID');
   const head=args[2],actual=gitHead();
   check(head===actual,'RC012_HOSTED_NATIVE_COORDINATOR_HEAD_DRIFT');
@@ -75,19 +136,7 @@ export async function hostedNativeCoordinatorProof(args=process.argv.slice(2)){
   const platform=process.platform==='win32'?'windows':process.platform;
   check(['windows','linux'].includes(platform)
     &&os.arch()==='x64','RC012_HOSTED_NATIVE_COORDINATOR_PLATFORM_UNSUPPORTED');
-  const candidatePath=path.resolve(root,source.spec.artifact);
-  check(candidatePath.startsWith(root+path.sep),
-    'RC012_HOSTED_NATIVE_COORDINATOR_ARTIFACT_OUTSIDE_SOURCE');
-  const input={
-    product:'ChatGPTRemoteCommander',
-    platform,architecture:'x64',installationKind:'fresh',
-    expectedCommit:head,previous:null,
-    candidate:{path:candidatePath,sha256:hashFile(candidatePath),
-      version:source.version}
-  };
-  // Constrain any injected native sudo effect to this exact, hashed
-  // artifact and package ID; never use runtime-supplied arbitrary commands.
-  permittedArtifactPath=candidatePath;
+  const pair=args[0]==='--run-signed-pair'?parseSignedPair(process.env.RC012_SIGNED_PAIR):null;
   // A hosted runner's HOME can be populated by earlier independent QA steps.
   // Never weaken the real fresh-install owner-state guard or delete its files:
   // use an explicitly disposable, empty owner HOME for this CI-only lifecycle.
@@ -98,48 +147,73 @@ export async function hostedNativeCoordinatorProof(args=process.argv.slice(2)){
     &&fs.readdirSync(qaHome).length===0,
     'RC012_HOSTED_FRESH_OWNER_HOME_UNTRUSTED');
   process.env.HOME=qaHome;
-  const adapter=createNativeOsAdapter({platform,
-    architecture:'x64',run:nativeCommand});
-  const journal=createNativeFileJournal();
-  const ownerOfEphemeralRunner=async plan=>({
-    kind:'native-owner-install-approval',
-    transactionId:plan.transactionId,approved:true
-  });
-  const current=await executeNativeTransaction({
-    action:'plan',input,adapter
-  });
-  check(current.status==='READY_TO_FIRST_INSTALL'
-    &&current.beforeVersion===null,
-    'RC012_HOSTED_NATIVE_COORDINATOR_NOT_EMPTY');
-  const installed=await executeNativeTransaction({
-    action:'apply',input,adapter,journal,approve:ownerOfEphemeralRunner
-  });
-  check(installed.status==='NATIVE_PACKAGE_FIRST_INSTALLED'
-    &&installed.observedVersion===source.version,
-    'RC012_HOSTED_NATIVE_FIRST_INSTALL_NOT_VERIFIED');
-  const removed=await executeNativeTransaction({
-    action:'rollback',input,adapter,
-    journal:createNativeFileJournal(),
-    approve:ownerOfEphemeralRunner
-  });
-  check(removed.status==='NATIVE_PACKAGE_ROLLED_BACK'
-    &&removed.observedVersion===null,
-    'RC012_HOSTED_NATIVE_CLEAN_ROLLBACK_NOT_VERIFIED');
-  const final=await executeNativeTransaction({
-    action:'plan',input,adapter
-  });
-  check(final.status==='READY_TO_FIRST_INSTALL'
-    &&final.beforeVersion===null,
-    'RC012_HOSTED_NATIVE_FINAL_ABSENCE_NOT_VERIFIED');
-  // Only this newly created CI fixture can be deleted, and only after the
-  // package was uninstalled and the shared coordinator verified native absence.
-  if(originalHome===undefined)delete process.env.HOME;
-  else process.env.HOME=originalHome;
+  let upgradeProof=null;
+  try{
+    const artifacts=pair?pair.map(t=>downloadSignedArtifact(t,qaHome,platform)):[{
+      path:path.resolve(root,source.spec.artifact),version:source.version
+    }];
+    const baseline=artifacts[0];
+    if(!pair){
+      check(baseline.path.startsWith(root+path.sep),
+        'RC012_HOSTED_NATIVE_COORDINATOR_ARTIFACT_OUTSIDE_SOURCE');
+      baseline.sha256=hashFile(baseline.path);
+    }
+    const permittedArtifacts=artifacts.map(artifact=>artifact.path);
+    const adapter=createNativeOsAdapter({platform,
+      architecture:'x64',run:(binary,argv,opts)=>
+        nativeCommand(binary,argv,opts,permittedArtifacts)});
+    const fresh={
+      product:'ChatGPTRemoteCommander',platform,architecture:'x64',
+      installationKind:'fresh',previous:null,candidate:baseline,
+      expectedCommit:pair?.[0].head??head
+    };
+    const upgrade=pair?verifyNativePlanInput({...fresh,
+      installationKind:'upgrade',expectedCommit:pair[1].head,
+      previous:baseline,candidate:artifacts[1]
+    }):null;
+    const act=(action,input,status)=>executeNativeTransaction({
+      action,input,adapter,...(action==='plan'?{}:{
+        journal:createNativeFileJournal(),
+        approve:async plan=>({kind:'native-owner-install-approval',
+          transactionId:plan.transactionId,approved:true})
+      })
+    }).then(result=>{
+      check(result.status===status,'RC012_HOSTED_NATIVE_COORDINATOR_UNEXPECTED_STATE');
+      return result;
+    });
+    await act('plan',fresh,'READY_TO_FIRST_INSTALL');
+    await act('apply',fresh,'NATIVE_PACKAGE_FIRST_INSTALLED');
+    if(upgrade){
+      const oldCore=installedCoreProof(platform,pair[0].head);
+      await act('plan',upgrade,'READY_TO_APPLY');
+      const applied=await act('apply',upgrade,'NATIVE_PACKAGE_UPGRADED');
+      const newCore=installedCoreProof(platform,pair[1].head);
+      await act('plan',upgrade,'ALREADY_INSTALLED');
+      const restored=await act('rollback',upgrade,'NATIVE_PACKAGE_ROLLED_BACK');
+      const restoredCore=installedCoreProof(platform,pair[0].head);
+      check(applied.transactionId!==restored.transactionId
+        &&JSON.stringify(oldCore)===JSON.stringify(restoredCore),
+        'RC012_HOSTED_SIGNED_PAIR_OLD_PAYLOAD_NOT_RESTORED');
+      upgradeProof={baseline:{...pair[0],sha256:baseline.sha256,installedCore:oldCore},
+        candidate:{...pair[1],sha256:upgrade.candidate.sha256,installedCore:newCore},
+        restoredCore,applyTransactionId:applied.transactionId,
+        rollbackTransactionId:restored.transactionId};
+    }
+    await act('rollback',fresh,'NATIVE_PACKAGE_ROLLED_BACK');
+    await act('plan',fresh,'READY_TO_FIRST_INSTALL');
+  }finally{
+    if(originalHome===undefined)delete process.env.HOME;
+    else process.env.HOME=originalHome;
+  }
+  // Keep the package and receipt files available for runner diagnostics after
+  // a failed effect. Successful proof verified package absence before deletion.
   fs.rmSync(qaHome,{recursive:true,force:true});
   return Object.freeze({
     schema:'rc012-hosted-native-coordinator-v1',
-    status:'DISPOSABLE_FIRST_INSTALL_AND_NATIVE_UNINSTALL_PASS',
-    head,platform,candidateVersion:source.version,
+    status:pair?'DISPOSABLE_SIGNED_PAIR_NATIVE_LIFECYCLE_PASS'
+      :'DISPOSABLE_FIRST_INSTALL_AND_NATIVE_UNINSTALL_PASS',
+    head,platform,candidateVersion:pair?.[1].version??source.version,
+    ...(upgradeProof?{upgradeProof}:{}),
     exactSourceAndArtifactVerified:true,
     nativeEffectsVerified:true,
     finalPackageAbsent:true,ownerHostConsentVerified:false,
