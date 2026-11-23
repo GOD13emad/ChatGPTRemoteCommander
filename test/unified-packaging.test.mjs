@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {Readable} from 'node:stream';
 import {createV2PrivatePairMcpIngress} from '../src/v2-private-pair-mcp-http-ingress.mjs';
 import {createHash} from 'node:crypto';
@@ -355,4 +355,38 @@ test('preview upgrade refuses oversized runtime data without replacing current C
     assert.equal(validateCore(first.target).head,old.head);
     assert.ok(!fs.existsSync(path.join(data,'runtime','core.rollback')));
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('hosted public native DEB path policy allows only the exact generic provenance file and rejects private paths', {
+  skip: process.platform!=='linux'
+},()=>{
+  const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+  const section=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]+?)\r?\nPUBLIC_APP_BOUNDARY/u);
+  assert.ok(section,'execute the same Python policy embedded in the actual hosted native upgrade test');
+  const base=['src/server-v0.3.mjs','config.json','package.json','packaging',
+    'packaging/unified','packaging/unified/owner-pinned-provenance.mjs'];
+  const execute=(paths)=>{
+    const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
+    const code=[
+      'import sys, subprocess',
+      'listing=sys.argv[1]',
+      'subprocess.check_output=lambda *args, **kwargs: listing',
+      'sys.argv=["policy-test","old.deb","merged.deb"]',
+      section[1]
+    ].join('\n');
+    return spawnSync('python3',['-c',code,listing],{
+      cwd:repo,encoding:'utf8',timeout:12000,windowsHide:true});
+  };
+  const allowed=execute(base);
+  assert.equal(allowed.status,0,allowed.stderr);
+  assert.match(allowed.stdout,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/u);
+  for(const forbidden of ['packaging/unified/private.mjs','packaging/secret.json',
+    'extensions/specialist.mjs','docs/PROJECT_BRAIN.md']){
+    const rejected=execute([...base,forbidden]);
+    assert.notEqual(rejected.status,0,'must reject '+forbidden);
+    assert.match(rejected.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+  }
+  const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
+  assert.notEqual(missingProvenance.status,0);
+  assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
 });
