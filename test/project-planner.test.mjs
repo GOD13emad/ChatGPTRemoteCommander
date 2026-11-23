@@ -189,3 +189,26 @@ test('runtime floor matches unflagged node:sqlite availability',()=>{
   assert.ok(major>22||(major===22&&minor>=13),
     'Node 22.13+ is required for the unflagged built-in node:sqlite module');
 });
+
+test('Windows termination helpers pin taskkill to trusted machine path even if SystemRoot is forged',async()=>{
+  const platform=await import('../src/platform.mjs');
+  const expected=path.win32.join('C:\\Windows','System32','taskkill.exe');
+  assert.equal(platform.WINDOWS_SYSTEM_TASKKILL_EXE,expected);
+  const previous=process.env.SystemRoot;
+  try{
+    for(const forged of ['Z:\\untrusted\\windows',
+      'C:\\Users\\attacker\\windows','..\\outside','']){
+      process.env.SystemRoot=forged;
+      assert.equal(platform.WINDOWS_SYSTEM_TASKKILL_EXE,expected);
+    }
+  }finally{
+    if(previous===undefined)delete process.env.SystemRoot;
+    else process.env.SystemRoot=previous;
+  }
+  const sourcePlatform=fs.readFileSync(new URL('../src/platform.mjs',import.meta.url),'utf8');
+  const sourcePlanner=fs.readFileSync(new URL('../src/project-planner.mjs',import.meta.url),'utf8');
+  assert.match(sourcePlatform,/spawnSync\(WINDOWS_SYSTEM_TASKKILL_EXE,/);
+  assert.match(sourcePlanner,/spawn\(WINDOWS_SYSTEM_TASKKILL_EXE,/);
+  assert.doesNotMatch(sourcePlatform,/path\.join\(process\.env\.SystemRoot/);
+  assert.doesNotMatch(sourcePlanner,/path\.join\(process\.env\.SystemRoot/);
+});

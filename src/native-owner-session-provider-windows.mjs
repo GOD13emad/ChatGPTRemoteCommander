@@ -8,6 +8,7 @@ import {execFile as execFileDefault} from 'node:child_process';
 import {createHash,randomInt} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import {normalizeV2Route} from './v2-routing-contract.mjs';
+import {WINDOWS_SYSTEM_ROOT,WINDOWS_SYSTEM_POWERSHELL_EXE} from './platform.mjs';
 
 const HERE=path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT=path.join(HERE,'native-owner-session-windows.ps1');
@@ -34,22 +35,17 @@ function trustedFile(file){
   const st=fs.lstatSync(file);
   if(!st.isFile()||st.isSymbolicLink())fail('NATIVE_OWNER_WINDOWS_FILE_UNTRUSTED');
 }
-function defaultPowerShell(){
-  const root=process.env.SystemRoot;
-  if(typeof root!=='string'||!path.win32.isAbsolute(root))
-    fail('NATIVE_OWNER_WINDOWS_SYSTEM_ROOT_REQUIRED');
-  return path.win32.join(root,'System32','WindowsPowerShell','v1.0','powershell.exe');
-}
-// The native J01 challenge MUST be visible to the real owner. On Windows,
-// windowsHide:true can also hide the modal VisualBasic InputBox in this child
-// process (observed on a real interactive WTS seat), yielding false timeouts.
-// Snapshot is still console-hidden and cannot display an approval UI.
+
+// Preserve real native J01 owner consent visibility; snapshot stays hidden.
 function execute(impl,file,args,timeoutMs,{ownerDialog=false}={}){
   return new Promise(resolve=>{
     try{
       impl(file,args,{encoding:'utf8',timeout:timeoutMs,maxBuffer:8192,
-        windowsHide:!ownerDialog,env:{SystemRoot:process.env.SystemRoot??'C:\\Windows',
-          WINDIR:process.env.SystemRoot??'C:\\Windows',PATH:process.env.PATH??'',
+        windowsHide:!ownerDialog,env:{SystemRoot:WINDOWS_SYSTEM_ROOT,
+          WINDIR:WINDOWS_SYSTEM_ROOT,
+          PATH:[path.win32.join(WINDOWS_SYSTEM_ROOT,'System32'),
+            WINDOWS_SYSTEM_ROOT,
+            path.win32.join(WINDOWS_SYSTEM_ROOT,'System32','WindowsPowerShell','v1.0')].join(';'),
           TEMP:process.env.TEMP??'',TMP:process.env.TMP??''}},
       (error,stdout,stderr)=>resolve({
         ok:!error,stdout:typeof stdout==='string'?stdout:'',
@@ -83,7 +79,7 @@ function same(a,b){
 }
 export function createWindowsNativeOwnerSessionProvider({
   platform=process.platform,execFileImpl=execFileDefault,
-  powershell=defaultPowerShell(),script=SCRIPT,verifyFile=trustedFile,
+  powershell=WINDOWS_SYSTEM_POWERSHELL_EXE,script=SCRIPT,verifyFile=trustedFile,
   snapshotTimeoutMs=5000,dialogTimeoutMs=65000
 }={}){
   if(platform!=='win32'||typeof execFileImpl!=='function'
