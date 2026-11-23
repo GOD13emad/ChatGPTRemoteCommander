@@ -100,8 +100,40 @@ test('baseline proof is retested after native approval, before any package mutat
     {code:'UNIVERSAL_NATIVE_BASELINE_RESTORE_UNVERIFIED'});
   // Approval succeeded, but the second native receipt was no longer exact.
   // No INTENT_COMMITTED and no platform-native installer was invoked.
-  assert.deepEqual(f.events,['claim','close']);
+  assert.deepEqual(f.events,['claim','NO_CHANGE_VERIFIED','close']);
   assert.deepEqual(f.invocations,[]);
+});
+
+test('denied pre-effect restore receipt or runtime drift releases only the owned journal lock',async()=>{
+  for(const platform of ['windows','linux']){
+    for(const drift of ['proof','runtime']){
+      const f=fixture(platform);
+      const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-native-qa-'));
+      const directory=path.join(root,'journal');
+      try{
+        if(drift==='proof')f.setMode('proof-drift');
+        const plan=await executeNativeTransaction({action:'plan',input:f.input,
+          adapter:f.adapter});
+        assert.equal(plan.status,'READY_TO_APPLY');
+        const guardedApproval=async transaction=>{
+          if(drift==='runtime')f.setDrift(true);
+          return {kind:'native-owner-install-approval',
+            transactionId:transaction.transactionId,approved:true};
+        };
+        await assert.rejects(executeNativeTransaction({
+          action:'apply',input:f.input,adapter:f.adapter,
+          journal:createNativeFileJournal({directory}),approve:guardedApproval
+        }),{code:drift==='proof'?
+          'UNIVERSAL_NATIVE_BASELINE_RESTORE_UNVERIFIED':
+          'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT'});
+        assert.deepEqual(f.invocations,[]);
+        assert.equal(fs.existsSync(path.join(directory,'install.lock')),false);
+        const journalLines=fs.readFileSync(path.join(directory,'events.jsonl'),'utf8');
+        assert.match(journalLines,/NO_CHANGE_VERIFIED/);
+        assert.doesNotMatch(journalLines,/NATIVE_EFFECT_STARTED/);
+      }finally{fs.rmSync(root,{recursive:true,force:true});}
+    }
+  }
 });
 
 test('one OS-neutral plan identity and DENY-by-default for Windows/Linux',async()=>{

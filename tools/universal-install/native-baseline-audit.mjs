@@ -51,8 +51,21 @@ export async function audit(args=process.argv.slice(2)){
     nativePackageEffectPerformed:false
   });
 }
+// Exit codes express the *full restore* gate, never audit process success:
+// 2 = audit unavailable/invalid; 3 = mismatched package payload;
+// 4 = archive members match, but full installed state is NOT restorable proven.
+// In particular, code 0 is reserved for a future independently verified full
+// restore contract, not a successful partial inventory.
+export function auditExitCode(result){
+  if(result?.status==='ARCHIVE_MEMBERS_DIFFER')return 3;
+  if(result?.status==='ARCHIVE_MEMBERS_MATCHED_ONLY')return 4;
+  return 2;
+}
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
-  audit().then(x=>console.log(JSON.stringify(x))).catch(error=>{
+  audit().then(x=>{
+    console.log(JSON.stringify(x));
+    process.exitCode=auditExitCode(x);
+  }).catch(error=>{
     console.error(JSON.stringify({
       schema:'rc-native-baseline-audit-v1',status:'DENIED',
       code:typeof error?.code==='string'?error.code:'NATIVE_BASELINE_AUDIT_UNAVAILABLE',

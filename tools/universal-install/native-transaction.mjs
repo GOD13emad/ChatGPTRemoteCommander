@@ -230,17 +230,27 @@ export async function executeNativeTransaction({
     'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED');
   await journal.claim(plan.transactionId);
   try{
-    const fresh=await adapter.snapshot();
-    exactSnapshot(fresh);
-    assert(fresh.version===before.version&&sameRuntime(before,fresh),
-      'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
-    if(action==='apply'&&spec.installationKind==='upgrade'){
-      const rechecked=requireNativeBaselineProof(
-        await adapter.proveRestoreBaseline(spec.previous,fresh),
-        spec.previous,fresh
-      );
-      assert(rechecked.identity===baselineProof.identity,
-        'UNIVERSAL_NATIVE_PRE_EFFECT_RESTORE_PROOF_DRIFT');
+    // No native package command has begun before INTENT_COMMITTED. A guarded
+    // denial here is a *known no-effect* outcome, so do not strand the owner's
+    // exclusive journal lock as though an installer had changed unknown state.
+    try{
+      const fresh=await adapter.snapshot();
+      exactSnapshot(fresh);
+      assert(fresh.version===before.version&&sameRuntime(before,fresh),
+        'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+      if(action==='apply'&&spec.installationKind==='upgrade'){
+        const rechecked=requireNativeBaselineProof(
+          await adapter.proveRestoreBaseline(spec.previous,fresh),
+          spec.previous,fresh
+        );
+        assert(rechecked.identity===baselineProof.identity,
+          'UNIVERSAL_NATIVE_PRE_EFFECT_RESTORE_PROOF_DRIFT');
+      }
+    }catch(error){
+      await journal.write('NO_CHANGE_VERIFIED',{
+        action,reason:'PRE_EFFECT_GUARD_REJECTED'
+      });
+      throw error;
     }
     const primary=action==='apply'||spec.installationKind==='fresh'
       ?spec.candidate:spec.previous;
