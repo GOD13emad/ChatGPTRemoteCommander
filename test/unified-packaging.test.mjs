@@ -58,10 +58,9 @@ test('native Linux and Electron builder derive one exact prerelease version from
 
 test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{
  const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
- const shared='src tools vendor assets config.json package.json';
- const provenance='packaging/unified/owner-pinned-provenance.mjs';
- assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' '+provenance+' | tar -xf - -C "$APP"'));
- assert.ok(!native.includes(shared+' extensions'));
+ const shared='src tools vendor assets config.json package.json packaging/unified/owner-pinned-provenance.mjs';
+ assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
+ assert.ok(!native.includes('src tools vendor assets extensions'));
 
  assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
  const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
