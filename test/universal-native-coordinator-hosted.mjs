@@ -48,7 +48,24 @@ function nativeCommand(binary,args,opts={},permittedArtifacts=[]){
   });
   check(!r.error&&!r.signal&&Number.isInteger(r.status),
     'RC012_HOSTED_OS_NATIVE_TOOL_UNAVAILABLE');
-  if(checkExit)check(r.status===0,'RC012_HOSTED_OS_NATIVE_EFFECT_FAILED');
+  if(checkExit&&r.status!==0){
+    const tool=path.basename(binary).toLowerCase();
+    // Preserve the failing phase and exit code without printing credentials,
+    // artifact paths, registry values or raw subprocess output.
+    const script=tool==='powershell.exe'&&args.includes('-EncodedCommand')
+      ?Buffer.from(args.at(-1),'base64').toString('utf16le'):'';
+    const phase=script.includes('Get-NetTCPConnection')?'listeners'
+      :script.includes('Get-ChildItem')?'registration'
+      :script.includes('Start-Process')?'installer'
+      :script.includes('VersionInfo.FileVersion')?'artifact-version'
+      :tool.match(/^gh(?:\.exe)?$/)?args.slice(0,2).join('-'):tool;
+    const category=/PathNotFound|ObjectNotFound/.test(r.stderr??'')
+      ?'PATH_NOT_FOUND':/AccessDenied|PermissionDenied/.test(r.stderr??'')
+      ?'ACCESS_DENIED':null;
+    console.error(JSON.stringify({status:'RC012_HOSTED_NATIVE_COMMAND_FAILED',
+      tool,phase,category,exitCode:r.status}));
+    fail('RC012_HOSTED_OS_NATIVE_EFFECT_FAILED');
+  }
   return {code:r.status,stdout:(r.stdout??'').trim(),
     stderr:(r.stderr??'').trim()};
 }
@@ -107,6 +124,8 @@ function downloadSignedArtifact(target,directory,platform){
     expectedCommit:target.head,platform});
   check(proof.signedCandidateVerified&&proof.candidateSha256===sha256,
     'RC012_HOSTED_SIGNED_PAIR_PROVENANCE_FAILED');
+  console.log(JSON.stringify({status:'RC012_HOSTED_SIGNED_ARTIFACT_VERIFIED',
+    platform,...target,sha256}));
   return {path:file,sha256,version:target.version};
 }
 function installedCoreProof(platform,head){
@@ -179,6 +198,8 @@ export async function hostedNativeCoordinatorProof(args=process.argv.slice(2)){
       })
     }).then(result=>{
       check(result.status===status,'RC012_HOSTED_NATIVE_COORDINATOR_UNEXPECTED_STATE');
+      if(pair)console.log(JSON.stringify({status,action,platform,
+        candidateVersion:input.candidate.version}));
       return result;
     });
     await act('plan',fresh,'READY_TO_FIRST_INSTALL');

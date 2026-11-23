@@ -198,8 +198,12 @@ export function createNativeOsAdapter({
       const script=[
         "$ErrorActionPreference='Stop'",
         "$root='HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall'",
-        "$hits=@(Get-ChildItem -LiteralPath $root | Where-Object {"+
-          " $_.PSChildName -eq "+shellQuote(WIN_KEY)+" })",
+        "$hits=@()",
+        // A clean Windows profile may not have any per-user uninstall keys.
+        // Treat absence as empty, but still fail closed if the read fails.
+        "if(Test-Path -LiteralPath $root -ErrorAction Stop){"+
+          " $hits=@(Get-ChildItem -LiteralPath $root | Where-Object {"+
+          " $_.PSChildName -eq "+shellQuote(WIN_KEY)+" })}",
         "if($hits.Count -gt 1){throw 'COMMANDER_NSIS_REGISTRY_INVALID'}",
         // One NSIS family per user: never coexist with legacy Inno or HKLM.
         "$legacy=Get-ItemProperty -LiteralPath ($root+'\\RemoteCommander') "+
