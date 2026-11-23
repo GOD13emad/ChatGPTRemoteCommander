@@ -28,4 +28,7 @@ test('no-grant owner canary runner launches EXACT checkout Core without absolute
   assert.match(src,/RC012_CORE_BROKER_QA_SCOPE=NO_EFFECTS/);
   assert.match(src,/RC012_QA_J01_OWNER_BIND:-0/);
   assert.match(src,/RC012_PRODUCTION_CORE_AND_TUNNEL_UNCHANGED_NO_GRANT_QA_COMPLETE/);
+  assert.match(src,/-p RuntimeMaxSec=65s/);
+  assert.match(src,/systemctl --user stop "\$qaUnit.service"/);
+  assert.match(src,/systemctl --user reset-failed "\$qaUnit.service"/);
 });

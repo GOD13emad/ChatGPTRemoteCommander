@@ -23,6 +23,9 @@ qaTag="${qa##*-}"
 brokerUnit="rc012-no-grant-broker-$(id -u)-$qaTag"
 qaUnit="rc012-no-grant-core-$(id -u)-$qaTag"
 cleanup(){
+ # Stop only the two mktemp-scoped QA units. Never stop the live Core/Tunnel.
+ systemctl --user stop "$qaUnit.service" >/dev/null 2>&1 || :
+ systemctl --user reset-failed "$qaUnit.service" >/dev/null 2>&1 || :
  systemctl --user stop "$brokerUnit.service" >/dev/null 2>&1 || :
  # RuntimeMaxSec may leave a failed transient unit loaded after owner denial.
  systemctl --user reset-failed "$brokerUnit.service" >/dev/null 2>&1 || :
@@ -52,6 +55,7 @@ if [ "${RC012_QA_J01_OWNER_BIND:-0}" = 1 ];then
 fi
 systemd-run --user --quiet --pipe --wait --collect --unit="$qaUnit" \
  -p PrivateTmp=yes -p ProtectSystem=full -p NoNewPrivileges=yes \
+ -p RuntimeMaxSec=65s \
  -E REMOTE_COMMANDER_CONFIG="$config" \
  -E RC012_OWNER_BOOTSTRAP_SCOPE=OWNER_ENROLLED_NO_GRANT \
  -E RC012_CORE_BROKER_QA_SCOPE=NO_EFFECTS \
