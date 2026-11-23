@@ -66,7 +66,8 @@ export function createNativeFileJournal({
       })+'\n';
       const fd=fs.openSync(path.join(root,'events.jsonl'),'a',0o600);
       try{fs.writeSync(fd,line);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
-      if(['VERIFIED','ROLLBACK_VERIFIED','NO_CHANGE_VERIFIED'].includes(stage))
+      if(['VERIFIED','ROLLBACK_VERIFIED','NO_CHANGE_VERIFIED',
+        'ABORTED_BEFORE_NATIVE_EFFECT'].includes(stage))
         terminal=true;
     },
     async close(){

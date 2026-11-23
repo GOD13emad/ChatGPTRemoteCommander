@@ -165,11 +165,26 @@ test('attestation certificate matches full signer workflow URI, ref and digest',
  }
  certificate.subjectAlternativeName=original;
  for(const field of ['buildSignerURI','buildConfigURI','githubWorkflowRef',
-   'githubWorkflowSHA','buildSignerDigest']){
+   'githubWorkflowSHA','buildSignerDigest','sourceRepositoryRef']){
    const originalValue=certificate[field];certificate[field]='WRONG';
    assert.throws(()=>verifiedAttestationSubject(JSON.stringify(valid),
      {name,sha256:candidateSha,expectedCommit:head}),/SIGSTORE_SUBJECT_MISMATCH/);
    certificate[field]=originalValue;
+ }
+});
+test('typed Sigstore URI SAN must name the same exact signer workflow',()=>{
+ const name='Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb';
+ const options={name,sha256:candidateSha,expectedCommit:head};
+ const rows=JSON.parse(verifiedJson(name));
+ const certificate=rows[0].verificationResult.signature.certificate;
+ const signer=certificate.subjectAlternativeName;
+ certificate.subjectAlternativeName={type:'URI',value:signer};
+ assert.equal(verifiedAttestationSubject(JSON.stringify(rows),options),true);
+ for(const san of [{type:'DNS',value:signer},{type:'URI',value:signer+'-other'},
+   {type:'URI',value:123},{type:'URI'},null]){
+   certificate.subjectAlternativeName=san;
+   assert.throws(()=>verifiedAttestationSubject(JSON.stringify(rows),options),
+     /SIGSTORE_SUBJECT_MISMATCH/);
  }
 });
 test('offline Sigstore rejects a renamed/re-owned repository even if subject matches',()=>{

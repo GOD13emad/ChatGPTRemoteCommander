@@ -101,7 +101,12 @@ function identity(spec,before){
     TRANSACTION_SCHEMA,spec.product,spec.platform,spec.architecture,
     spec.installationKind,spec.expectedCommit,spec.candidate.version,spec.candidate.sha256,
     spec.previous?.version??'NATIVE_ABSENCE',
-    spec.previous?.sha256??'NO_ROLLBACK_ARTIFACT',before.runtime.fingerprint
+    spec.previous?.sha256??'NO_ROLLBACK_ARTIFACT',
+    // Distinct pre-effect package states must never share an approval ID.
+    // Planning at baseline retains exactly the APPLY ID; at candidate, the
+    // same manifest plans a distinct ROLLBACK ID.
+    before.version??'NATIVE_ABSENCE',before.registeredInstallCount,
+    before.runtime.fingerprint
   ];
   return sha(values.join('\0'));
 }
@@ -201,10 +206,14 @@ export async function executeNativeTransaction({
     'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED');
   await journal.claim(plan.transactionId);
   try{
-    const fresh=await adapter.snapshot();
-    exactSnapshot(fresh);
-    assert(fresh.version===before.version&&sameRuntime(before,fresh),
-      'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+    try{
+      const fresh=exactSnapshot(await adapter.snapshot());
+      assert(fresh.version===before.version&&sameRuntime(before,fresh),
+        'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+    }catch(error){
+      await journal.write('ABORTED_BEFORE_NATIVE_EFFECT',{action});
+      throw error;
+    }
     const primary=action==='apply'||spec.installationKind==='fresh'
       ?spec.candidate:spec.previous;
     const desiredVersion=action==='rollback'&&spec.installationKind==='fresh'
