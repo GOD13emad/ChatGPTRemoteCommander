@@ -19,3 +19,17 @@ async function act(which){busy=true;start.disabled=true;stop.disabled=true;show(
 start.addEventListener('click',()=>act('startPreview'));stop.addEventListener('click',()=>act('stopPreview'));
 refresh().catch(e=>show(statusEl,String(e.message||e)));
 preflight();
+
+const companionResult=document.getElementById('companion-result'),
+  chatResult=document.getElementById('chat-result');
+async function companionAction(fn,el){
+  try{show(el,await window.commander[fn]());}
+  catch(e){show(el,{error:String(e.message||e)});}
+}
+document.getElementById('chat-open').addEventListener('click',()=>companionAction('openChatBrowser',chatResult));
+document.getElementById('chat-popup').addEventListener('click',()=>companionAction('openChatExtensionPopup',chatResult));
+document.getElementById('companion-start').addEventListener('click',()=>companionAction('companionStart',companionResult));
+document.getElementById('companion-stop').addEventListener('click',()=>companionAction('companionStop',companionResult));
+document.getElementById('companion-code').addEventListener('click',()=>companionAction('companionPairCode',companionResult));
+document.getElementById('companion-folder').addEventListener('click',()=>companionAction('companionExtensionFolder',companionResult));
+window.commander.companionStatus().then(x=>show(companionResult,x)).catch(()=>{});

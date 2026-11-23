@@ -103,3 +103,60 @@ if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(pkg.version)
    ||train.releaseTag!==null)
   throw Error('UNIFIED_WRONG_CORE_OR_RELEASE_TRAIN_VERSION');
 console.log('UNIFIED_SOURCE_PREPARED',JSON.stringify({head,tree,count:entries.length,version:pkg.version}));
+
+// The companion is an OPTIONAL signed-installer resource, never part of the
+// authoritative public Core archive or its scope/capability manifest.
+const companionRoot=path.join(stage,'companion');
+const companionMarker=path.join(companionRoot,'source-manifest.json');
+const companionPath=path.join(companionRoot,'extensions','chatgpt-companion');
+const companionTar=path.join(stage,'companion-source.tar');
+if(fs.existsSync(companionRoot)){
+  if(fs.lstatSync(companionRoot).isSymbolicLink()
+    ||!fs.existsSync(companionMarker)
+    ||JSON.parse(fs.readFileSync(companionMarker,'utf8')).kind!=='COMMANDER_OPTIONAL_BROWSER_COMPANION')
+    throw Error('OPTIONAL_COMPANION_STAGE_UNKNOWN_CONTENT_REFUSED');
+  fs.rmSync(companionRoot,{recursive:true,force:true});
+}
+if(fs.existsSync(companionTar))throw Error('OPTIONAL_COMPANION_ARCHIVE_PREEXISTS');
+const extensionTree=runGit(['ls-tree','-r',head,'--','extensions/chatgpt-companion']);
+const listed=extensionTree.split('\n').filter(Boolean);
+if(listed.length<7||listed.length>20||listed.some(line=>!/^10064[04] blob [0-9a-f]{40}\textensions\/chatgpt-companion\/[A-Za-z0-9._-]+$/.test(line)))
+  throw Error('OPTIONAL_COMPANION_GIT_TREE_UNSAFE');
+fs.mkdirSync(companionRoot,{recursive:true});
+try{
+  execFileSync('git',['-c','core.autocrlf=false','archive','--format=tar',
+    '--output',companionTar,head,'extensions/chatgpt-companion'],{
+    cwd:repo,timeout:30000,env:{...process.env,GIT_NO_LAZY_FETCH:'1'}
+  });
+  execFileSync('tar',['-xf',companionTar,'-C',companionRoot],{timeout:30000});
+}finally{if(fs.existsSync(companionTar))fs.rmSync(companionTar);}
+const companionFiles=[];
+function companionWalk(at,rel=''){
+  for(const e of fs.readdirSync(path.join(at,rel),{withFileTypes:true})){
+    const name=rel?rel+'/'+e.name:e.name;
+    if(e.isSymbolicLink()||!e.isFile())throw Error('OPTIONAL_COMPANION_FILE_TYPE_DENIED '+name);
+    companionFiles.push(name);
+  }
+}
+companionWalk(companionPath);
+const requiredCompanion=[
+  'manifest.json','background.js','content.js','protocol.js',
+  'popup.html','popup.js','popup.css','README.md'
+];
+if(companionFiles.length!==listed.length||
+   !requiredCompanion.every(f=>companionFiles.includes(f))||
+   companionFiles.length!==requiredCompanion.length)
+  throw Error('OPTIONAL_COMPANION_SOURCE_INCOMPLETE');
+const companionManifest={
+  schema:1,kind:'COMMANDER_OPTIONAL_BROWSER_COMPANION',head,tree,
+  count:companionFiles.length,
+  files:Object.fromEntries(companionFiles.sort().map(f=>[
+    'extensions/chatgpt-companion/'+f,
+    createHash('sha256').update(fs.readFileSync(path.join(companionPath,f))).digest('hex')
+  ]))
+};
+fs.writeFileSync(companionMarker,JSON.stringify(companionManifest,null,2)+'\n',{flag:'wx'});
+console.log('OPTIONAL_COMPANION_STAGED',JSON.stringify({
+  head,count:companionFiles.length,scope:'unprivileged-browser-only',
+  insideCore:false
+}));

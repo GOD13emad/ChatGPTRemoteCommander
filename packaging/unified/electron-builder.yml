@@ -7,6 +7,7 @@ files:
   - main.cjs
   - preload.cjs
   - pilot-runtime.cjs
+  - browser-companion-bridge.cjs
   - migration-preflight.mjs
   - owner-windows-legacy-migrate.ps1
   - index.html
@@ -15,6 +16,8 @@ asar: true
 extraResources:
   - from: .stage/core
     to: core
+  - from: .stage/companion
+    to: companion
 win:
   target: nsis
   requestedExecutionLevel: asInvoker

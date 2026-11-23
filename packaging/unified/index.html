@@ -9,5 +9,15 @@
 <section><strong>Live migration readiness (read-only)</strong><p>No install or access changes are triggered by this check.</p><pre id="migration" role="status">Inspecting active installation…</pre></section>
 <section><strong>Isolated Core preview</strong><p>Preview uses loopback-only transport, a temporary data root, and no privileged tools. It does not replace your active Commander.</p>
 <button id="start" type="button">Start isolated preview</button><button id="stop" type="button" disabled>Stop preview</button><pre id="result" role="status" aria-live="polite"></pre></section>
+<section><strong>ChatGPT in owned Browser Core (experimental)</strong>
+<p>Opens ChatGPT in a separate Commander-owned Chromium profile. Sign in normally; no existing browser cookies, passwords or profile are reused. A companion extension can observe tab presence, not issue commands.</p>
+<button id="chat-open" type="button">Open ChatGPT in Browser Core</button><button id="chat-popup" type="button">Pair internal extension</button>
+<pre id="chat-result" role="status"></pre></section>
+<section><strong>Browser Companion (opt-in)</strong><p>Pair a browser extension through an owner-visible, expiring code. Chrome, Edge and Brave can load the packaged folder via their extensions page. Firefox needs separate qualification. No automated ChatGPT messages or privileged tools are enabled.</p>
+<button id="companion-start" type="button">Start companion</button>
+<button id="companion-stop" type="button">Stop companion</button>
+<button id="companion-code" type="button">New pairing code</button>
+<button id="companion-folder" type="button">Open extension folder</button>
+<pre id="companion-result" role="status" aria-live="polite"></pre></section>
 <p><small>Not a signed Stable release. Privileged access, ChatGPT account enrollment, MeshCentral and Playwright browser integration require separate acceptance.</small></p>
 <script src="./renderer.js" defer></script></body></html>
