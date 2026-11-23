@@ -11,6 +11,9 @@ import {windowsGuiApprovalScript}
   from '../tools/universal-install/native-cli.mjs';
 
 const candidateSha='b'.repeat(64),head='a'.repeat(40);
+const sourceRef='refs/heads/qa';
+const signer='https://github.com/GOD13emad/ChatGPTRemoteCommander/.github/workflows/unified-installer-pilot.yml@'+sourceRef;
+const ghVersion={status:0,stdout:'gh version 2.103.2 (2026-10-23)\n'};
 function verifiedJson(name,sha=candidateSha){
   return JSON.stringify([{
     verificationResult:{
@@ -21,7 +24,9 @@ function verifiedJson(name,sha=candidateSha){
         sourceRepositoryOwnerIdentifier:'94546844',
         sourceRepositoryURI:'https://github.com/GOD13emad/ChatGPTRemoteCommander',
         sourceRepositoryDigest:head,runnerEnvironment:'github-hosted',
-        issuer:'https://token.actions.githubusercontent.com'
+        issuer:'https://token.actions.githubusercontent.com',
+        sourceRepositoryRef:sourceRef,subjectAlternativeName:signer,
+        buildSignerURI:signer,buildSignerDigest:head
       }},
       verifiedIdentity:{subjectAlternativeName:{regexp:'verified-by-cli'}}
     }
@@ -71,28 +76,44 @@ test('signed candidate uses official pinned repo/source/signer and refuses bad r
     fs.writeFileSync(manifest,JSON.stringify({schema:1,sourceHead:head,platform:'linux',
       candidate:{sha256:candidateSha,bytes:4096},
       rollback:{sha256:'c'.repeat(64),bytes:4096}}),{flag:'wx'});
-    let args;
-    const run=(_cmd,a)=>{args=a;return {status:0,
-      stdout:verifiedJson(path.basename(candidate))};};
-    const approved=verifySignedNativeRelease({
+    const input={
       manifestPath:manifest,candidatePath:candidate,
       expectedCommit:head,platform:'linux'
-    },{run});
+    };
+    const calls=[];
+    const run=(cmd,args,opts)=>{
+      calls.push({cmd,args,opts});
+      if(args[0]==='--version')return ghVersion;
+      return {status:0,stdout:verifiedJson(path.basename(candidate))};
+    };
+    const approved=verifySignedNativeRelease(input,{run});
     assert.equal(approved.signedCandidateVerified,true);
     assert.equal(approved.rollbackSignatureVerified,false,
       'never claim an unsigned baseline is signed');
     assert.match(approved.manifestSha256,/^[a-f0-9]{64}$/);
+    assert.deepEqual(calls[0].args,['--version']);
+    assert.equal(calls[1].cmd,calls[0].cmd);
+    assert.equal(calls[0].opts.timeout,10000);
+    const {args}=calls[1];
     assert.deepEqual(args.slice(0,3),['attestation','verify',candidate]);
     assert.ok(args.includes('--source-digest')&&args.includes(head));
     assert.ok(args.includes('--signer-workflow'));
     assert.ok(args.includes('--deny-self-hosted-runners'));
-    assert.throws(()=>verifySignedNativeRelease({
-      manifestPath:manifest,candidatePath:candidate,expectedCommit:head,platform:'linux'
-    },{run:()=>({status:1,stdout:''})}),/UNIVERSAL_NATIVE_SIGSTORE_VERIFICATION_FAILED/);
-    assert.throws(()=>verifySignedNativeRelease({
-      manifestPath:manifest,candidatePath:candidate,expectedCommit:head,platform:'linux'
-    },{run:()=>({status:0,stdout:verifiedJson('other.exe')})}),
+    assert.throws(()=>verifySignedNativeRelease(input,{run:(_cmd,a)=>a[0]==='--version'
+      ?ghVersion:{status:1,stdout:''}}),/UNIVERSAL_NATIVE_SIGSTORE_VERIFICATION_FAILED/);
+    assert.throws(()=>verifySignedNativeRelease(input,{run:(_cmd,a)=>a[0]==='--version'
+      ?ghVersion:{status:0,stdout:verifiedJson('other.exe')}}),
     /UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
+    for(const [stdout,reason] of [
+      ['gh version 2.101.0','VERIFIER_UPDATE_REQUIRED'],
+      ['gh version 2.102.0-dev','VERIFIER_VERSION_INVALID'],
+      ['unknown version','VERIFIER_VERSION_INVALID']
+    ]){
+      assert.throws(()=>verifySignedNativeRelease(input,{run:(_cmd,a)=>{
+        assert.deepEqual(a,['--version']);
+        return {status:0,stdout};
+      }}),new RegExp(reason));
+    }
     assert.throws(()=>verifiedAttestationSubject('{}',{
       name:path.basename(candidate),sha256:candidateSha
     }),/UNIVERSAL_NATIVE_SIGSTORE_RESULT_INVALID/);
@@ -109,6 +130,20 @@ test('offline Sigstore rejects a renamed/re-owned repository even if subject mat
  w[0].verificationResult.signature.certificate.sourceRepositoryDigest='f'.repeat(40);
  assert.throws(()=>verifiedAttestationSubject(JSON.stringify(w),
    {name,sha256:candidateSha,expectedCommit:head}),/SIGSTORE_SUBJECT_MISMATCH/);
+});
+test('certificate SAN, signer URI, source ref and digest must name the exact workflow',()=>{
+  const name='Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb';
+  for(const [key,value] of [
+    ['subjectAlternativeName',signer.replace('unified-installer-pilot.yml','other.yml')],
+    ['buildSignerURI',signer.replace(sourceRef,'refs/heads/other')],
+    ['sourceRepositoryRef','refs/heads/other'],
+    ['buildSignerDigest','f'.repeat(40)]
+  ]){
+    const rows=JSON.parse(verifiedJson(name));
+    rows[0].verificationResult.signature.certificate[key]=value;
+    assert.throws(()=>verifiedAttestationSubject(JSON.stringify(rows),
+      {name,sha256:candidateSha,expectedCommit:head}),/SIGSTORE_SUBJECT_MISMATCH/);
+  }
 });
 test('public attestation retrieval fails closed on missing or invalid bundles',async()=>{
   const d='f'.repeat(64);
@@ -137,6 +172,10 @@ test('public offline bundle verifier demands official gh success and pinned subj
        verificationMaterial:{},dsseEnvelope:{}}}]})};
   };
   const fakeVerifier=(_exe,args)=>{
+   if(args[0]==='--version'){
+    assert.deepEqual(args,['--version']);
+    return ghVersion;
+   }
    const i=args.indexOf('--bundle');
    assert.ok(i>0);
    verifiedBundlePath=args[i+1];
@@ -155,7 +194,8 @@ test('public offline bundle verifier demands official gh success and pinned subj
   await assert.rejects(verifyPublicSignedNativeRelease({
    manifestPath:manifest,candidatePath:artifact,
    expectedCommit:head,platform:'linux'
-  },{fetcher,run:()=>({status:1,stdout:''})}),/SIGSTORE_VERIFICATION_FAILED/);
+  },{fetcher,run:(_cmd,a)=>a[0]==='--version'
+    ?ghVersion:{status:1,stdout:''}}),/SIGSTORE_VERIFICATION_FAILED/);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 

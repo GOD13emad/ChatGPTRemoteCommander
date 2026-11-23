@@ -29,6 +29,21 @@ export function officialNativeVerifierBinary({
   }
   return 'gh';
 }
+function requirePatchedNativeVerifier(binary,run){
+  const result=run(binary,['--version'],{encoding:'utf8',windowsHide:true,
+    timeout:10000,maxBuffer:4096});
+  if(result?.error||result?.signal||result?.status!==0
+    ||typeof result.stdout!=='string')
+    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_UNAVAILABLE');
+  const version=/^gh version (\d+)\.(\d+)\.(\d+)(?: \([^\r\n]*\))?(?:\r?\n|$)/
+    .exec(result.stdout);
+  const [major,minor,patch]=version?.slice(1).map(Number)??[];
+  if(![major,minor,patch].every(Number.isSafeInteger))
+    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_VERSION_INVALID');
+  // GitHub CLI 2.102.0 corrected workflow-identity matching.
+  if(major<2||(major===2&&minor<102))
+    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_UPDATE_REQUIRED');
+}
 export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={}){
   let results;
   try{results=JSON.parse(stdout);}catch{fail('UNIVERSAL_NATIVE_SIGSTORE_JSON_INVALID');}
@@ -37,6 +52,10 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
   const matched=results.some(v=>{
     const statement=v?.verificationResult?.statement;
     const cert=v?.verificationResult?.signature?.certificate;
+    const ref=cert?.sourceRepositoryRef;
+    if(typeof ref!=='string'||!/^refs\/(?:heads|tags)\/[^\s]+$/.test(ref))
+      return false;
+    const signerIdentity='https://github.com/'+WORKFLOW+'@'+ref;
     return statement?.predicateType==='https://slsa.dev/provenance/v1'
       &&Array.isArray(statement.subject)
       &&statement.subject.some(s=>s?.name===name&&s?.digest?.sha256===sha256)
@@ -46,7 +65,10 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
       &&cert?.runnerEnvironment==='github-hosted'
       &&cert?.issuer==='https://token.actions.githubusercontent.com'
       &&(!expectedCommit||cert?.sourceRepositoryDigest===expectedCommit)
-      &&v.verificationResult?.verifiedIdentity?.subjectAlternativeName;
+      &&HEAD.test(cert.sourceRepositoryDigest??'')
+      &&cert.subjectAlternativeName===signerIdentity
+      &&cert.buildSignerURI===signerIdentity
+      &&cert.buildSignerDigest===cert.sourceRepositoryDigest;
   });
   if(!matched)fail('UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH');
   return true;
@@ -82,7 +104,9 @@ export function verifySignedNativeRelease({
   const args=['attestation','verify',candidatePath,'--repo',REPO,
     '--source-digest',expectedCommit,'--signer-workflow',WORKFLOW,
     '--deny-self-hosted-runners','--format','json'];
-  const result=run(officialNativeVerifierBinary(),args,{encoding:'utf8',windowsHide:true,
+  const binary=officialNativeVerifierBinary();
+  requirePatchedNativeVerifier(binary,run);
+  const result=run(binary,args,{encoding:'utf8',windowsHide:true,
     timeout:90000,maxBuffer:512*1024});
   if(result?.error||result?.signal||result?.status!==0
     ||typeof result.stdout!=='string')
@@ -169,7 +193,7 @@ export async function verifyPublicSignedNativeRelease(args,{
     fs.writeFileSync(bundlePath,bundles.map(b=>JSON.stringify(b)).join('\n')+'\n',
       {flag:'wx',mode:0o600});
     return verifySignedNativeRelease(args,{run:(exe,argv,opts)=>
-      run(exe,[...argv,'--bundle',bundlePath],opts)});
+      run(exe,argv[0]==='attestation'?[...argv,'--bundle',bundlePath]:argv,opts)});
   }finally{
     fs.rmSync(dir,{recursive:true,force:true});
   }
