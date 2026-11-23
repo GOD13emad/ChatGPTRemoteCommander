@@ -1,6 +1,7 @@
 'use strict';
 const {app,BrowserWindow,ipcMain,session,shell}=require('electron');
 const {createCompanionBridge}=require('./browser-companion-bridge.cjs');
+const {validateBundledCompanion}=require('./companion-integrity.cjs');
 const {discover,openExtensionManager}=require('./browser-companion-targets.cjs');
 const {spawn}=require('node:child_process');
 const {createServer}=require('node:net');
@@ -19,23 +20,7 @@ const packagedCore=()=>path.join(app.isPackaged?process.resourcesPath:__dirname,
 
 function embeddedCompanionDir(){
   const root=path.join(app.isPackaged?process.resourcesPath:path.join(__dirname,'.stage'),'companion');
-  const receipt=JSON.parse(fs.readFileSync(path.join(root,'source-manifest.json'),'utf8'));
-  if(receipt.schema!==1||receipt.kind!=='COMMANDER_OPTIONAL_BROWSER_COMPANION'
-    ||!Number.isSafeInteger(receipt.count)||receipt.count<7||receipt.count>20
-    ||!receipt.files||Object.keys(receipt.files).length!==receipt.count)
-    throw Error('COMPANION_SOURCE_MANIFEST_INVALID');
-  const dir=path.join(root,'extensions','chatgpt-companion');
-  for(const [rel,expected] of Object.entries(receipt.files)){
-    if(!/^extensions\/chatgpt-companion\/[A-Za-z0-9._-]+$/.test(rel)
-      ||typeof expected!=='string'||!/^[0-9a-f]{64}$/.test(expected))
-      throw Error('COMPANION_SOURCE_MANIFEST_UNSAFE');
-    const f=path.join(root,...rel.split('/'));
-    const stat=fs.lstatSync(f);
-    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>65536
-      ||createHash('sha256').update(fs.readFileSync(f)).digest('hex')!==expected)
-      throw Error('COMPANION_SOURCE_HASH_MISMATCH');
-  }
-  return dir;
+  return validateBundledCompanion(root,packagedCore());
 }
 function companionStatus(){
   return companionBridge?.status()??{
