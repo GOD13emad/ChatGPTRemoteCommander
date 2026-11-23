@@ -199,7 +199,7 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
    'tag','-a','v0.12.0','-m','synthetic not-approved tag');
  const out=path.join(dir,'result.txt');
  fs.writeFileSync(out,'');
- const result=spawnSync(bash,['-c',script],{
+ const result=spawnSync(bash,['-s'],{input:script,
    cwd:repo,env:{...process.env,GITHUB_OUTPUT:out,GITHUB_EVENT_NAME:'push',
      GITHUB_REF:'refs/tags/v0.12.0'},encoding:'utf8',timeout:16000
  });
