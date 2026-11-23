@@ -233,17 +233,30 @@ both live Commander native dev.8 installations remained unchanged.
 The verifier also pins the immutable GitHub repository ID `1374266155`
 and owner ID `94546844`, in addition to exact source HEAD, workflow,
 Sigstore issuer and GitHub-hosted runner. Public API JSON alone never establishes
-authenticity. The `--attested-gui-approval` native CLI now uses the same
+authenticity. After independent MMZ security review, the *same resolved GitHub
+CLI executable* must pass a bounded `gh --version` security-floor check
+(`>= 2.102.0`) before any attestation verification, due to the upstream
+[GHSA-wjmr-j3rp-mh2g](https://github.com/cli/cli/security/advisories/GHSA-wjmr-j3rp-mh2g)
+signer-workflow prefix vulnerability. The verifier also inspects the actual
+signed certificate SAN, `buildSignerURI`, `buildConfigURI`, `githubWorkflowRef`
+and signer/source digests for **exact, complete** workflow identity matching;
+a same-repo workflow-name prefix cannot authorize a package. The offline
+`--bundle` argument applies to attestation verification only, never to the
+version probe. Either check failing blocks owner approval and package changes. The `--attested-gui-approval` native CLI now uses the same
 public-bundle verification path before presenting a real owner Yes/Cancel dialog.
 Observed real proof on Linux: GitHub PUBLIC attestation for immutable
 `77831c3d` dev.10 DEB, anonymous `gh attestation verify --bundle`,
 `signedCandidateVerified:true`, `rollbackSignatureVerified:false` and
 `liveCoreChanged:false`; this is candidate acceptance only, not an
-automatic or unsigned rollback grant. If the native package is **absent**
-(as on the Saeid Windows owner account in the measured inventory), discovery
-returns `NATIVE_FIRST_INSTALL_REQUIRED` instead of treating missing native
-version as a broken updater. It must use the separately verified first-install
-native manifest and explicit owner consent, not an update or automatic grant.
+automatic or unsigned rollback grant. If the Unified native package is **absent**, discovery reports
+`NATIVE_FIRST_INSTALL_REQUIRED` rather than a broken updater; that inventory
+result **does not prove a clean fresh-install host**. On Saeid Windows, a
+separate earlier `HKCU/Uninstall/RemoteCommander` `0.12.0-dev.1` install is
+present, and the native preflight correctly returns
+`UNIVERSAL_NATIVE_LEGACY_MIGRATION_REQUIRED`, before any package effects.
+It needs an independently verified, data-preserving Legacy-to-Unified
+migration path and explicit owner consent, not a second fresh install or
+automatic grant.
 No login or privilege bypass is attempted.
 The owner-local scheduler runs `--stage` every 6 hours through systemd user
 timer (Linux) or a least-privilege Task Scheduler task (Windows). For each new

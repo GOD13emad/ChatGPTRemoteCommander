@@ -9,6 +9,9 @@ import {spawnSync} from 'node:child_process';
 
 const REPO='GOD13emad/ChatGPTRemoteCommander';
 const WORKFLOW=REPO+'/.github/workflows/unified-installer-pilot.yml';
+const WORKFLOW_URI='https://github.com/'+WORKFLOW;
+const GH_MINIMUM_VERSION=[2,102,0]; // GHSA-wjmr-j3rp-mh2g: signer prefix bypass
+
 // Immutable IDs resist repository rename/squatting of the public name.
 const REPO_ID='1374266155';
 const OWNER_ID='94546844';
@@ -29,20 +32,20 @@ export function officialNativeVerifierBinary({
   }
   return 'gh';
 }
-function requirePatchedNativeVerifier(binary,run){
-  const result=run(binary,['--version'],{encoding:'utf8',windowsHide:true,
-    timeout:10000,maxBuffer:4096});
-  if(result?.error||result?.signal||result?.status!==0
-    ||typeof result.stdout!=='string')
-    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_UNAVAILABLE');
-  const version=/^gh version (\d+)\.(\d+)\.(\d+)(?: \([^\r\n]*\))?(?:\r?\n|$)/
-    .exec(result.stdout);
-  const [major,minor,patch]=version?.slice(1).map(Number)??[];
-  if(![major,minor,patch].every(Number.isSafeInteger))
-    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_VERSION_INVALID');
-  // GitHub CLI 2.102.0 corrected workflow-identity matching.
-  if(major<2||(major===2&&minor<102))
-    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_UPDATE_REQUIRED');
+export function assertSafeGhVerifierVersion(stdout){
+  // Check the version of the SAME resolved executable that will verify
+  // the attestation. Older gh <=2.101.0 accepted a signer-workflow prefix.
+  const first=typeof stdout==='string'?stdout.split(/\r?\n/,1)[0]:'';
+  const m=/^gh version (\d+)\.(\d+)\.(\d+)(?:\s+\(|$)/.exec(first);
+  if(!m)fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_VERSION_INVALID');
+  const v=m.slice(1).map(Number);
+  if(v.some(n=>!Number.isSafeInteger(n))||
+     (v[0]<GH_MINIMUM_VERSION[0] ||
+      (v[0]===GH_MINIMUM_VERSION[0]&&
+        (v[1]<GH_MINIMUM_VERSION[1]||
+         (v[1]===GH_MINIMUM_VERSION[1]&&v[2]<GH_MINIMUM_VERSION[2])))))
+    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_VERSION_UNSAFE');
+  return v.join('.');
 }
 export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={}){
   let results;
@@ -53,13 +56,12 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
     const statement=v?.verificationResult?.statement;
     const cert=v?.verificationResult?.signature?.certificate;
     const ref=cert?.sourceRepositoryRef;
-    if(typeof ref!=='string'||!/^refs\/(?:heads|tags)\/[^\s]+$/.test(ref))
-      return false;
-    const signerIdentity='https://github.com/'+WORKFLOW+'@'+ref;
-    // sigstore-go returns URI SANs either as a string or as a typed URI.
+    const signer=typeof ref==='string'&&/^refs\/(?:heads|tags)\/[a-zA-Z0-9._/-]+$/.test(ref)
+      ?WORKFLOW_URI+'@'+ref:null;
     const san=cert?.subjectAlternativeName;
-    const sanUri=typeof san==='string' ? san
-      :san?.type==='URI'&&typeof san?.value==='string' ? san.value : null;
+    const sanUri=typeof san==='string'?san
+      :san?.type==='URI'&&typeof san.value==='string'?san.value:null;
+    const source=cert?.sourceRepositoryDigest;
     return statement?.predicateType==='https://slsa.dev/provenance/v1'
       &&Array.isArray(statement.subject)
       &&statement.subject.some(s=>s?.name===name&&s?.digest?.sha256===sha256)
@@ -68,11 +70,17 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
       &&cert?.sourceRepositoryURI==='https://github.com/'+REPO
       &&cert?.runnerEnvironment==='github-hosted'
       &&cert?.issuer==='https://token.actions.githubusercontent.com'
-      &&(!expectedCommit||cert?.sourceRepositoryDigest===expectedCommit)
-      &&HEAD.test(cert.sourceRepositoryDigest??'')
-      &&sanUri===signerIdentity
-      &&cert.buildSignerURI===signerIdentity
-      &&cert.buildSignerDigest===cert.sourceRepositoryDigest;
+      &&typeof source==='string'&&HEAD.test(source)
+      &&(!expectedCommit||source===expectedCommit)
+      &&cert?.githubWorkflowSHA===source
+      &&cert?.buildSignerDigest===source
+      &&signer!==null
+      &&sanUri===signer
+      &&cert?.buildSignerURI===signer
+      &&cert?.buildConfigURI===signer
+      &&cert?.githubWorkflowRepository===REPO
+      &&cert?.githubWorkflowRef===ref
+      &&v.verificationResult?.verifiedIdentity?.subjectAlternativeName;
   });
   if(!matched)fail('UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH');
   return true;
@@ -105,12 +113,16 @@ export function verifySignedNativeRelease({
     ||!SHA.test(digest??'')
     ||manifest?.candidate?.bytes!==candidateStat.size)
     fail('UNIVERSAL_NATIVE_SIGSTORE_MANIFEST_MISMATCH');
+  const verifier=officialNativeVerifierBinary();
+  const version=run(verifier,['--version'],{encoding:'utf8',windowsHide:true,
+    timeout:5000,maxBuffer:8192});
+  if(version?.error||version?.signal||version?.status!==0)
+    fail('UNIVERSAL_NATIVE_SIGSTORE_VERIFIER_VERSION_INVALID');
+  assertSafeGhVerifierVersion(version.stdout);
   const args=['attestation','verify',candidatePath,'--repo',REPO,
     '--source-digest',expectedCommit,'--signer-workflow',WORKFLOW,
     '--deny-self-hosted-runners','--format','json'];
-  const binary=officialNativeVerifierBinary();
-  requirePatchedNativeVerifier(binary,run);
-  const result=run(binary,args,{encoding:'utf8',windowsHide:true,
+  const result=run(verifier,args,{encoding:'utf8',windowsHide:true,
     timeout:90000,maxBuffer:512*1024});
   if(result?.error||result?.signal||result?.status!==0
     ||typeof result.stdout!=='string')
@@ -197,7 +209,8 @@ export async function verifyPublicSignedNativeRelease(args,{
     fs.writeFileSync(bundlePath,bundles.map(b=>JSON.stringify(b)).join('\n')+'\n',
       {flag:'wx',mode:0o600});
     return verifySignedNativeRelease(args,{run:(exe,argv,opts)=>
-      run(exe,argv[0]==='attestation'?[...argv,'--bundle',bundlePath]:argv,opts)});
+      run(exe,argv[0]==='attestation'
+        ?[...argv,'--bundle',bundlePath]:argv,opts)});
   }finally{
     fs.rmSync(dir,{recursive:true,force:true});
   }
