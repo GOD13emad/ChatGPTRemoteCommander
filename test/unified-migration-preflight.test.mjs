@@ -326,16 +326,32 @@ test('Windows tunnel target on old Core is explicit NoPromote even if other gate
  assert.ok(latest.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
 });
 
+test('Windows owner-scoped router observation recognizes MMZ only with an exact selected profile',()=>{
+  const status={router:true,listenPort:47836,sourceSha256:'f'.repeat(64),
+    schema:1,profile:'MMZ',generation:19,activePort:48836,
+    activeVersion:'0.11.0-dev.23'};
+  const accepted=classifyObservedRouterStatus(status,47836,'0.11.0-dev.23','MMZ');
+  assert.deepEqual(accepted,{detected:true,mappingMatches:true,
+    backendPort:48836,backendVersion:'0.11.0-dev.23',generation:19});
+  const declined={detected:false,mappingMatches:false};
+  for(const selected of ['default','another-owner',undefined,'../MMZ',1])
+    assert.deepEqual(classifyObservedRouterStatus(status,47836,'0.11.0-dev.23',selected),declined);
+  assert.deepEqual(classifyObservedRouterStatus({...status,profile:'default'},
+    47836,'0.11.0-dev.23','MMZ'),declined);
+  assert.deepEqual(classifyObservedRouterStatus(status,47836,'0.12.0-dev.13','MMZ'),
+    {...accepted,mappingMatches:false});
+});
+
 test('stable-router backend mapping reports chain without trusting mutable owner profile fields',()=>{
  const status={router:true,listenPort:47831,sourceSha256:'f'.repeat(64),
    schema:1,profile:'default',generation:43,
    activePort:48834,activeVersion:'0.11.0-dev.23',
    token:'DO_NOT_EMIT',configPath:'C:/secret'};
- const observed=classifyObservedRouterStatus(status,47831,'0.11.0-dev.23');
+ const observed=classifyObservedRouterStatus(status,47831,'0.11.0-dev.23','default');
  assert.deepEqual(observed,{detected:true,mappingMatches:true,
    backendPort:48834,backendVersion:'0.11.0-dev.23',generation:43});
  assert.doesNotMatch(JSON.stringify(observed),/token|secret|config/i);
- const mismatched=classifyObservedRouterStatus(status,47831,'0.12.0-dev.1');
+ const mismatched=classifyObservedRouterStatus(status,47831,'0.12.0-dev.1','default');
  assert.equal(mismatched.detected,true);
  assert.equal(mismatched.mappingMatches,false);
  const rejected=[
@@ -349,7 +365,7 @@ test('stable-router backend mapping reports chain without trusting mutable owner
    {...status,activeVersion:'0.13.0-dev.1'}
  ];
  for(const entry of rejected)assert.deepEqual(
-   classifyObservedRouterStatus(entry,47831,'0.11.0-dev.23'),
+   classifyObservedRouterStatus(entry,47831,'0.11.0-dev.23','default'),
    {detected:false,mappingMatches:false});
 });
 test('router mismatch adds its own hard blocker even with synthetic successful booleans',()=>{
