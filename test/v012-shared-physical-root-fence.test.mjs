@@ -432,6 +432,50 @@ if(process.argv[2]==='--holder'){
     }finally{resume?.();await late?.catch(()=>{});f.cleanup();}
   });
 
+  test('queued direct operation receipt cannot release the root before its external worker finishes',async()=>{
+    const f=fixture();let held=false,quarantined=false,effects=0;
+    const native={hostId:HOST,async withLease(_key,work){
+      if(held)throw Object.assign(Error('occupied'),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+      held=true;
+      let completed=false;
+      try{
+        const result=await work({markEffectStarted(){},markSafePreEffectDenial(){}});
+        completed=true;
+        return result;
+      }finally{
+        if(completed)held=false;
+        else quarantined=true;
+      }
+    }};
+    const fence=createV012SharedPhysicalRootFence({
+      nativeHostLease:native,hostId:HOST,allowedRoots:[f.root],
+      resolveTrustedRouteRoot:()=>f.root
+    });
+    try{
+      const receipt={operationId:'detached-worker',status:'QUEUED'};
+      assert.equal(await fence.withDirectRouteLease(route(),async()=>receipt),receipt);
+      await assert.rejects(
+        fence.withWorkflowRootLease(f.root,async()=>{effects++;}),
+        {code:'V012_NATIVE_LEASE_OCCUPIED'});
+      assert.equal(effects,0);
+      assert.equal(quarantined,true);
+    }finally{f.cleanup();}
+  });
+
+  test('real native SQLite keeps a queued direct operation fenced from WorkflowStore',{
+    skip:process.platform==='win32'?'POSIX native factory; Windows native ACL suite is separate':false
+  },async()=>{
+    const f=fixture(),direct=newFence(f),worker=newFence(f);let store,effects=0;
+    try{
+      store=newStore(f,worker.fence);
+      const receipt={operationId:'queued-native-worker',status:'QUEUED'};
+      assert.equal(await direct.fence.withDirectRouteLease(route(),async()=>receipt),receipt);
+      await assert.rejects(invoke(store,async()=>{effects++;return{ok:true};}),
+        {code:'V012_NATIVE_LEASE_OCCUPIED'});
+      assert.equal(effects,0);
+    }finally{store?.close();worker.close();direct.close();f.cleanup();}
+  });
+
   test('root admission requires an owner-enrolled canonical map and pinned native host',()=>{
     const f=fixture();
     try{

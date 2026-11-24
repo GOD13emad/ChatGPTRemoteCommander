@@ -12,6 +12,12 @@ Fresh Windows combined-gate/WorkflowTools checks: 37 PASS; native HTTPS/Core/CI 
 
 READY: exact-source cross-platform/hosted verification and reviewed source admission. BLOCKED migration: enrolled owner-root resolver/bootstrap, actual persistent J01/Worker enrollment and revoke, signed same-head native packages and verified installed canary/rollback; MMZ connection must be rechecked. Current routed fleet remains legacy dev23; no service stopped, candidate installed, security bypass or Stable release here. Do not retire the remaining usable connection before the replacement is independently healthy and reversible.
 
+### Deferred direct-operation correction (supersedes ba6c source acceptance for promotion)
+
+Further technical self-review reproduced a real source gap: an operation_start-shaped `{operationId,status:'QUEUED'}` result released the root while its external worker could still run. New deterministic regression on unchanged ba6c failed with Missing expected rejection. The fence now preserves the original receipt while quarantining nonterminal direct/nested operation outcomes, using the existing native lease's uncertain-effect rule. A real SQLite/WorkflowStore negative regression is included. Signed QA dispatch 45461996407 on ba6c was deliberately cancelled before any live install. No result from ba6c may be relabelled as the corrected source.
+
+This conservative fix does not implement automatic release of a deferred native lease: independently verified worker cessation and durable cross-process reconciliation remain required before unattended Full Access/cutover. Real grant/OS consent and sole-install acceptance remain OPEN. Existing native package on verified Emad PC/Emad Server/Amirreza/Emad Laptop is dev12, source 46a8256, manifest SHA256 00afe3fb; Saeid and Server103 lacked that manifest at the checked standard native path (not proof of no installation elsewhere). MMZ status responded but its execution channel stalled; do not infer a verified detailed inventory.
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair
