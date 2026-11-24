@@ -510,3 +510,23 @@ test('native DEB merger pins identical canonical Core and GUI candidate versions
   assert.equal(newer.status,0,newer.stderr);
  }
 });
+
+test('hosted rollback uses the exact historical source and never treats same-version native DEB as old',()=>{
+  const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+  assert.match(source,/OLD_SOURCE_HEAD="6d67dfd107d6b434e2b81186a583463036649d40"/);
+  assert.match(source,/OLD_WORKTREE="\$RUNNER_TEMP\/rc012-historical-dev12-\$OLD_SOURCE_HEAD"/);
+  assert.match(source,/GIT_TERMINAL_PROMPT=0 git -C "\$ROOT" fetch --no-tags --depth 1 origin "\$OLD_SOURCE_HEAD"/);
+  assert.match(source,/git -C "\$ROOT" worktree add --quiet --detach "\$OLD_WORKTREE" "\$OLD_SOURCE_HEAD"/);
+  assert.match(source,/RC012_ROLLBACK_HISTORICAL_SOURCE_MISMATCH/);
+  assert.match(source,/RC012_ROLLBACK_HISTORICAL_SOURCE_INVALID/);
+  assert.match(source,/RC012_ROLLBACK_HISTORICAL_PACKAGE_IDENTITY_INVALID/);
+  assert.match(source,/RC012_ROLLBACK_NOT_AN_ACTUAL_UPGRADE/);
+  assert.match(source,/0\.12\.0-dev\.12/);
+  // The exact historical builder emitted a legacy Debian version spelling,
+  // not the version of the already-installed owner package.
+  assert.match(source,/0\.12\.0~dev1-2/);
+  assert.doesNotMatch(source,/^OLD="\$ROOT\/dist\/installer\/Remote-Commander-Linux-amd64\.deb"/m);
+  assert.match(source,/RC012_NATIVE_UPGRADE_TEST_HOSTED_RUNNER_ONLY/);
+  assert.match(source,/RC012_NATIVE_UPGRADE_TEST_OWNER_INSTALL_REFUSED/);
+  assert.match(source,/RC012_ROLLBACK_GENUINE_HISTORICAL_SOURCE_PASS/);
+});

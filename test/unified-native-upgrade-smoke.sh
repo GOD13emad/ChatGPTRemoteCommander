@@ -16,7 +16,23 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
   echo RC012_NATIVE_UPGRADE_TEST_OWNER_INSTALL_REFUSED >&2;exit 3;
 }
 cd "$ROOT"
-OLD="$ROOT/dist/installer/Remote-Commander-Linux-amd64.deb"
+# A native DEB built from CURRENT source has the same version as the merged
+# GUI+Core candidate. It is NOT a rollback artifact. For genuine old -> new
+# -> old hosted QA, build the reviewed historical dev.12 source by exact SHA.
+# Its original Debian metadata uses the legacy spelling 0.12.0~dev1-2;
+# do not silently relabel a historical artifact as 0.12.0~dev.12.
+OLD_SOURCE_HEAD="6d67dfd107d6b434e2b81186a583463036649d40"
+OLD_WORKTREE="$RUNNER_TEMP/rc012-historical-dev12-$OLD_SOURCE_HEAD"
+OLD="$OLD_WORKTREE/dist/installer/Remote-Commander-Linux-amd64.deb"
+TMP=""
+cleanup(){
+  if [[ -n "$TMP" && -d "$TMP" ]]; then rm -rf -- "$TMP"; fi
+  if [[ -d "$OLD_WORKTREE" &&
+        "$(git -C "$OLD_WORKTREE" rev-parse HEAD 2>/dev/null || :)" == "$OLD_SOURCE_HEAD" ]]; then
+    git -C "$ROOT" worktree remove --force "$OLD_WORKTREE" || :
+  fi
+}
+trap cleanup EXIT
 command -v node >/dev/null || { echo RC012_SOURCE_VERSION_NODE_MISSING >&2; exit 3; }
 VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
 GUI_VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/packaging/unified/package.json")"
@@ -24,10 +40,37 @@ GUI_VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/packaging/unifi
   echo RC012_NATIVE_UPGRADE_SOURCE_VERSION_MISMATCH >&2;exit 3;
 }
 NEW="$ROOT/dist/unified/Remote-Commander-Unified-${VERSION}-Linux-amd64.deb"
-test -f "$OLD" && test -f "$NEW"
-test "$(dpkg-deb --field "$OLD" Package)" = chatgpt-remote-commander
+test -f "$NEW" && test ! -L "$NEW"
+[[ ! -e "$OLD_WORKTREE" && ! -L "$OLD_WORKTREE" ]] || {
+  echo RC012_ROLLBACK_HISTORICAL_WORKTREE_NOT_EMPTY >&2;exit 3;
+}
+GIT_TERMINAL_PROMPT=0 git -C "$ROOT" fetch --no-tags --depth 1 origin "$OLD_SOURCE_HEAD" || {
+  echo RC012_ROLLBACK_HISTORICAL_SOURCE_FETCH_FAILED >&2; exit 3;
+}
+[[ "$(git -C "$ROOT" rev-parse FETCH_HEAD)" == "$OLD_SOURCE_HEAD" ]] || {
+  echo RC012_ROLLBACK_HISTORICAL_SOURCE_MISMATCH >&2; exit 3;
+}
+git -C "$ROOT" worktree add --quiet --detach "$OLD_WORKTREE" "$OLD_SOURCE_HEAD"
+[[ "$(git -C "$OLD_WORKTREE" rev-parse HEAD)" == "$OLD_SOURCE_HEAD" &&
+   "$(node -p 'require(process.argv[1]).version' "$OLD_WORKTREE/package.json")" == "0.12.0-dev.12" &&
+   "$(node -p 'require(process.argv[1]).version' "$OLD_WORKTREE/packaging/unified/package.json")" == "0.12.0-dev.12" &&
+   -z "$(git -C "$OLD_WORKTREE" status --porcelain)" ]] || {
+  echo RC012_ROLLBACK_HISTORICAL_SOURCE_INVALID >&2;exit 3;
+}
+bash "$OLD_WORKTREE/tools/build-native-linux-package.sh" || {
+  echo RC012_ROLLBACK_HISTORICAL_PACKAGE_BUILD_FAILED >&2;exit 3;
+}
+[[ -f "$OLD" && ! -L "$OLD" && "$(dpkg-deb --field "$OLD" Package)" == chatgpt-remote-commander &&
+   "$(dpkg-deb --field "$OLD" Architecture)" == amd64 &&
+   "$(dpkg-deb --field "$OLD" Version)" == "0.12.0~dev1-2" ]] || {
+  echo RC012_ROLLBACK_HISTORICAL_PACKAGE_IDENTITY_INVALID >&2;exit 3;
+}
 test "$(dpkg-deb --field "$NEW" Package)" = chatgpt-remote-commander
-dpkg --compare-versions "$(dpkg-deb --field "$NEW" Version)" gt "$(dpkg-deb --field "$OLD" Version)"
+test "$(dpkg-deb --field "$NEW" Version)" = "${VERSION/-dev./~dev.}"
+dpkg --compare-versions "$(dpkg-deb --field "$NEW" Version)" gt "$(dpkg-deb --field "$OLD" Version)" || {
+  echo RC012_ROLLBACK_NOT_AN_ACTUAL_UPGRADE >&2;exit 3;
+}
+echo "RC012_ROLLBACK_GENUINE_HISTORICAL_SOURCE_PASS old=$OLD_SOURCE_HEAD oldVersion=0.12.0~dev1-2 newVersion=${VERSION/-dev./~dev.}"
 # Audit *actual* Native and merged DEB payload names BEFORE installing even on
 # this disposable hosted runner. The public app payload is only the committed
 # runtime Core, never the complete repository or human project/Skill records.
@@ -72,7 +115,7 @@ done
 test -f /usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service
 test ! -e '/opt/Remote Commander/remote-commander-unified'
 TMP="$(mktemp -d /tmp/rc012-native-upgrade-XXXXXX)"
-trap 'rm -rf -- "$TMP"' EXIT
+# Shared cleanup trap above covers temporary receipts and owned historical source.
 for rel in runtime/node tunnel/native-tunnel-launch.sh tunnel/tunnel-client tunnel/cloudflared; do
   sha256sum "$NATIVE/$rel" | sed "s|$NATIVE/|$TMP/|" >> "$TMP/pre-upgrade-sha256.txt"
 done
