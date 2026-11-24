@@ -153,6 +153,52 @@ if(process.argv[2]==='--holder'){
     }finally{second.close();first.close();f.cleanup();}
   });
 
+  test('deferred descendant cannot reuse an inherited released AsyncLocalStorage lease',
+    {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),a=newFence(f);
+    let resume,detached,executed=0;
+    const gate=new Promise(resolve=>{resume=resolve;});
+    try{
+      const outer=await a.fence.withWorkflowRootLease(f.root,async()=>{
+        detached=(async()=>{
+          await gate;
+          return a.fence.withWorkflowRootLease(f.root,async()=>{
+            executed++;return {ok:true};
+          });
+        })();
+        return {ok:true};
+      });
+      assert.equal(outer.ok,true);
+      resume();
+      await assert.rejects(detached,e=>e?.code==='V012_SHARED_ROOT_STALE_CONTEXT_DENIED');
+      assert.equal(executed,0);
+      const later=await a.fence.withWorkflowRootLease(f.root,async()=>({ok:true}));
+      assert.equal(later.ok,true);
+    }finally{resume?.();await detached?.catch(()=>{});a.close();f.cleanup();}
+  });
+
+  test('unawaited in-flight descendant quarantines root before outer callback releases',
+    {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),a=newFence(f);
+    let finish,entered,child;
+    const hold=new Promise(resolve=>{finish=resolve;});
+    const started=new Promise(resolve=>{entered=resolve;});
+    try{
+      await assert.rejects(
+        ()=>a.fence.withWorkflowRootLease(f.root,async()=>{
+          child=a.fence.withWorkflowRootLease(f.root,async()=>{
+            entered();await hold;return {ok:true};
+          });
+          await started;
+          return {ok:true};
+        }),
+        e=>e?.code==='V012_SHARED_ROOT_DETACHED_EFFECT_QUARANTINED');
+      await assert.rejects(
+        ()=>a.fence.withWorkflowRootLease(f.root,async()=>({ok:true})),
+        e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED');
+    }finally{finish?.();await child?.catch(()=>{});a.close();f.cleanup();}
+  });
+
   test('uncertain workflow outcome returns receipt but quarantines native root lease', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
     const f=fixture(),a=newFence(f);
     try{
@@ -212,6 +258,38 @@ if(process.argv[2]==='--holder'){
         ()=>fence.withDirectRouteLease({...route(),hostId:'different-host'},async()=>({ok:true})),
         e=>e?.code==='V012_SHARED_ROOT_HOST_MISMATCH');
     }finally{f.cleanup();}
+  });
+
+  test('platform-neutral stale descendant requires fresh native admission instead of inherited context',async()=>{
+    const f=fixture();
+    let acquisitions=0,resume,late,executed=0;
+    const gate=new Promise(resolve=>{resume=resolve;});
+    const native={
+      hostId:HOST,
+      async withLease(key,work){
+        acquisitions++;
+        return work({markEffectStarted(){}});
+      }
+    };
+    const bridge=createV012SharedPhysicalRootFence({
+      nativeHostLease:native,hostId:HOST,
+      allowedRoots:[f.root],resolveTrustedRouteRoot:()=>f.root
+    });
+    try{
+      await bridge.withWorkflowRootLease(f.root,async()=>{
+        late=(async()=>{
+          await gate;
+          return bridge.withWorkflowRootLease(f.root,async()=>{executed++;return{ok:true};});
+        })();
+        return{ok:true};
+      });
+      resume();
+      await assert.rejects(late,e=>e?.code==='V012_SHARED_ROOT_STALE_CONTEXT_DENIED');
+      assert.equal(executed,0);
+      assert.equal(acquisitions,1);
+      await bridge.withWorkflowRootLease(f.root,async()=>({ok:true}));
+      assert.equal(acquisitions,2);
+    }finally{resume?.();await late?.catch(()=>{});f.cleanup();}
   });
 
   test('root admission requires an owner-enrolled canonical map and pinned native host',()=>{

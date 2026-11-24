@@ -66,26 +66,48 @@ export function createV012SharedPhysicalRootFence({
     if(typeof work!=='function')fail('V012_SHARED_ROOT_CALLBACK_REQUIRED');
     const active=scope.getStore();
     if(active){
+      // AsyncLocalStorage outlives its callback: a deferred child must NOT
+      // resurrect a released host-global native lock by inheriting context.
+      if(!active.active)fail('V012_SHARED_ROOT_STALE_CONTEXT_DENIED');
       if(active.key!==key)fail('V012_SHARED_ROOT_CROSS_RESOURCE_NESTING_DENIED');
-      const result=await work(active.leaseContext);
-      if(uncertain(result))active.uncertain=true;
-      return result;
+      active.inFlight++;
+      try{
+        const result=await work(active.leaseContext);
+        if(uncertain(result))active.uncertain=true;
+        return result;
+      }catch(error){
+        // A nested failure may already have entered an external effect.
+        active.uncertain=true;
+        throw error;
+      }finally{active.inFlight--;}
     }
     let completedValue;
-    const state={key,leaseContext:null,uncertain:false};
+    const state={key,leaseContext:null,uncertain:false,active:false,inFlight:0};
     try{
       await nativeHostLease.withLease(key, async leaseContext=>{
         if(typeof leaseContext?.markEffectStarted!=='function')
           fail('V012_SHARED_ROOT_NATIVE_CONTEXT_REQUIRED');
         state.leaseContext=leaseContext;
-        completedValue=await scope.run(state,()=>work(leaseContext));
-        if(uncertain(completedValue)||state.uncertain){
-          // A successful JavaScript return must NOT release an uncertain
-          // native effect. Throw only after retaining its trusted receipt.
-          leaseContext.markEffectStarted();
-          throw UNKNOWN;
+        state.active=true;
+        try{
+          completedValue=await scope.run(state,()=>work(leaseContext));
+          if(state.inFlight!==0){
+            // A fire-and-forget descendant may still be mutating the sink:
+            // quarantine the native lease even if the outer caller returned.
+            leaseContext.markEffectStarted();
+            fail('V012_SHARED_ROOT_DETACHED_EFFECT_QUARANTINED');
+          }
+          if(uncertain(completedValue)||state.uncertain){
+            // A successful JavaScript return must NOT release an uncertain
+            // native effect. Throw only after retaining its trusted receipt.
+            leaseContext.markEffectStarted();
+            throw UNKNOWN;
+          }
+          return completedValue;
+        }finally{
+          // BEFORE the native callback returns and the database row releases.
+          state.active=false;
         }
-        return completedValue;
       });
     }catch(error){
       if(error!==UNKNOWN)throw error;
