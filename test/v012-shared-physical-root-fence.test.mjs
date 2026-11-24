@@ -199,6 +199,45 @@ if(process.argv[2]==='--holder'){
     }finally{finish?.();await child?.catch(()=>{});a.close();f.cleanup();}
   });
 
+  test('pre-effect revision and validation denial free native root without dispatch',
+    {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),a=newFence(f);let store,effects=0;
+    try{
+      store=newStore(f,a.fence);
+      await assert.rejects(
+        ()=>store.call({
+          id:'sample',stepId:'first',expectedRevision:99,
+          tool:'read_text',arguments:{path:'proof.txt'}
+        },{validate:async()=>{},dispatch:async()=>{effects++;return{ok:true};}}),
+        e=>(e?.workflowCode??e?.code)==='WORKFLOW_REVISION_CONFLICT');
+      assert.equal(effects,0);
+      await assert.rejects(
+        ()=>store.call({
+          id:'sample',stepId:'first',expectedRevision:1,
+          tool:'read_text',arguments:{path:'proof.txt'}
+        },{validate:async()=>{throw Object.assign(new Error('DENIED'),{code:'TEST_NO_GRANT'});},
+          dispatch:async()=>{effects++;return{ok:true};}}),
+        e=>e?.code==='TEST_NO_GRANT');
+      assert.equal(effects,0);
+      const good=await invoke(store,async()=>{effects++;return{ok:true};});
+      assert.equal(good.outcome,'RECORDED_NOT_VALIDATED');
+      assert.equal(effects,1);
+    }finally{store?.close();a.close();f.cleanup();}
+  });
+
+  test('real WorkflowStore uncertain external dispatch retains native root quarantine',
+    {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),a=newFence(f);let store;
+    try{
+      store=newStore(f,a.fence);
+      const uncertain=await invoke(store,async()=>{throw Error('SYNTHETIC_TOOL_UNCERTAIN');});
+      assert.equal(uncertain.outcome,'UNCERTAIN');
+      await assert.rejects(
+        ()=>a.fence.withWorkflowRootLease(f.root,async()=>({ok:true})),
+        e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED');
+    }finally{store?.close();a.close();f.cleanup();}
+  });
+
   test('uncertain workflow outcome returns receipt but quarantines native root lease', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
     const f=fixture(),a=newFence(f);
     try{
@@ -237,7 +276,7 @@ if(process.argv[2]==='--holder'){
       hostId:HOST,
       async withLease(key,work){
         used.push(key);
-        return work({markEffectStarted(){}});
+        return work({markEffectStarted(){},markSafePreEffectDenial(){}});
       }
     };
     const fence=createV012SharedPhysicalRootFence({
@@ -268,7 +307,7 @@ if(process.argv[2]==='--holder'){
       hostId:HOST,
       async withLease(key,work){
         acquisitions++;
-        return work({markEffectStarted(){}});
+        return work({markEffectStarted(){},markSafePreEffectDenial(){}});
       }
     };
     const bridge=createV012SharedPhysicalRootFence({

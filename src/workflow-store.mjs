@@ -1259,10 +1259,23 @@ export class WorkflowStore {
     // Look up the immutable persisted project root, not a caller-supplied
     // route/argument. Native host fence remains held until outcome handling.
     const root=this.get(input?.id).state.root;
-    return this.#physicalRootFence.withWorkflowRootLease(root,
-      ()=>this.#callWithinStoreLease(input,handlers));
+    return this.#physicalRootFence.withWorkflowRootLease(root,async leaseContext=>{
+      let externalEffectEntered=false;
+      try{
+        return await this.#callWithinStoreLease(input,handlers,()=>{
+          // Only trusted WorkflowStore can attest the exact last boundary
+          // before the external effect; denial before it is no-effect.
+          externalEffectEntered=true;
+          leaseContext.markEffectStarted();
+        });
+      }catch(error){
+        if(!externalEffectEntered)
+          leaseContext.markSafePreEffectDenial();
+        throw error;
+      }
+    });
   }
-  async #callWithinStoreLease({ id, stepId, expectedRevision, tool, arguments: args = {} }, { dispatch, validate }) {
+  async #callWithinStoreLease({ id, stepId, expectedRevision, tool, arguments: args = {} }, { dispatch, validate }, onExternalEffectStart=null) {
     identifier(stepId); safeText(tool, 128);
     if (typeof dispatch !== 'function' || typeof validate !== 'function') fail('WORKFLOW_HOST_DISPATCH_REQUIRED');
     const argsRaw = canonical(args);
@@ -1361,6 +1374,7 @@ export class WorkflowStore {
           this.#assertRootLease(state.root,id,owner,fencingToken,workflowScope);
         }
         dispatchStarted=true;
+        onExternalEffectStart?.();
         result = await dispatch(tool, args, clone(prepared.state), workflowScope);
         receipt = receiptFields(result);
         failure = badResult(result);

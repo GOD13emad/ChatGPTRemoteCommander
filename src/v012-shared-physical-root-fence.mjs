@@ -85,7 +85,8 @@ export function createV012SharedPhysicalRootFence({
     const state={key,leaseContext:null,uncertain:false,active:false,inFlight:0};
     try{
       await nativeHostLease.withLease(key, async leaseContext=>{
-        if(typeof leaseContext?.markEffectStarted!=='function')
+        if(typeof leaseContext?.markEffectStarted!=='function'
+          ||typeof leaseContext?.markSafePreEffectDenial!=='function')
           fail('V012_SHARED_ROOT_NATIVE_CONTEXT_REQUIRED');
         state.leaseContext=leaseContext;
         state.active=true;
