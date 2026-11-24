@@ -33,27 +33,28 @@ const redactUrl=value=>{
  }catch{return {url:null,queryRedacted:false,fragmentRedacted:false,schemeRedacted:false};}
 };
 const exists=p=>{try{return fs.statSync(p).isFile();}catch{return false;}};
-function which(name){
- const exts=process.platform==='win32'?['.exe','.cmd','']:[''];
- for(const dir of String(process.env.PATH??'').split(path.delimiter).filter(Boolean)){
-  for(const ext of exts){const p=path.join(dir,name+ext);if(exists(p))return p;}
- }
- return null;
-}
 function detectBrowser(explicit){
- if(typeof explicit==='string'&&explicit&&exists(explicit))return path.resolve(explicit);
- const candidates=[];
- if(process.platform==='win32'){
-  for(const base of [process.env.LOCALAPPDATA,process.env.PROGRAMFILES,process.env['PROGRAMFILES(X86)']].filter(Boolean)){
-   candidates.push(path.join(base,'Google','Chrome','Application','chrome.exe'));
-   candidates.push(path.join(base,'Microsoft','Edge','Application','msedge.exe'));
-  }
- }else{
-  for(const n of ['google-chrome','google-chrome-stable','chromium','chromium-browser','microsoft-edge','msedge']){
-   const p=which(n);if(p)candidates.push(p);
-  }
-  candidates.push('/usr/bin/google-chrome','/usr/bin/chromium','/usr/bin/chromium-browser','/usr/bin/microsoft-edge');
- }
+ // The installer may pin a deliberate absolute executable path in the
+ // owner-controlled config. Never infer an executable from untrusted PATH,
+ // LOCALAPPDATA or PROGRAMFILES environment values.
+ if(typeof explicit==='string'&&path.isAbsolute(explicit))
+   return exists(explicit)?path.resolve(explicit):null;
+ if(explicit!==undefined&&explicit!==null)return null;
+ const home=os.homedir();
+ const candidates=process.platform==='win32'
+  ?[
+    path.join(home,'AppData','Local','Google','Chrome','Application','chrome.exe'),
+    path.join(home,'AppData','Local','Microsoft','Edge','Application','msedge.exe'),
+    String.raw`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+    String.raw`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`,
+    String.raw`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
+    String.raw`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
+   ]:[
+    '/usr/bin/google-chrome','/usr/bin/google-chrome-stable',
+    '/usr/bin/chromium','/usr/bin/chromium-browser',
+    '/usr/bin/microsoft-edge','/usr/bin/msedge',
+    '/opt/google/chrome/chrome','/snap/bin/chromium'
+   ];
  return candidates.find(exists)??null;
 }
 class Cdp {
