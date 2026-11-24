@@ -6,6 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createV012HostGlobalOperationLease} from '../src/v012-host-global-operation-lease.mjs';
+import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 
 const LINUX=process.platform==='linux';
 const host='qa-owner-host';
@@ -62,6 +63,47 @@ test('uncertain external effect keeps its lease while pre-effect denial releases
   await assert.rejects(second.withLease(key(),async()=>{effects++;}),
     {code:'V012_NATIVE_LEASE_OCCUPIED'});
   assert.equal(effects,1,'uncertain effect must not start a second writer');
+});
+
+test('marked external uncertainty fences a second process after clean restart', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const receiptDir=path.join(directory,'receipts');
+  const first=createV012HostGlobalOperationLease({directory,hostId:host});
+  const receipts=new MutationIdempotencyStore({directory:receiptDir,scope:'native-crossprocess-qa'});
+  let effects=0;
+  try{
+    await assert.rejects(first.withLease(key(),({markEffectStarted})=>receipts.execute({
+      requestId:'first-unknown',tool:'run_project_command',input:{step:1}
+    },async()=>{
+      markEffectStarted();
+      effects++;
+      throw Object.assign(Error('effect outcome unknown'),{code:'OUTCOME_UNCERTAIN'});
+    })),{code:'OUTCOME_UNCERTAIN'});
+    assert.deepEqual(receipts.status().states,{UNCERTAIN:1});
+    assert.equal(effects,1);
+  }finally{receipts.close();first.close();}
+  // No active in-process owner remains. A *different* OS process must still
+  // be denied because the durable resource row has not been reconciled.
+  const module=fileURLToPath(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url));
+  const childCode='import {createV012HostGlobalOperationLease} from '+
+    JSON.stringify(pathToFileURL(module).href)+';'+
+    'const l=createV012HostGlobalOperationLease({directory:process.argv[1],hostId:process.argv[2]});'+
+    'try{await l.withLease(process.argv[3],async()=>{process.exit(29)});process.exit(30)}'+
+    'catch(e){process.exit(e.code==="V012_NATIVE_LEASE_OCCUPIED"?28:31)}';
+  const child=spawnSync(process.execPath,
+    ['--experimental-sqlite','--input-type=module','-e',childCode,directory,host,key()],
+    {encoding:'utf8',timeout:15000});
+  assert.equal(child.status,28,child.stderr||child.stdout);
+  const second=createV012HostGlobalOperationLease({directory,hostId:host});
+  const persisted=new MutationIdempotencyStore({directory:receiptDir,scope:'native-crossprocess-qa'});
+  t.after(()=>{persisted.close();second.close();});
+  assert.deepEqual(persisted.status().states,{UNCERTAIN:1});
+  await assert.rejects(second.withLease(key(),()=>persisted.execute({
+    requestId:'other-request-id',tool:'run_project_command',input:{step:2}
+  },async()=>{effects++;return {ok:true};})),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'unreconciled external effect must not re-dispatch');
+  assert.deepEqual(persisted.status().states,{UNCERTAIN:1});
+  assert.equal(await second.withLease(key('workflow-root','independent-project'),async()=>42),42);
 });
 
 test('crashed process holds durable denial until separate native reconciliation', {skip:!LINUX},async t=>{
