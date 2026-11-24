@@ -40,6 +40,30 @@ test('callback failure releases only its owned lease, without converting denial 
   assert.equal(await b.withLease(key(),async()=>true),true);
 });
 
+test('uncertain external effect keeps its lease while pre-effect denial releases', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const first=createV012HostGlobalOperationLease({directory,hostId:host});
+  const second=createV012HostGlobalOperationLease({directory,hostId:host});
+  t.after(()=>{first.close();second.close();});
+  // Denials before the first external effect are safe to release.
+  await assert.rejects(first.withLease(key('desktop-seat','pre-effect'),async()=>{
+    throw Error('pre-effect denial');
+  }),/pre-effect denial/);
+  assert.equal(await second.withLease(key('desktop-seat','pre-effect'),async()=>1),1);
+  // A result may be UNCERTAIN even when the async callback has settled.
+  let effects=0;
+  await assert.rejects(first.withLease(key(),async({markEffectStarted})=>{
+    assert.equal(typeof markEffectStarted,'function');
+    markEffectStarted();
+    effects++;
+    throw Error('outcome unknown after dispatch');
+  }),/outcome unknown after dispatch/);
+  assert.equal(effects,1);
+  await assert.rejects(second.withLease(key(),async()=>{effects++;}),
+    {code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'uncertain effect must not start a second writer');
+});
+
 test('crashed process holds durable denial until separate native reconciliation', {skip:!LINUX},async t=>{
   const directory=setup(t);
   const module=fileURLToPath(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url));

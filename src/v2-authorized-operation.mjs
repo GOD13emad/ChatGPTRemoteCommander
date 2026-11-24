@@ -45,14 +45,27 @@ export async function executeV2BoundOperation(route, services, tool) {
   const requestId = createHash('sha256').update(v2OperationKey(r)).digest('hex');
   // The caller's shared lease implementation must be machine-global and canonical,
   // NOT an in-process Map or a per-chat lock. The existing WorkflowStore owns roots.
-  return services.withLease(resource, async () => {
+  return services.withLease(resource, async (leaseContext) => {
     await check(); // Protect the gap between admission and lease acquisition.
-    return services.receiptStore.execute(
-      { requestId, tool, input: services.receiptInput??{ route: r } },
-      async () => {
-        await check(); // Protect the gap between receipt reservation and effect.
-        return services.execute(r);
-      }
-    );
+    try{
+      return await services.receiptStore.execute(
+        { requestId, tool, input: services.receiptInput??{ route: r } },
+        async () => {
+          await check(); // Protect the gap between receipt reservation and effect.
+          // This is the LAST safe point before entering the external Core
+          // effect. A thrown/unknown result must preserve the native host
+          // lease rather than opening a second writer on the same resource.
+          leaseContext?.markEffectStarted?.();
+          return services.execute(r);
+        }
+      );
+    }catch(error){
+      // A persisted UNCERTAIN receipt may predate this lease instance.
+      // Quarantine it rather than permitting a different operation ID to
+      // proceed while its former external effect could still be running.
+      if(error?.mutationIdempotencyCode==='MUTATION_OUTCOME_UNCERTAIN')
+        leaseContext?.markEffectStarted?.();
+      throw error;
+    }
   });
 }

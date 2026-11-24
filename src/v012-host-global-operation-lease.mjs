@@ -128,10 +128,21 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
       const owner=randomUUID();
       reserve(key,owner);
       active++;
-      try{return await work();}
-      finally{
-        try{release(key,owner);}
-        finally{active--;}
+      let effectStarted=false,completed=false;
+      // Only the protected executor knows when the OS effect is about to
+      // start. If it starts and the result is unknown, keep the durable
+      // fencing row; a second request must await native reconciliation.
+      const leaseContext=Object.freeze({
+        markEffectStarted(){effectStarted=true;}
+      });
+      try{
+        const result=await work(leaseContext);
+        completed=true;
+        return result;
+      }finally{
+        try{
+          if(completed||!effectStarted)release(key,owner);
+        }finally{active--;}
       }
     },
     close(){
