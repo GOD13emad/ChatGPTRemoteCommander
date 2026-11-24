@@ -79,9 +79,10 @@ export class ConversationStore{
     this.scope=scope;
     this.directory=privateDirectory(directory);
     this.location=path.join(this.directory,'conversation.sqlite');
+    // SQLite DELETE-mode rollback journals may disappear during concurrent commits.
     for(const suffix of ['','-journal','-wal','-shm']){
-      if(!fs.existsSync(this.location+suffix))continue;
-      const stat=fs.lstatSync(this.location+suffix);
+      const stat=fs.lstatSync(this.location+suffix,{throwIfNoEntry:false});
+      if(!stat)continue;
       if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1)fail('CONVERSATION_STATE_ALIAS');
     }
     this.db=new DatabaseSync(this.location,{allowExtension:false});

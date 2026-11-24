@@ -64,3 +64,93 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       }
     }
   });
+
+
+test('real packaged owned chat window: owner compose/send/answer/reopen on local fixture',
+  {skip:!enabled,timeout:75000},async()=>{
+    assert.ok(fs.existsSync(exe),'native OS executable is missing');
+    const {_electron}=require('playwright-core');
+    const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-chat-fixture-'));
+    const launchEnv={...process.env,APPDATA:isolated,XDG_CONFIG_HOME:isolated};
+    const conversation='/c/11111111-1111-4111-8111-111111111111';
+    let app=null;
+    try{
+      app=await _electron.launch({executablePath:exe,args:['--user-data-dir='+isolated],env:launchEnv,timeout:25000});
+      const gui=await app.firstWindow({timeout:20000});
+      assert.match(await gui.title(),/Remote Commander/);
+      await gui.locator('#chat-open').waitFor({timeout:10000});
+      // Test process only: intercept HTTPS in the ACTUAL app-owned partition.
+      // Fail closed on all other HTTPS hosts. No production code, account,
+      // cookie, API credential, or live ChatGPT response is involved.
+      const partition='persist:commander-owned-chat';
+      const html=`<!doctype html><title>Commander synthetic chat fixture</title>
+      <label for="prompt">Synthetic message</label><textarea id="prompt"></textarea>
+      <button id="send">Send fixture</button><p id="answer" role="status"></p>
+      <script>
+      const answer=document.getElementById('answer');
+      const prompt=document.getElementById('prompt');
+      answer.textContent=localStorage.getItem('fixtureAnswer')||'';
+      document.getElementById('send').addEventListener('click',()=>{
+        if(prompt.value!=='Commander QA fixture')return;
+        const response='Synthetic answer receipt 012';
+        localStorage.setItem('fixtureAnswer',response);
+        answer.textContent=response;
+        history.pushState({},'', '/c/11111111-1111-4111-8111-111111111111');
+        prompt.value='';
+      });
+      </script>`;
+      const actualUserData=await app.evaluate(({app})=>app.getPath('userData'));
+      const relative=path.relative(isolated,actualUserData);
+      assert.ok(!relative.startsWith('..')&&!path.isAbsolute(relative),'Fixture must use a disposable userData root');
+      await app.evaluate(({session},{partition,html})=>{
+        const ses=session.fromPartition(partition);
+        ses.protocol.handle('https',request=>{
+          const u=new URL(request.url);
+          return new Response(u.origin==='https://chatgpt.com'&&
+            (u.pathname==='/'||u.pathname==='/c/11111111-1111-4111-8111-111111111111')?html:'Blocked fixture request',
+            {status:u.origin==='https://chatgpt.com'&&(u.pathname==='/'||u.pathname==='/c/11111111-1111-4111-8111-111111111111')?200:403,
+              headers:{'Content-Type':'text/html; charset=utf-8'}});
+        });
+        // Block plain HTTP except the dedicated unprivileged Companion bridge.
+        ses.webRequest.onBeforeRequest({urls:['http://*/*']},(details,callback)=>{
+          callback({cancel:!details.url.startsWith('http://127.0.0.1:41267/')});
+        });
+      },{partition,html});
+      await gui.locator('#companion-start').click();
+      await gui.waitForFunction(()=>document.querySelector('#companion-result')?.textContent?.includes('"listening": true'),
+        null,{timeout:10000});
+      const next=app.waitForEvent('window',{timeout:15000});
+      await gui.locator('#chat-open').click();
+      const chat=await next;
+      await chat.locator('#prompt').waitFor({timeout:15000});
+      assert.equal(new URL(chat.url()).origin,'https://chatgpt.com');
+      assert.equal(await chat.evaluate(()=>typeof require==='undefined'&&typeof process==='undefined'&&typeof window.commander==='undefined'),true);
+      await chat.getByLabel('Synthetic message').fill('Commander QA fixture');
+      await chat.getByRole('button',{name:'Send fixture'}).click();
+      await chat.waitForFunction(()=>document.querySelector('#answer')?.textContent==='Synthetic answer receipt 012',
+        null,{timeout:8000});
+      assert.equal(new URL(chat.url()).pathname,conversation);
+      await gui.waitForFunction(async()=>{
+        const s=await window.commander.companionStatus();
+        return s.ownedBrowser?.phase==='CHAT_OPEN'&&s.ownedBrowser?.chatAuthentication==='NOT_VERIFIED'
+          &&s.ownedBrowser?.actionAuthorization===false;
+      },null,{timeout:8000});
+      // Reload proves the exact isolated conversation's fixture receipt survives.
+      await chat.reload();
+      await chat.waitForFunction(()=>document.querySelector('#answer')?.textContent==='Synthetic answer receipt 012',
+        null,{timeout:8000});
+      await chat.close();
+      await gui.waitForFunction(async()=>(await window.commander.companionStatus()).ownedBrowser?.phase==='NO_CHAT',
+        null,{timeout:8000});
+      await gui.locator('#companion-stop').click();
+      await gui.waitForFunction(()=>document.querySelector('#companion-result')?.textContent?.includes('"listening": false'),
+        null,{timeout:8000});
+      console.log('RC012_OWNED_CHAT_FIXTURE_PASS '+JSON.stringify({actualPackagedWindow:true,
+        syntheticComposeSendAnswer:true,syntheticReloadReceipt:true,nativeObservation:true,
+        realChatGPTAccountTested:false,providerResponseTested:false,coreAuthorityGranted:false}));
+    }finally{
+      try{if(app)await app.close();}finally{
+        fs.rmSync(isolated,{recursive:true,force:true,maxRetries:8,retryDelay:180});
+      }
+    }
+  });
