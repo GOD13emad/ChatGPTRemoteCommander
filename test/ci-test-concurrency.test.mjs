@@ -773,10 +773,21 @@ test('V012 source regression retains every pinned test exactly once with bounded
     'only the named Linux native credential tests may use separate bounded deadlines');
   assert.ok(runner.includes("process.platform === 'win32' && index === 9"),
     'Windows host TLS/Gateway fixtures must retain a separate process per file');
-  assert.ok(runner.includes("isolatedWindowsTunnel ? [[], []]"),
-    'both native tunnel files must run once in distinct Windows partitions');
-  assert.ok(runner.includes("isolatedWindowsTunnel ? [batch[part]] : batch"),
-    'non-Windows paths retain full source batches and Windows includes every file');
+  const gateway=read('test/v2-private-tunnel-https-gateway.test.mjs');
+  for(const name of [
+    'v0.12 protected Core composition uses J01 and signed worker before real readText',
+    'real full-catalog 0.12 owner-local protected boot stays fail-closed without native grants'
+  ]){
+    assert.equal(gateway.split("test('"+name+"'").length,2,'exactly one pinned top-level fixture: '+name);
+    assert.ok(runner.includes("'"+name+"'"),'slow Windows Gateway fixture must remain pinned: '+name);
+  }
+  assert.ok(runner.includes("isolatedWindowsTunnel ? [[], ...gatewayPatterns.map(name => ['--test-name-pattern=^' + name + '$']), ['--test-skip-pattern=' + gatewaySlowPattern]]"),
+    'Windows runs attestor, two distinct slow Gateway fixtures and exact complementary Gateway fixtures');
+  assert.ok(runner.includes("isolatedWindowsTunnel ? [batch[part === 0 ? 0 : 1]] : batch"),
+    'Windows partition routing must retain attestor and Gateway, while non-Windows keeps original batch');
+  assert.ok(runner.includes("gatewayPatterns = slowWindowsGatewayTests.map(name => name.replaceAll('.', '[.]'))") &&
+    runner.includes("gatewaySlowPattern = '^(?:' + gatewayPatterns.join('|') + ')$'"),
+    'literal dots and anchored disjoint selection preserve the exact complement');
   assert.ok(runner.includes("batch[0] !== 'test/v2-private-tunnel-mtls-attestor.test.mjs'") &&
     runner.includes("batch[1] !== 'test/v2-private-tunnel-https-gateway.test.mjs'"),
     'named tunnel batches must fail closed if the exact pinned file identities drift');

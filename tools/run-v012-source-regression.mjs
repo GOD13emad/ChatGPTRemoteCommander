@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 const files = [
   "test/effective-power-owner-grant.test.mjs",
@@ -97,32 +98,43 @@ const linuxOwnerRecoveryTests = [
   'Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',
   'profile-specific owner recovery capsules never share a Tunnel or private TLS pair'
 ];
+const slowWindowsGatewayTests = [
+  'v0.12 protected Core composition uses J01 and signed worker before real readText',
+  'real full-catalog 0.12 owner-local protected boot stays fail-closed without native grants'
+];
+const gatewayPatterns = slowWindowsGatewayTests.map(name => name.replaceAll('.', '[.]'));
+const gatewaySlowPattern = '^(?:' + gatewayPatterns.join('|') + ')$';
 for (let index = range.first-1; index < range.last; index++) {
   const batch = batches[index];
   if (!batch.length) continue;
   // The two disjoint name filters and their complement execute every test
   // exactly once; no tool behavior, assertions, or deadlines are skipped.
   const slowPattern = '^(?:' + slowWorkflowTests.join('|') + ')$';
-  // On hosted Windows, the two distinct native mTLS/Gateway test files
-  // individually fit the established 30s limit, but the shared process can
-  // exceed it under runner load. One process per file, same assertions,
-  // same deadline per process, unchanged batch indexes and exact coverage.
+  // Hosted Windows twice hit the 30s aggregate limit in the Gateway file,
+  // even after separating it from the attestor. Run each measured slow
+  // top-level Gateway fixture separately, plus the exact complement.
+  // Keep the same per-process deadline, assertions and non-Windows path.
   const isolatedWindowsTunnel = process.platform === 'win32' && index === 9;
   if (isolatedWindowsTunnel &&
     (batch.length !== 2 ||
      batch[0] !== 'test/v2-private-tunnel-mtls-attestor.test.mjs' ||
      batch[1] !== 'test/v2-private-tunnel-https-gateway.test.mjs'))
     throw new Error('V012_SOURCE_REGRESSION_TUNNEL_BATCH_INVALID');
+  if (isolatedWindowsTunnel) {
+    const gatewaySource = readFileSync(batch[1], 'utf8');
+    if (slowWindowsGatewayTests.some(name => gatewaySource.split("test('" + name + "'").length !== 2))
+      throw new Error('V012_SOURCE_REGRESSION_GATEWAY_FIXTURE_INVALID');
+  }
   const partitions = index === 5 ? [
     ...slowWorkflowTests.map(name => ['--test-name-pattern=^' + name + '$']),
     ['--test-skip-pattern=' + slowPattern]
-  ] : isolatedWindowsTunnel ? [[], []]
+  ] : isolatedWindowsTunnel ? [[], ...gatewayPatterns.map(name => ['--test-name-pattern=^' + name + '$']), ['--test-skip-pattern=' + gatewaySlowPattern]]
     : index === 14 ? linuxOwnerRecoveryTests.map(name =>
     ['--test-name-pattern=^' + name + '$']) : [[]];
   for (let part = 0; part < partitions.length; part++) {
     process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length +
       ' files=' + batch.length + ' partition=' + (part + 1) + '/' + partitions.length + '\n');
-    const activeFiles = isolatedWindowsTunnel ? [batch[part]] : batch;
+    const activeFiles = isolatedWindowsTunnel ? [batch[part === 0 ? 0 : 1]] : batch;
     const result = spawnSync(process.execPath, [
       '--test', '--test-concurrency=1', ...partitions[part], ...activeFiles
     ], {
