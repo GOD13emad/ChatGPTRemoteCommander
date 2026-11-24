@@ -202,6 +202,7 @@ function previewConfig(coreDir,userData,port){
     guiControl:{enabled:false},browserControl:{enabled:false}};
   base.capabilityProfile={tier:'STANDARD'};
   base.requireTrustedIngress=false;
+  base.browserCompanionMonitor={enabled:false}; // previews never publish live CEF monitor state
   const file=path.join(isolated,'preview-config.json');
   fs.writeFileSync(file,JSON.stringify(base,null,2)+'\n',{mode:0o600});
   return {file,root:isolated};

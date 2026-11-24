@@ -106,3 +106,31 @@ Regression gates cover:
 - Power tools failing closed in a Standard isolated instance;
 - Windows script parser/contracts;
 - real PrepareOnly validation against an enrolled secondary profile without changing its live YAML/tunnel.
+
+
+## Browser Companion monitor instance routing (0.12 candidate)
+
+The previous monitor wrote one owner-local `commander-monitor.json` for all
+Core processes. This made a preview or a second profile replace the first
+profile's displayed state. The monitor is read-only and never proves ChatGPT
+identity, tool authority or Full Access.
+
+Each running Core now writes only to
+`<browser-companion-base>/instances/<scopeId>/commander-monitor.json`.
+The scopeId is SHA-256 of the UTF-8 JSON array `[profile,port]` using compact
+JSON serialization, with the exact case-sensitive profile and configured
+loopback port. The base is the existing OS-specific state directory.
+The Core status reports `browserCompanionMonitor.scopeId` and errors.
+Invalid identities disable the optional monitor without falling back to a
+shared path or preventing the Core from listening.
+
+For an owner-launched native CEF Browser, set its existing
+`CGWA_COMPANION_ROOT` to the **exact selected** instance directory before
+launch. Do not guess an instance by recency, copy an account binding, reuse
+credentials or auto-grant tool access. The CEF reader's existing private-file
+and freshness checks still apply. Existing root-level monitor/binding files
+are not changed or migrated by this change. A legacy CEF launch with no
+explicit selection will not receive new monitor updates from the corrected
+Core. The unified GUI now discovers fresh exact-scope records and displays the selected root after revalidation; it never launches CEF automatically or chooses a profile by recency. Preview Core has monitor publication disabled. Native CEF launch and installed acceptance remain separate gates; this is not production promotion.
+
+Windows first-run monitor directories are created with a native owner/System/Administrators ACL by the optional Core writer, using Windows PowerShell and .NET directory security at creation. Existing roots are validated, never re-ACL'd; a non-NTFS, reparse or unsafe existing root disables publication with an explicit error. Selection rechecks private directory ACLs without creating directories. The native CEF file guard remains authoritative. No administrator elevation or changes to an existing owner profile are requested.
