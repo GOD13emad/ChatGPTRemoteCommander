@@ -906,7 +906,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
         +';const l=create({directory:process.argv[1],hostId:"host-1"});'
         +'await l.withLease(JSON.stringify([1,"host-1","workflow-root","root-1"]),'
         +'async()=>{console.log("HELD");await new Promise(resolve=>process.stdin.once("data",resolve));});l.close();';
-      const child=spawn(process.execPath,['--input-type=module','-e',script,leaseDir],
+      const child=spawn(process.execPath,['--input-type=module','-e',script,nativeRoot],
         {stdio:['pipe','pipe','inherit']});
       const exited=new Promise(resolve=>{
         child.once('error',()=>resolve(null));
