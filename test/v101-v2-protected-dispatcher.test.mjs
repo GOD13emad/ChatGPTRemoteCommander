@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {createV101V2ProtectedDispatcherFactory} from '../src/v101-v2-protected-dispatcher.mjs';
+import {createV2CandidateMcpDispatcher} from '../src/v2-mcp-workflow-dispatcher.mjs';
 
 const token='SYNTHETIC_SIGNED_JWT_QA_ONLY_123456789';
 const tokenSha=createHash('sha256').update(token).digest('hex');
@@ -22,7 +23,7 @@ const action=(content='from-A')=>({
     _meta:{'openai/session':'chat-a'}
   }
 });
-function scenario(){
+function scenario({useCanonicalDiscovery=false}={}){
   const state={allow:true,consent:true,route:initialRoute,callCount:0,
     ownerCalls:0,clock:T,transport:'chat-a',mutate:null};
   const verifiedClaims=()=>({
@@ -63,6 +64,18 @@ function scenario(){
     createTrustedDispatcher:async proof=>{
       assert.equal(proof.authenticated,true);
       assert.equal(typeof proof.sessionHandle,'string');
+      if(useCanonicalDiscovery){
+        // All authority/effect providers are traps: discovery must not consult
+        // any of them, even if a request contains unrelated operation fields.
+        const forbidden=async()=>{state.callCount++;throw Error('DISCOVERY_EFFECT_FORBIDDEN');};
+        return createV2CandidateMcpDispatcher({
+          resource:audience,authorizationServers:[issuer],issuer,audience,
+          assertionTrust:{},workflowStore:{},grantRegistry:{},
+          verifyAccessToken:forbidden,resolvePrincipal:forbidden,
+          observedNativeSession:forbidden,resolveTrustedInvocation:forbidden,
+          authorizeTool:forbidden,dispatch:forbidden,now:()=>state.clock
+        });
+      }
       return {
         protectedResource:{metadataUrl:'https://commander.example.invalid/.well-known/oauth-protected-resource/mcp-v2'},
         handleRpc:async({authorization,message})=>{
@@ -215,4 +228,27 @@ test('only reviewed protocol bootstrap RPC methods reach trusted V2 dispatcher',
   }
   assert.equal(state.callCount,5);
   assert.equal(state.ownerCalls,0);
+});
+
+test('canonical server/discover returns fixed metadata only and never invokes authority or effects',async()=>{
+  const {state,factory}=scenario({useCanonicalDiscovery:true});
+  await assert.rejects(()=>factory({authenticated:false,sessionHandle:'chat-a'}),
+    /V101_V2_TRUSTED_TRANSPORT_REQUIRED/);
+  const d=await factory({authenticated:true,sessionHandle:'chat-a'});
+  const metadata={'io.modelcontextprotocol/protocolVersion':'2026-07-28',
+    'io.modelcontextprotocol/clientCapabilities':{}};
+  const discover=(params)=>({jsonrpc:'2.0',id:17,method:'server/discover',params});
+  const plain=await d.handleRpc({message:discover({_meta:metadata})});
+  assert.deepEqual(plain.result.supportedVersions,['2026-07-28']);
+  assert.deepEqual(plain.result.capabilities,{tools:{}});
+  assert.equal(plain.result.cacheScope,'private');
+  assert.equal(plain.result.ttlMs,30000);
+  const extra=await d.handleRpc({message:discover({_meta:metadata,
+    name:'unrelated-fixture',arguments:{value:'synthetic-marker'}})});
+  assert.deepEqual(extra,plain,'additional fixture fields cannot change discovery output');
+  const invalid=await d.handleRpc({message:discover({_meta:{...metadata,
+    'io.modelcontextprotocol/protocolVersion':'invalid'}})});
+  assert.equal(invalid.error.code,-32022);
+  assert.equal(state.ownerCalls,0);
+  assert.equal(state.callCount,0);
 });

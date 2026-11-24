@@ -44,6 +44,42 @@ function expireRootLease(f){
 
 const call = (f, extra={}) => f.s.call({ id:'sample',stepId:'first',expectedRevision:1,tool:'read_text',arguments:{path:'x'},...extra },host(async()=>({ok:true})));
 
+
+test('status and health never erase an expired un-reconciled root lease',async()=>{
+  const f=fixture();
+  try{
+    f.create();
+    const original=await f.s.call({
+      id:'sample',stepId:'first',expectedRevision:1,
+      tool:'run_project_command',arguments:{program:'synthetic-child'}
+    },host(async()=>({ok:false})));
+    assert.equal(original.outcome,'UNCERTAIN');
+    expireRootLease(f);
+    f.create('other');
+    for(const status of [()=>f.s.schedulerStatus(),()=>f.s.health().scheduler]){
+      const view=status();
+      assert.equal(view.currentLeases,0,'expired lease is not a live holder');
+      assert.equal(view.rootLeasesBlocking,1,
+        'expired claims still block another writer');
+      assert.equal(view.expiredLeasesRequiringReconciliation,1,
+        'report expired lock without releasing its fencing record');
+      const db=new DatabaseSync(path.join(f.options.directory,'root-leases.sqlite'));
+      try{
+        assert.equal(db.prepare('SELECT COUNT(*) AS count FROM root_leases').get().count,1,
+          'read-only status must retain expired holder for owner reconciliation');
+      }finally{db.close();}
+    }
+    let otherEffects=0;
+    await assert.rejects(f.s.call({
+      id:'other',stepId:'first',expectedRevision:1,
+      tool:'read_text',arguments:{path:'x'}
+    },host(async()=>{otherEffects++;return{ok:true};})),
+    /WORKFLOW_ROOT_LEASE_EXPIRED_RECONCILIATION_REQUIRED/);
+    assert.equal(otherEffects,0);
+  }finally{f.dispose();}
+});
+
+
 test('host-declared read-only inspection tools have safe-retry receipts and verified workflow status',async()=>{
   for(const tool of ['search_files','system_info','list_processes']){
     assert.equal(classifyTool(tool,{}),'READ_ONLY');

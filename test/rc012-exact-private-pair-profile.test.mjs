@@ -12,8 +12,10 @@ const script=path.join(project,'tools','inspect-owner-private-tunnel-cutover.mjs
 function fixture(check){
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-exact-pair-'));
  try{
-  const profileDir=path.join(home,'.config','tunnel-client');
-  const pairs=path.join(home,'.config','chatgpt-remote-commander','private-pair');
+  // Isolate the exact native configuration directory on both operating systems.
+  const configRoot=process.platform==='win32'?path.join(home,'AppData','Roaming'):path.join(home,'.config');
+  const profileDir=path.join(configRoot,'tunnel-client');
+  const pairs=path.join(configRoot,process.platform==='win32'?'ChatGPTRemoteCommander':'chatgpt-remote-commander','private-pair');
   for(const d of [profileDir,pairs])fs.mkdirSync(d,{recursive:true,mode:0o700});
   const make=(name,port)=>{
    const f=path.join(profileDir,name+'.yaml');
@@ -30,7 +32,7 @@ function fixture(check){
   };
   const run=name=>spawnSync(process.execPath,[script,'--target-port=55701',
     '--profile-name='+name],{encoding:'utf8',timeout:6000,cwd:project,
-    env:{...process.env,HOME:home}});
+    env:{...process.env,HOME:home,APPDATA:configRoot,USERPROFILE:home}});
   return check({make,pair,run});
  }finally{fs.rmSync(home,{recursive:true,force:true});}
 }
