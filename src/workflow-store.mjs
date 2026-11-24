@@ -557,8 +557,12 @@ export class WorkflowStore {
     const pending = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE enabled=1 AND lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED')").get().n;
     const interrupted = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE lifecycle='INTERRUPTED'").get().n;
     const leaseNow = new Date().toISOString();
-    this.#leaseDb.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(leaseNow);
+    // A timed-out owner may still have an active external effect. Never let
+    // status/health erase its fencing record: only exact reconciliation or
+    // an independently verified completion may release the machine-global root.
     const leases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at > ?').get(leaseNow).n;
+    const rootLeasesBlocking = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases').get().n;
+    const expiredLeases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at <= ?').get(leaseNow).n;
     const reconciliationRequired = this.#db.prepare("SELECT COUNT(*) AS n FROM operations WHERE status='UNCERTAIN'").get().n;
     return {
       enabled: this.#schedulerPolicy.enabled,
@@ -572,6 +576,8 @@ export class WorkflowStore {
       interrupted: Number(interrupted),
       reconciliationRequired: Number(reconciliationRequired),
       currentLeases: Number(leases),
+      rootLeasesBlocking: Number(rootLeasesBlocking),
+      expiredLeasesRequiringReconciliation: Number(expiredLeases),
       hasActiveLease: Number(leases) > 0,
       lifecycleCounts: counts,
       workerId: this.#workerId,

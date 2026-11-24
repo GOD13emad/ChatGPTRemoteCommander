@@ -30,7 +30,7 @@ function fixture(){
     fs.mkdirSync(path.dirname(dest),{recursive:true});
     fs.copyFileSync(path.join(base,rel),dest);
   }
-  return root;
+  return fs.realpathSync.native(root);
 }
 const assess=(root,platform='linux')=>assessG1ReleaseBundle({root,
   minimumVersion:'0.11.0-dev.23',platform});

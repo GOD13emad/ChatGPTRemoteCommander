@@ -449,16 +449,16 @@ test('PRIVATE pair runtime opens only on explicit owner start and retains NO_PRO
   }
 });
 
-test('full isolated mTLS to signed Worker and real Core readText denies replays after J01 revoke',{
-  skip:process.platform!=='win32'
-},async t=>{
+test('full isolated mTLS to signed Worker and real Core readText denies replays after J01 revoke',async t=>{
   let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-mtls-real-core-')));
   const approvedFile=path.join(root,'approved.txt');
   fs.writeFileSync(approvedFile,'private-core-mtls-read-only\n');
   const OWNER_SID='S-1-5-21-111-222-333-1001';
-  const OWNER_HASH=createHash('sha256').update(
-    'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
+  const linux=process.platform==='linux',uid=1000;
+  const OWNER_HASH=createHash('sha256').update(linux
+    ?'commander.os-owner.sid.v1\0linux\0uid='+uid+'\0userns=user:[4026531837]'
+    :'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
   const TUNNEL_HASH='a'.repeat(64);
   const context={roots:[root],auditLog:path.join(root,'audit.jsonl'),config:{
     allowedRoots:[root],maxReadBytes:524288,
@@ -478,6 +478,17 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
     ...route(conversationId),operationId:'read-1'
   });
   const nativeExec=(file,args,_options,callback)=>{
+    if(linux){
+      if(file==='/usr/bin/loginctl')return callback(null,[
+        'Id=7','User='+uid,'Seat=seat0','Active=yes','Remote=no',
+        'Type=x11','Class=user','Display=:0','Leader=1001','State=active'
+      ].join('\n')+'\n','');
+      if(file==='/usr/bin/zenity'){
+        state.consents++;
+        return callback(null,'','');
+      }
+      return callback(Error('unreviewed native Linux fixture executable'),'','');
+    }
     assert.equal(file,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
     const mode=args[args.indexOf('-Mode')+1];
     if(mode==='Snapshot')return callback(null,JSON.stringify({
@@ -488,6 +499,22 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
       return callback(null,JSON.stringify({approved:true})+'\n','');
     }
     return callback(Error('unknown mode'),'','');
+  };
+  // Only the owner-session probe and native consent UI are synthetic.
+  // CA-verified HTTPS, pinned client leaf, Ed25519 and readText are real.
+  const ownerSessionOptions=linux?{
+    platform:'linux',execFileImpl:nativeExec,
+    env:{XDG_SESSION_ID:'7',XDG_SESSION_TYPE:'x11',
+      DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/'+uid+'/bus',DISPLAY:':0'},
+    getuid:()=>uid,
+    readFileImpl:()=> '0::/user.slice/user-'+uid+'.slice/session-7.scope\n',
+    readlinkImpl:()=> 'user:[4026531837]',
+    verifyExecutable:()=>{},commandTimeoutMs:1000,dialogTimeoutMs:5000
+  }:{
+    platform:'win32',powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    script:'C:\\Commander\\src\\native-owner-session-windows.ps1',
+    execFileImpl:nativeExec,verifyFile:()=>{},
+    snapshotTimeoutMs:1000,dialogTimeoutMs:5000
   };
   const transportIdentity=()=>({
     ...tdata(now),ownerSidHash:OWNER_HASH,tunnelIdHash:TUNNEL_HASH
@@ -509,13 +536,7 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
       expectedTunnelIdHash:TUNNEL_HASH,expectedOwnerSidHash:OWNER_HASH,
       attestTransport:peerAttestor,resolveOwnerRoute:async h=>route(h),
       now:()=>now,
-      ownerSessionOptions:{
-        platform:'win32',
-        powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-        script:'C:\\Commander\\src\native-owner-session-windows.ps1',
-        execFileImpl:nativeExec,verifyFile:()=>{},
-        snapshotTimeoutMs:1000,dialogTimeoutMs:5000
-      }
+      ownerSessionOptions
     });
     const {privateKey,publicKey}=generateKeyPairSync('ed25519');
     const der=publicKey.export({type:'spki',format:'der'});
@@ -684,18 +705,21 @@ test('v0.12 private native Worker bootstrap rejects missing or competing authori
   }),{code:'V012_PRIVATE_CORE_WORKER_BOOTSTRAP_AMBIGUOUS_OR_MISSING'});
 });
 
-test('v0.12 protected Core composition uses J01 and signed worker before real readText',{
-  skip:process.platform!=='win32'
-},async t=>{
+test('v0.12 protected Core composition uses J01 and signed worker before real readText',async t=>{
   let fixtureFiles;
   try{fixtureFiles=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
   const f=fixtureFiles;
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-private-core-compose-')));
   const approved=path.join(root,'approved.txt');
   fs.writeFileSync(approved,'private-core-composition-verified\n');
+  // Linux has a distinct native owner identity/seat provider; reuse the
+  // same real mTLS -> signed Worker -> Core readText path on BOTH platforms.
+  // Loginctl and the visible owner consent dialog are controlled test doubles.
+  const linux=process.platform==='linux',uid=1000;
   const OWNER_SID='S-1-5-21-111-222-333-1001';
-  const ownerHash=createHash('sha256').update(
-    'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
+  const ownerHash=createHash('sha256').update(linux
+    ?'commander.os-owner.sid.v1\0linux\0uid='+uid+'\0userns=user:[4026531837]'
+    :'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
   const tunnelHash='a'.repeat(64),now=Date.now();
   const {privateKey,publicKey}=generateKeyPairSync('ed25519');
   const der=publicKey.export({type:'spki',format:'der'});
@@ -722,7 +746,20 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
   const context={roots:[root],auditLog:path.join(root,'audit.jsonl'),
     config:{allowedRoots:[root],maxReadBytes:524288,
       powerMode:{enabled:false,fullFilesystem:false}}};
-  const nativeExec=(_file,args,_opts,callback)=>{
+  const nativeExec=(file,args,_opts,callback)=>{
+    if(linux){
+      if(file==='/usr/bin/loginctl'){
+        return callback(null,[
+          'Id=7','User='+uid,'Seat=seat0','Active=yes','Remote=no',
+          'Type=x11','Class=user','Display=:0','Leader=1001','State=active'
+        ].join('\n')+'\n','');
+      }
+      if(file==='/usr/bin/zenity'){
+        state.consents++;
+        return callback(null,'','');
+      }
+      return callback(Error('unknown native Linux fixture executable'),'','');
+    }
     const mode=args[args.indexOf('-Mode')+1];
     if(mode==='Snapshot')return callback(null,JSON.stringify({
       schema:1,ownerSid:OWNER_SID,sessionId:7,active:true,interactive:true
@@ -732,6 +769,21 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       return callback(null,JSON.stringify({approved:true})+'\n','');
     }
     return callback(Error('unknown fixture mode'),'','');
+  };
+  const ownerSessionOptions=linux?{
+    platform:'linux',execFileImpl:nativeExec,
+    env:{XDG_SESSION_ID:'7',XDG_SESSION_TYPE:'x11',
+      DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/'+uid+'/bus',DISPLAY:':0'},
+    getuid:()=>uid,
+    readFileImpl:()=> '0::/user.slice/user-'+uid+'.slice/session-7.scope\n',
+    readlinkImpl:()=> 'user:[4026531837]',
+    verifyExecutable:()=>{},commandTimeoutMs:1000,dialogTimeoutMs:5000
+  }:{
+    platform:'win32',
+    powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    script:'C:\\Commander\\src\\native-owner-session-windows.ps1',
+    execFileImpl:nativeExec,verifyFile:()=>{},
+    snapshotTimeoutMs:1000,dialogTimeoutMs:5000
   };
   let runtime;
   try{
@@ -808,13 +860,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
             withLease:async(_resource,work)=>work(),receiptStore,
           };
         },
-        ownerSessionOptions:{
-          platform:'win32',
-          powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-          script:'C:\\Commander\\src\\native-owner-session-windows.ps1',
-          execFileImpl:nativeExec,verifyFile:()=>{},
-          snapshotTimeoutMs:1000,dialogTimeoutMs:5000
-        }
+        ownerSessionOptions
       },
       core:{
         catalog:[{name:'read_text',description:'Real Core readText',
