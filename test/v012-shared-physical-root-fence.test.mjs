@@ -282,6 +282,27 @@ if(process.argv[2]==='--holder'){
     }finally{a.close();f.cleanup();}
   });
 
+  test('overlapping canonical nested project roots must share one host-wide native claim',
+    {skip:process.platform==='win32'?'Linux native SQLite; native Windows ACL separately':false},async()=>{
+    const f=fixture();
+    const childRoot=path.join(f.root,'nested');
+    fs.mkdirSync(childRoot,{mode:0o700});
+    // Two independent Core processes may each enroll a different canonical
+    // scope, yet parent and descendant effects MUST use the same host lock.
+    const first=newFence(f,{allowedRoots:[f.root]});
+    const second=newFence(f,{allowedRoots:[childRoot]});
+    try{
+      await first.fence.withWorkflowRootLease(f.root,async()=>{
+        await assert.rejects(
+          ()=>second.fence.withWorkflowRootLease(childRoot,async()=>({ok:true})),
+          e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED');
+        return {ok:true};
+      });
+      const accepted=await second.fence.withWorkflowRootLease(childRoot,async()=>({ok:true}));
+      assert.equal(accepted.ok,true);
+    }finally{second.close();first.close();f.cleanup();}
+  });
+
   test('trusted owner root mapping refuses paths outside enrollment and alias targets', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
     const f=fixture();
     const outside=path.join(f.top,'outside');

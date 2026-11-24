@@ -55,12 +55,19 @@ export function createV012SharedPhysicalRootFence({
     fail('V012_SHARED_ROOT_BOOTSTRAP_REQUIRED');
   const roots=Object.freeze(allowedRoots.map(absoluteRoot));
   const scope=new AsyncLocalStorage();
+  // Until a physical host-wide enrolled-root registry can prove all processes
+  // share identical disjoint project partitions, distinct root path hashes
+  // are unsafe: a parent and nested child refer to overlapping effect sinks.
+  // Conservatively use one workflow-root namespace for the entire enrolled
+  // host. This serializes unrelated projects but never claims nonexistent
+  // ancestor/descendant exclusion. No user-provided target can alter the key.
+  const sharedRootId=createHash('sha256')
+    .update('v012:host-wide-workflow-root:fallback-v1').digest('hex');
   function rootKey(root){
     const canonical=absoluteRoot(root);
     if(!roots.some(base=>within(canonical,base)))
       fail('V012_SHARED_ROOT_OUTSIDE_ENROLLMENT');
-    const hash=createHash('sha256').update(windows?canonical.toLowerCase():canonical).digest('hex');
-    return JSON.stringify([1,hostId,'workflow-root',hash]);
+    return JSON.stringify([1,hostId,'workflow-root',sharedRootId]);
   }
   async function withResource(key,work){
     if(typeof work!=='function')fail('V012_SHARED_ROOT_CALLBACK_REQUIRED');
