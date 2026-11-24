@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
 import {createV012OwnerNativeHostLease}
   from '../src/v012-owner-native-host-lease-bootstrap.mjs';
 import {ensureWindowsMonitorDirectories}
@@ -70,6 +71,60 @@ test('two independently opened native host leases fence effects and preserve unc
     first?.close();
     second?.close();
     // Only the unique synthetic directory created above is removed.
+    fs.rmSync(root,{recursive:true,force:true});
+  }
+});
+
+test('shared native lease database rejects a second host identity even after all handles close',{
+  skip:!win&&!linux,timeout:75000
+},async()=>{
+  const root=await freshOwnerRoot();
+  let first,wrong,reopened;
+  const otherHost='qa-other-host';
+  try{
+    first=await createV012OwnerNativeHostLease({directory:root,hostId});
+    // The same physical resource must not become independently leasable
+    // just because a second owner profile carries a different host ID.
+    await assert.rejects(async()=>{
+      wrong=await createV012OwnerNativeHostLease({
+        directory:root,hostId:otherHost
+      });
+    },{code:'V012_NATIVE_LEASE_HOST_ID_MISMATCH'});
+    first.close();first=null;
+    await assert.rejects(async()=>{
+      wrong=await createV012OwnerNativeHostLease({
+        directory:root,hostId:otherHost
+      });
+    },{code:'V012_NATIVE_LEASE_HOST_ID_MISMATCH'});
+    reopened=await createV012OwnerNativeHostLease({directory:root,hostId});
+    assert.equal(await reopened.withLease(key,async()=> 'same-host'),'same-host');
+  }finally{
+    wrong?.close();first?.close();reopened?.close();
+    fs.rmSync(root,{recursive:true,force:true});
+  }
+});
+
+test('legacy database with a quarantined resource refuses another host and retains original lease',{
+  skip:!win&&!linux,timeout:75000
+},async()=>{
+  const root=await freshOwnerRoot();
+  let first,wrong,reopened,db;
+  try{
+    first=await createV012OwnerNativeHostLease({directory:root,hostId});
+    await assert.rejects(first.withLease(key,async()=>{throw Error('unknown effect');}),/unknown effect/);
+    first.close();first=null;
+    // Reproduce an earlier schema on this exclusively test-owned database.
+    db=new DatabaseSync(path.join(root,'v012-native-operation-leases.sqlite'));
+    db.exec('DROP TABLE IF EXISTS native_operation_lease_identity');
+    db.close();db=null;
+    await assert.rejects(async()=>{
+      wrong=await createV012OwnerNativeHostLease({directory:root,hostId:'qa-other-host'});
+    },{code:'V012_NATIVE_LEASE_HOST_ID_MISMATCH'});
+    reopened=await createV012OwnerNativeHostLease({directory:root,hostId});
+    await assert.rejects(reopened.withLease(key,async()=> 'unsafe retry'),
+      {code:'V012_NATIVE_LEASE_OCCUPIED'});
+  }finally{
+    db?.close();wrong?.close();first?.close();reopened?.close();
     fs.rmSync(root,{recursive:true,force:true});
   }
 });
