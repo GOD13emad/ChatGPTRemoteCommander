@@ -6,6 +6,22 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { executePowerTool } from '../src/power-tools-v0.3.mjs';
 import { assessAccessStatus } from '../src/full-access-status.mjs';
+import { shellSpec, shellName } from '../src/platform.mjs';
+
+test('Linux shell execution ignores ambient SHELL executable replacement', {skip:process.platform!=='linux'},()=>{
+  const old=process.env.SHELL;
+  try{
+    process.env.SHELL='/tmp/untrusted-shell-selection';
+    assert.deepEqual(shellSpec('printf safe'),
+      {file:'/bin/bash',args:['-c','printf safe']});
+    assert.deepEqual(shellSpec('',true),
+      {file:'/bin/bash',args:['--noprofile','--norc']});
+    assert.equal(shellName(),'/bin/bash');
+  }finally{
+    if(old===undefined)delete process.env.SHELL;
+    else process.env.SHELL=old;
+  }
+});
 
 const digest=value=>createHash('sha256').update(value).digest('hex');
 function fixture({required=true,run}={}){
