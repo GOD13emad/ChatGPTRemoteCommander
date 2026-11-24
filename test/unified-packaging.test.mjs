@@ -510,3 +510,19 @@ test('native DEB merger pins identical canonical Core and GUI candidate versions
   assert.equal(newer.status,0,newer.stderr);
  }
 });
+
+test('hosted same-source native and GUI DEBs require equal canonical version; never call this a cross-version upgrade',()=>{
+  const s=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+  assert.match(s,/RC012_NATIVE_SAME_VERSION_GUI_REPACKAGE_AND_ROLLBACK_PASS/);
+  assert.ok(s.includes('OLD_VERSION="$(dpkg-deb --field "$OLD" Version)"'));
+  assert.ok(s.includes('NEW_VERSION="$(dpkg-deb --field "$NEW" Version)"'));
+  assert.ok(s.includes('test "$OLD_VERSION" = "$EXPECTED_NATIVE_VERSION"'));
+  assert.ok(s.includes('test "$NEW_VERSION" = "$EXPECTED_NATIVE_VERSION"'));
+  assert.doesNotMatch(s,/dpkg --compare-versions[^\n]+ gt [^\n]+/);
+  if(process.platform==='linux'){
+    const same=spawnSync('dpkg',['--compare-versions','0.12.0~dev.13','eq','0.12.0~dev.13']);
+    const higher=spawnSync('dpkg',['--compare-versions','0.12.0~dev.13','gt','0.12.0~dev.13']);
+    assert.equal(same.status,0);
+    assert.notEqual(higher.status,0,'the previous upgrade assertion is impossible for same-version artifacts');
+  }
+});
