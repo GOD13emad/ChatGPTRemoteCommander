@@ -78,6 +78,17 @@ test('rejects foreign host, JSON alias, malformed callback and unauthorized dire
   fs.chmodSync(directory,0o700);
 });
 
+test('new lease database is private even with permissive process umask', {skip:!LINUX},t=>{
+  const directory=setup(t);
+  const prior=process.umask(0o000);
+  try{
+    const l=createV012HostGlobalOperationLease({directory,hostId:host});
+    l.close();
+  }finally{process.umask(prior);}
+  const file=path.join(directory,'v012-native-operation-leases.sqlite');
+  assert.equal(fs.statSync(file).mode&0o777,0o600);
+});
+
 test('rejects aliased SQLite file instead of opening a foreign database', {skip:!LINUX},t=>{
   const directory=setup(t);
   fs.symlinkSync(path.join(directory,'other-file'),path.join(directory,'v012-native-operation-leases.sqlite'));
