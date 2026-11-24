@@ -1072,6 +1072,7 @@ server.listen(config.port, config.host, async () => {
   if (!browserCompanionMonitor) {
     browserCompanionMonitor = startBrowserCompanionMonitor({
       snapshot: buildBrowserMonitorSnapshot,
+      instance: { profile: config.instance?.profile ?? 'default', port: config.port },
       onError: error => console.error('BROWSER_COMPANION_MONITOR_FAILED', error)
     });
   }
