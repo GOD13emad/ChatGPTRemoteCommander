@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {AsyncLocalStorage} from 'node:async_hooks';
-import {normalizeV2Route,v2ResourceLeaseKey} from './v2-routing-contract.mjs';
+import {normalizeV2Route} from './v2-routing-contract.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const UNKNOWN=Symbol('UNCERTAIN_OUTCOME_QUARANTINE');
@@ -63,20 +63,22 @@ export function createV012SharedPhysicalRootFence({
   // ancestor/descendant exclusion. No user-provided target can alter the key.
   const sharedRootId=createHash('sha256')
     .update('v012:host-wide-workflow-root:fallback-v1').digest('hex');
+  const hostGlobalResourceKey=JSON.stringify([1,hostId,'workflow-root',sharedRootId]);
   function rootKey(root){
     const canonical=absoluteRoot(root);
     if(!roots.some(base=>within(canonical,base)))
       fail('V012_SHARED_ROOT_OUTSIDE_ENROLLMENT');
-    return JSON.stringify([1,hostId,'workflow-root',sharedRootId]);
+    return hostGlobalResourceKey;
   }
-  async function withResource(key,work){
+  async function withResource(key,work,logicalScope){
     if(typeof work!=='function')fail('V012_SHARED_ROOT_CALLBACK_REQUIRED');
     const active=scope.getStore();
     if(active){
       // AsyncLocalStorage outlives its callback: a deferred child must NOT
       // resurrect a released host-global native lock by inheriting context.
       if(!active.active)fail('V012_SHARED_ROOT_STALE_CONTEXT_DENIED');
-      if(active.key!==key)fail('V012_SHARED_ROOT_CROSS_RESOURCE_NESTING_DENIED');
+      if(active.key!==key||active.logicalScope!==logicalScope)
+        fail('V012_SHARED_ROOT_CROSS_RESOURCE_NESTING_DENIED');
       active.nestedEntered=true;
       active.inFlight++;
       try{
@@ -90,7 +92,7 @@ export function createV012SharedPhysicalRootFence({
       }finally{active.inFlight--;}
     }
     let completedValue;
-    const state={key,leaseContext:null,uncertain:false,active:false,inFlight:0,
+    const state={key,logicalScope,leaseContext:null,uncertain:false,active:false,inFlight:0,
       nestedEntered:false,effectStarted:false};
     try{
       await nativeHostLease.withLease(key, async leaseContext=>{
@@ -141,15 +143,21 @@ export function createV012SharedPhysicalRootFence({
   }
   return Object.freeze({
     async withWorkflowRootLease(root,work){
-      return withResource(rootKey(root),work);
+      return withResource(rootKey(root),work,'workflow-root');
     },
     async withDirectRouteLease(route,work){
       const r=normalizeV2Route(route);
       if(r.hostId!==hostId)fail('V012_SHARED_ROOT_HOST_MISMATCH');
-      if(r.target.kind!=='workflow-root')
-        return withResource(v2ResourceLeaseKey(r),work);
+      if(r.target.kind!=='workflow-root'){
+        // host-shell, desktop and browser effects can all modify the same
+        // physical project tree. Without an attested sink-to-root mapping
+        // they MUST share the host-global native fence. Distinct logical
+        // routes must still be non-reentrant in an inherited ALS context.
+        return withResource(hostGlobalResourceKey,work,
+          'direct:'+r.target.kind+':'+r.target.id);
+      }
       const root=await resolveTrustedRouteRoot(r);
-      return withResource(rootKey(root),work);
+      return withResource(rootKey(root),work,'workflow-root');
     }
   });
 }

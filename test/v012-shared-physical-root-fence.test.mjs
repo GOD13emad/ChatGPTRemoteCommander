@@ -269,6 +269,29 @@ if(process.argv[2]==='--holder'){
     }
   });
 
+  test('non-workflow direct host shell and desktop/browser routes cannot bypass active root owner lease',
+    {skip:process.platform==='win32'?'Linux native fixture; Windows ACL separate':false},async()=>{
+    const f=fixture(),first=newFence(f),second=newFence(f);
+    try{
+      let effects=0;
+      await first.fence.withWorkflowRootLease(f.root,async()=>{
+        for(const kind of ['host-shell','desktop-seat','browser-target']){
+          await assert.rejects(
+            ()=>second.fence.withDirectRouteLease({
+              ...route(),target:{kind,id:'cross-kind-qa'}
+            },async()=>{effects++;return {ok:true};}),
+            e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED');
+        }
+        assert.equal(effects,0,
+          'shell/desktop/browser must not dispatch while physical project root is held');
+        return {ok:true};
+      });
+      assert.equal((await second.fence.withDirectRouteLease({
+        ...route(),target:{kind:'host-shell',id:'cross-kind-qa'}
+      },async()=>({ok:true}))).ok,true);
+    }finally{second.close();first.close();f.cleanup();}
+  });
+
   test('uncertain workflow outcome returns receipt but quarantines native root lease', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
     const f=fixture(),a=newFence(f);
     try{
@@ -320,6 +343,32 @@ if(process.argv[2]==='--holder'){
           e=>e?.code==='V012_SHARED_ROOT_ALIAS_DENIED');
       }
     }finally{a.close();f.cleanup();}
+  });
+
+  test('host-wide native resource key also covers shell desktop and browser route kinds',async()=>{
+    const f=fixture(),used=[];
+    try{
+      const native={
+        hostId:HOST,
+        async withLease(key,work){
+          used.push(key);
+          return work({markEffectStarted(){},markSafePreEffectDenial(){}});
+        }
+      };
+      const fence=createV012SharedPhysicalRootFence({
+        nativeHostLease:native,hostId:HOST,
+        allowedRoots:[f.root],resolveTrustedRouteRoot:()=>f.root
+      });
+      await fence.withWorkflowRootLease(f.root,async()=>({ok:true}));
+      for(const kind of ['host-shell','desktop-seat','browser-target']){
+        await fence.withDirectRouteLease({...route(),
+          target:{kind,id:'protected-route'}
+        },async()=>({ok:true}));
+      }
+      assert.equal(used.length,4);
+      assert.equal(new Set(used).size,1,
+        'all potentially project-mutating route kinds need one host-wide owner fence');
+    }finally{f.cleanup();}
   });
 
   test('pure root-to-key contract is deterministic across route and WorkflowStore shapes',async()=>{

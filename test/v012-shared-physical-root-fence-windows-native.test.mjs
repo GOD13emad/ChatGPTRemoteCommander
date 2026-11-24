@@ -139,10 +139,24 @@ if(process.argv[2]==='--native-holder'){
       }});
       await assert.rejects(call(),{code:'V012_NATIVE_LEASE_OCCUPIED'});
       assert.equal(effects,0,'no WorkflowStore dispatch with parent native holder');
+      let directEffects=0;
+      for(const kind of ['host-shell','desktop-seat','browser-target']){
+        await assert.rejects(
+          owner.fence.withDirectRouteLease({
+            ...route,target:{kind,id:'different-protected-target'}
+          },async()=>{directEffects++;return {ok:true};}),
+          {code:'V012_NATIVE_LEASE_OCCUPIED'});
+      }
+      assert.equal(directEffects,0,
+        'non-workflow direct routes cannot bypass host-native project effect lock');
       holder.stdin.write('release\n');
       holder.stdin.end();
       assert.equal(await waitExit(holder),0);
       holder=null;
+      await owner.fence.withDirectRouteLease({
+        ...route,target:{kind:'host-shell',id:'different-protected-target'}
+      },async()=>{directEffects++;return {ok:true};});
+      assert.equal(directEffects,1);
       const receipt=await call();
       assert.equal(receipt.outcome,'RECORDED_NOT_VALIDATED');
       assert.equal(effects,1,'one effect after verified native release');
