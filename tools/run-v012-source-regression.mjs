@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 const files = [
   "test/effective-power-owner-grant.test.mjs",
@@ -30,7 +31,14 @@ const files = [
   "test/native-tunnel-client-observer-linux.test.mjs",
   "test/v012-private-native-worker-adapter.test.mjs",
   "test/v012-private-owner-worker-key-provision.test.mjs",
-  "test/windows-owner-tunnel-host-resolution.test.mjs"
+  "test/windows-owner-tunnel-host-resolution.test.mjs",
+  "test/v012-host-global-operation-lease.test.mjs",
+  "test/v012-windows-host-global-operation-lease.test.mjs",
+  "test/v012-native-operation-lease-gate.test.mjs",
+  "test/v012-owner-native-host-lease-bootstrap.test.mjs",
+  "test/gui-linux-session-route.test.mjs",
+  "test/qa-v012-no-grant-source-coherence.test.mjs",
+  "test/v101-pinned-interop-runner.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -55,7 +63,14 @@ const batches = [
   files.slice(20, 21), // Protected Core: keep native boot scoped to 30s
   files.slice(21, 22), // Windows DPAPI recovery: test-declared 30s and 60s budgets
   files.slice(22, 23), // Linux encrypted recovery: two expensive fixtures
-  files.slice(23, 30) // Native owner, dialogs, Tunnel, Worker, sealed key, hostname
+  files.slice(23, 30), // Native owner, dialogs, Tunnel, Worker, sealed key, hostname
+  files.slice(30, 31), // Native Linux SQLite lease and cross-process tests
+  files.slice(31, 32), // Windows ACL/SQLite native tests: separate aggregate budget
+  files.slice(32, 33), // Protected operation gate with native lease
+  files.slice(33, 34), // Native owner bootstrap: separate aggregate budget
+  files.slice(34, 35), // Linux GUI routing contract
+  files.slice(35, 36), // No-grant bootstrap and J01 timeout coherence
+  files.slice(36, 37) // Pinned Interop runner negative contracts (not positive Interop)
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
@@ -83,32 +98,43 @@ const linuxOwnerRecoveryTests = [
   'Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',
   'profile-specific owner recovery capsules never share a Tunnel or private TLS pair'
 ];
+const slowWindowsGatewayTests = [
+  'v0.12 protected Core composition uses J01 and signed worker before real readText',
+  'real full-catalog 0.12 owner-local protected boot stays fail-closed without native grants'
+];
+const gatewayPatterns = slowWindowsGatewayTests.map(name => name.replaceAll('.', '[.]'));
+const gatewaySlowPattern = '^(?:' + gatewayPatterns.join('|') + ')$';
 for (let index = range.first-1; index < range.last; index++) {
   const batch = batches[index];
   if (!batch.length) continue;
   // The two disjoint name filters and their complement execute every test
   // exactly once; no tool behavior, assertions, or deadlines are skipped.
   const slowPattern = '^(?:' + slowWorkflowTests.join('|') + ')$';
-  // On hosted Windows, the two distinct native mTLS/Gateway test files
-  // individually fit the established 30s limit, but the shared process can
-  // exceed it under runner load. One process per file, same assertions,
-  // same deadline per process, unchanged batch indexes and exact coverage.
+  // Hosted Windows twice hit the 30s aggregate limit in the Gateway file,
+  // even after separating it from the attestor. Run each measured slow
+  // top-level Gateway fixture separately, plus the exact complement.
+  // Keep the same per-process deadline, assertions and non-Windows path.
   const isolatedWindowsTunnel = process.platform === 'win32' && index === 9;
   if (isolatedWindowsTunnel &&
     (batch.length !== 2 ||
      batch[0] !== 'test/v2-private-tunnel-mtls-attestor.test.mjs' ||
      batch[1] !== 'test/v2-private-tunnel-https-gateway.test.mjs'))
     throw new Error('V012_SOURCE_REGRESSION_TUNNEL_BATCH_INVALID');
+  if (isolatedWindowsTunnel) {
+    const gatewaySource = readFileSync(batch[1], 'utf8');
+    if (slowWindowsGatewayTests.some(name => gatewaySource.split("test('" + name + "'").length !== 2))
+      throw new Error('V012_SOURCE_REGRESSION_GATEWAY_FIXTURE_INVALID');
+  }
   const partitions = index === 5 ? [
     ...slowWorkflowTests.map(name => ['--test-name-pattern=^' + name + '$']),
     ['--test-skip-pattern=' + slowPattern]
-  ] : isolatedWindowsTunnel ? [[], []]
+  ] : isolatedWindowsTunnel ? [[], ...gatewayPatterns.map(name => ['--test-name-pattern=^' + name + '$']), ['--test-skip-pattern=' + gatewaySlowPattern]]
     : index === 14 ? linuxOwnerRecoveryTests.map(name =>
     ['--test-name-pattern=^' + name + '$']) : [[]];
   for (let part = 0; part < partitions.length; part++) {
     process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length +
       ' files=' + batch.length + ' partition=' + (part + 1) + '/' + partitions.length + '\n');
-    const activeFiles = isolatedWindowsTunnel ? [batch[part]] : batch;
+    const activeFiles = isolatedWindowsTunnel ? [batch[part === 0 ? 0 : 1]] : batch;
     const result = spawnSync(process.execPath, [
       '--test', '--test-concurrency=1', ...partitions[part], ...activeFiles
     ], {
@@ -117,8 +143,14 @@ for (let index = range.first-1; index < range.last; index++) {
       // The Windows DPAPI suite has two 30s/60s test deadlines; allow
       // bounded aggregate overhead without relaxing either assertion.
       // Linux owner recovery has two separate 50s/60s fixtures.
+      // Native Linux lease has two 15s subprocess limits; Windows ACL/lease
+      // has 215s of declared test limits; owner bootstrap has 245s.
+      // Bound aggregate overhead separately, without weakening assertions.
       timeout: index === 13 ? 100000
         : index === 14 ? (part === 0 ? 55000 : 65000)
+        : index === 16 ? 60000
+        : index === 17 ? 240000
+        : index === 19 ? 270000
         : 30000
     });
     if (result.error) {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import {mkdtempSync,rmSync,mkdirSync,writeFileSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,rmSync,mkdirSync,writeFileSync,symlinkSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {parseArgs,runPinnedInterop,parseCandidateArgs,isVersionAtLeast,runVersionedCandidateInterop} from '../tools/v1-01/run-pinned-v2-interop.mjs';
 
@@ -34,7 +34,11 @@ const candidateFiles=[
   'src/v2-openai-mtls-trust.mjs'
 ];
 function candidateFixture(version='0.11.0-dev.23'){
-  const root=mkdtempSync(path.join(tmpdir(),'v101-versioned-candidate-'));
+  // Canonicalize QA's short-name/aliased temp namespace; production keeps rejecting aliases.
+  const parent=realpathSync.native(tmpdir());
+  const root=realpathSync.native(mkdtempSync(path.join(parent,'v101-versioned-candidate-')));
+  assert.equal(realpathSync.native(root).toLowerCase(),path.resolve(root).toLowerCase(),
+    'QA candidate path must be canonical');
   mkdirSync(path.join(root,'src'));
   writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'candidate',version,type:'module'}));
   for(const file of candidateFiles)writeFileSync(path.join(root,file),'export const testFixture=true;\n');

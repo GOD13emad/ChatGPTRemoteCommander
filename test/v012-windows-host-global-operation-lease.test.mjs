@@ -22,9 +22,16 @@ const hostId='qa-owner-host';
 const key=JSON.stringify([1,hostId,'workflow-root','owned-fixture']);
 const moduleFile=fileURLToPath(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url));
 const makeRoot=async()=>{
-  const root=path.join(os.tmpdir(),'rc012-ntfs-host-lease-'+randomUUID());
+  // Windows temp aliases (including 8.3 names on hosted runners) must not
+  // turn this QA-owned directory into a noncanonical native-lease input.
+  // Keep production's path-alias denial unchanged.
+  const parent=fs.realpathSync.native(os.tmpdir());
+  const root=path.join(parent,'rc012-ntfs-host-lease-'+randomUUID());
   await ensureWindowsMonitorDirectories([root],{create:true});
-  return root;
+  const canonical=fs.realpathSync.native(root);
+  assert.equal(path.win32.normalize(canonical).toLowerCase(),
+    path.win32.normalize(root).toLowerCase(),'QA lease path must be canonical');
+  return canonical;
 };
 const discard=root=>{
   if(fs.existsSync(root)&&!fs.lstatSync(root).isSymbolicLink())
