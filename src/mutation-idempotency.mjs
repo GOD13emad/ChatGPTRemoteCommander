@@ -54,6 +54,19 @@ export class MutationIdempotencyStore {
     return { enabled: true, durable: true, rawArgumentsStored: false,
       states: Object.fromEntries(rows.map(row => [row.state, Number(row.count)])) };
   }
+  // Read only a single trusted receipt state, without exposing raw input,
+  // result or credentials. Callers must still prove their selected resource
+  // and current owner authority before treating SUCCEEDED as a terminal fact.
+  readRequestState(requestId) {
+    if (typeof requestId !== 'string' || !REQUEST_ID.test(requestId))
+      fail('MUTATION_REQUEST_ID_REQUIRED');
+    const row = this.db.prepare('SELECT state FROM mutations WHERE scope=? AND request_id=?')
+      .get(this.scope, requestId);
+    if (!row) return null;
+    if (!['PREPARED','SUCCEEDED','UNCERTAIN'].includes(row.state))
+      fail('MUTATION_STATE_CONFLICT');
+    return row.state;
+  }
   begin({ requestId, tool, input }) {
     if (typeof requestId !== 'string' || !REQUEST_ID.test(requestId)) fail('MUTATION_REQUEST_ID_REQUIRED');
     const inputHash = digest(stableJson({ tool, input }));

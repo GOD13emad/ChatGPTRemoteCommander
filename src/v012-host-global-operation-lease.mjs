@@ -128,10 +128,28 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
       const owner=randomUUID();
       reserve(key,owner);
       active++;
-      try{return await work();}
-      finally{
-        try{release(key,owner);}
-        finally{active--;}
+      let effectStarted=false,completed=false,provenNoEffect=false;
+      // A rejected callback has an unknown external outcome by DEFAULT.
+      // Only trusted Core admission may prove no effect occurred. The owner
+      // must reconcile a quarantined row after independently proving cessation.
+      const leaseContext=Object.freeze({
+        markEffectStarted(){
+          if(provenNoEffect)fail('V012_NATIVE_LEASE_EFFECT_AFTER_DENIAL');
+          effectStarted=true;
+        },
+        markSafePreEffectDenial(){
+          if(effectStarted)fail('V012_NATIVE_LEASE_EFFECT_ALREADY_STARTED');
+          provenNoEffect=true;
+        }
+      });
+      try{
+        const result=await work(leaseContext);
+        completed=true;
+        return result;
+      }finally{
+        try{
+          if(completed||provenNoEffect)release(key,owner);
+        }finally{active--;}
       }
     },
     close(){

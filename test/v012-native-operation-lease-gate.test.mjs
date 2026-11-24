@@ -24,7 +24,7 @@ test('real Core read_text runs only after verified synthetic native grant, durab
   t.after(()=>{receipts.close();a.close();b.close();fs.rmSync(root,{recursive:true,force:true});});
   const route={hostId:'qa-owner-host',profileId:'qa-profile',principalId:'qa-account',
     conversationId:'qa-pair',operationId:'qa-operation',target:{kind:'workflow-root',id:'qa-target'}};
-  let granted=true,reads=0;
+  let granted=true,reads=0,unknownAfterEffect=false;
   const ctx={roots:[root],auditLog:path.join(root,'audit.jsonl'),
     config:{allowedRoots:[root],maxReadBytes:524288,powerMode:{enabled:false,fullFilesystem:false}}};
   const gate=createV2PrivatePairOperationGate({
@@ -41,7 +41,9 @@ test('real Core read_text runs only after verified synthetic native grant, durab
     withLease:a.withLease,receiptStore:receipts,
     execute:async(_route,args,tool)=>{
       assert.equal(tool,'read_text');
-      reads++;return readText(ctx,args);
+      reads++;
+      if(unknownAfterEffect)throw Error('native effect outcome unknown');
+      return readText(ctx,args);
     }
   });
   const call=(file=approved)=>({request:{},route,tool:'read_text',arguments:{path:file}});
@@ -61,4 +63,19 @@ test('real Core read_text runs only after verified synthetic native grant, durab
     await assert.rejects(gate.execute(call()),{code:'V012_NATIVE_LEASE_OCCUPIED'});
     assert.equal(reads,1);
   }finally{release();await block;}
+
+  // An authenticated/approved action can still have an UNKNOWN native
+  // outcome. The prior receipt protects only its own operationId; the host
+  // lease must also fence DIFFERENT operation IDs against this resource.
+  unknownAfterEffect=true;
+  const firstUncertain={...route,operationId:'qa-unknown-effect'};
+  await assert.rejects(gate.execute({request:{},route:firstUncertain,
+    tool:'read_text',arguments:{path:approved}}),
+    /native effect outcome unknown/);
+  assert.equal(reads,2);
+  const otherOperation={...route,operationId:'qa-other-operation'};
+  await assert.rejects(gate.execute({request:{},route:otherOperation,
+    tool:'read_text',arguments:{path:approved}}),
+    {code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(reads,2,'different operationId must not reenter uncertain effect');
 });

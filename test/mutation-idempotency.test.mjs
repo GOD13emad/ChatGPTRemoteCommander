@@ -15,6 +15,10 @@ test('mutation idempotency replays durable success without repeating effect', as
       effects += 1; return { ok: true, effects };
     });
     assert.deepEqual(first, { ok: true, effects: 1 });
+    assert.equal(store.readRequestState('req-1'),'SUCCEEDED');
+    assert.equal(store.readRequestState('missing-request'),null);
+    assert.throws(()=>store.readRequestState('../bad'),
+      {mutationIdempotencyCode:'MUTATION_REQUEST_ID_REQUIRED'});
     const retry = await store.execute({ requestId: 'req-1', tool: 'write_text', input }, async () => {
       effects += 1; return { ok: true, effects };
     });
@@ -50,6 +54,7 @@ test('mutation idempotency conflicts changed input and fails closed after uncert
       /MUTATION_OUTCOME_UNCERTAIN/
     );
     assert.equal(effects, 1);
+    assert.equal(store.readRequestState('req-2'),'UNCERTAIN');
     await assert.rejects(
       store.execute({ requestId: 'req-2', tool: 'send_terminal', input: { id: 't1', input: 'y' } }, async () => ({ accepted: true })),
       /MUTATION_REQUEST_ID_CONFLICT/

@@ -6,6 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createV012HostGlobalOperationLease} from '../src/v012-host-global-operation-lease.mjs';
+import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 
 const LINUX=process.platform==='linux';
 const host='qa-owner-host';
@@ -36,8 +37,113 @@ test('callback failure releases only its owned lease, without converting denial 
   const a=createV012HostGlobalOperationLease({directory,hostId:host});
   const b=createV012HostGlobalOperationLease({directory,hostId:host});
   t.after(()=>{a.close();b.close();});
-  await assert.rejects(a.withLease(key(),async()=>{throw Error('effect failure');}),/effect failure/);
+  await assert.rejects(a.withLease(key(),async({markSafePreEffectDenial})=>{
+    markSafePreEffectDenial();
+    throw Error('verified pre-effect denial');
+  }),/verified pre-effect denial/);
   assert.equal(await b.withLease(key(),async()=>true),true);
+  let effects=0;
+  await assert.rejects(a.withLease(key('browser-target','unknown'),async()=>{
+    effects++;throw Error('unclassified outcome');
+  }),/unclassified outcome/);
+  await assert.rejects(b.withLease(key('browser-target','unknown'),async()=>{effects++;}),
+    {code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'unmarked rejection stays quarantined by default');
+});
+
+test('uncertain external effect keeps its lease while pre-effect denial releases', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const first=createV012HostGlobalOperationLease({directory,hostId:host});
+  const second=createV012HostGlobalOperationLease({directory,hostId:host});
+  t.after(()=>{first.close();second.close();});
+  // Denials before the first external effect are safe to release.
+  await assert.rejects(first.withLease(key('desktop-seat','pre-effect'),
+    async({markSafePreEffectDenial})=>{
+      markSafePreEffectDenial();
+      throw Error('pre-effect denial');
+    }),/pre-effect denial/);
+  assert.equal(await second.withLease(key('desktop-seat','pre-effect'),async()=>1),1);
+  // A result may be UNCERTAIN even when the async callback has settled.
+  let effects=0;
+  await assert.rejects(first.withLease(key(),async({markEffectStarted})=>{
+    assert.equal(typeof markEffectStarted,'function');
+    markEffectStarted();
+    effects++;
+    throw Error('outcome unknown after dispatch');
+  }),/outcome unknown after dispatch/);
+  assert.equal(effects,1);
+  await assert.rejects(second.withLease(key(),async()=>{effects++;}),
+    {code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'uncertain effect must not start a second writer');
+});
+
+test('real durable receipts cannot authorize a second requestId after an unknown effect', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const a=createV012HostGlobalOperationLease({directory,hostId:host});
+  const b=createV012HostGlobalOperationLease({directory,hostId:host});
+  const receipts=new MutationIdempotencyStore({directory:path.join(directory,'receipts'),scope:'quarantine-qa'});
+  t.after(()=>{receipts.close();a.close();b.close();});
+  let effects=0;
+  const run=(lease,requestId,shouldFail)=>lease.withLease(key(),()=>receipts.execute({
+    requestId,tool:'run_project_command',input:{step:requestId}
+  },async()=>{
+    effects++;
+    if(shouldFail)throw Object.assign(Error('effect may still be running'),{code:'OUTCOME_UNCERTAIN'});
+    return {ok:true};
+  }));
+  await assert.rejects(run(a,'first',true),{code:'OUTCOME_UNCERTAIN'});
+  assert.deepEqual(receipts.status().states,{UNCERTAIN:1});
+  await assert.rejects(run(b,'second',false),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'different requestId must not bypass a resource-level quarantine');
+  assert.deepEqual(receipts.status().states,{UNCERTAIN:1});
+  // A separate resource retains forward progress without releasing unknown work.
+  assert.equal(await b.withLease(key('browser-target','separate'),async()=>42),42);
+});
+
+test('uncertain receipt and native resource fence both persist across clean service restart', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const first=createV012HostGlobalOperationLease({directory,hostId:host});
+  const receiptDir=path.join(directory,'receipts');
+  const receipts=new MutationIdempotencyStore({directory:receiptDir,scope:'restart-qa'});
+  let effects=0;
+  try{
+    await assert.rejects(first.withLease(key(),()=>receipts.execute({
+      requestId:'before-restart',tool:'run_project_command',input:{step:1}
+    },async()=>{
+      effects++;
+      throw Object.assign(Error('external effect outcome unknown'),{code:'OUTCOME_UNCERTAIN'});
+    })),{code:'OUTCOME_UNCERTAIN'});
+    assert.deepEqual(receipts.status().states,{UNCERTAIN:1});
+  }finally{receipts.close();first.close();}
+  // A clean Core restart is not proof that an unknown external effect ceased.
+  const second=createV012HostGlobalOperationLease({directory,hostId:host});
+  const persisted=new MutationIdempotencyStore({directory:receiptDir,scope:'restart-qa'});
+  t.after(()=>{persisted.close();second.close();});
+  assert.deepEqual(persisted.status().states,{UNCERTAIN:1});
+  await assert.rejects(second.withLease(key(),()=>persisted.execute({
+    requestId:'after-restart',tool:'run_project_command',input:{step:2}
+  },async()=>{effects++;return {ok:true};})),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'restart must not release an uncertain native root for another requestId');
+  assert.equal(await second.withLease(key('workflow-root','independent-project'),async()=>42),42);
+});
+
+test('unknown outcome from parent blocks a distinct process without dispatch', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const a=createV012HostGlobalOperationLease({directory,hostId:host});
+  t.after(()=>a.close());
+  await assert.rejects(a.withLease(key(),async()=>{
+    throw Object.assign(Error('effect started, result unknown'),{code:'OUTCOME_UNCERTAIN'});
+  }),{code:'OUTCOME_UNCERTAIN'});
+  const module=fileURLToPath(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url));
+  const childCode='import {createV012HostGlobalOperationLease} from '+
+    JSON.stringify(pathToFileURL(module).href)+';'+
+    'const l=createV012HostGlobalOperationLease({directory:process.argv[1],hostId:process.argv[2]});'+
+    'try{await l.withLease(process.argv[3],async()=>{process.exit(29)});process.exit(30)}'+
+    'catch(e){if(e.code!=="V012_NATIVE_LEASE_OCCUPIED")process.exit(31);process.exit(28)}';
+  const child=spawnSync(process.execPath,
+    ['--experimental-sqlite','--input-type=module','-e',childCode,directory,host,key()],
+    {encoding:'utf8',timeout:15000});
+  assert.equal(child.status,28,child.stderr||child.stdout);
 });
 
 test('crashed process holds durable denial until separate native reconciliation', {skip:!LINUX},async t=>{
