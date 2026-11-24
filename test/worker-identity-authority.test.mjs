@@ -530,3 +530,61 @@ test('expired registrations can be verified for replacement but never authorized
   });
   assert.equal(old.claims.workerId,first.claims.workerId);
 });
+
+test('WorkerIdentityAuthority rechecks revocation after final durable registry read',async()=>{
+  const f=fixture();
+  const {envelope,workerId}=await enroll(f);
+  const existingGet=f.registry.get.bind(f.registry);
+  let reads=0,revoked=false;
+  f.registry.get=async id=>{
+    const value=await existingGet(id);
+    if(++reads===2){
+      const receipt=await f.registry.revoke(workerId,envelope.claims.bindingId,
+        {revocationId:'race-revoked',reasonCode:'during-final-get'},
+        {expectedSignature:envelope.signature});
+      assert.equal(receipt,true);
+      revoked=true;
+    }
+    return value;
+  };
+  await rejectsCode(f.authority.authorizeWorker({
+    workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
+  }),'WORKER_IDENTITY_REVOKED');
+  assert.equal(reads,2);
+  assert.equal(revoked,true);
+  assert.equal(await f.registry.isRevoked(workerId,envelope.claims.bindingId),true);
+});
+
+test('WorkerIdentityAuthority rejects expiry while final registration is read',async()=>{
+  const f=fixture();
+  const {envelope,workerId}=await enroll(f);
+  const existingGet=f.registry.get.bind(f.registry);
+  let reads=0;
+  f.registry.get=async id=>{
+    const value=await existingGet(id);
+    if(++reads===2)f.state.now=envelope.claims.expiresAtMs;
+    return value;
+  };
+  await assert.rejects(f.authority.authorizeWorker({
+    workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
+  }));
+  assert.equal(reads,2);
+});
+
+test('WorkerIdentityAuthority rejects uncertain final revocation status',async()=>{
+  const f=fixture();
+  const {workerId}=await enroll(f);
+  const original=f.registry.isRevoked.bind(f.registry);
+  let calls=0;
+  f.registry.isRevoked=async(id,bindingId)=>{
+    calls++;
+    // The durable registry returning unavailable, null or malformed state
+    // is NEVER a proof of an active Worker enrollment.
+    if(calls===3)return undefined;
+    return original(id,bindingId);
+  };
+  await rejectsCode(f.authority.authorizeWorker({
+    workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
+  }),'WORKER_IDENTITY_REVOKED');
+  assert.equal(calls,3);
+});

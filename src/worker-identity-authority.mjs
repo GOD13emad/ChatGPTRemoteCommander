@@ -439,6 +439,16 @@ export function createWorkerIdentityAuthority({
     const latest=await registry.get(request.workerId);
     if(!latest||latest.signature!==envelope.signature)
       fail('WORKER_IDENTITY_REGISTRATION_CHANGED');
+    // Revocation may be committed DURING the final awaited registry read.
+    // A valid Ed25519 envelope remains valid after its identity is revoked.
+    // Direct callers of WorkerIdentityAuthority (not only the PRIVATE gate)
+    // must reject unless the last durable revocation read is literally false.
+    if(await registry.isRevoked(request.workerId,claims.bindingId)!==false)
+      fail('WORKER_IDENTITY_REVOKED');
+    // The final registry lookups are asynchronous; the signed enrollment
+    // itself can expire during those awaits even with the same signature.
+    if(claims.expiresAtMs<=getTime())
+      fail('WORKER_IDENTITY_EXPIRED');
     return Object.freeze({
       authorized:true,workerId:claims.workerId,keyId:verified.keyId,
       bindingId:claims.bindingId,capabilityPolicyDigest:claims.capabilityPolicyDigest,
