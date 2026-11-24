@@ -52,8 +52,14 @@ const d=process.argv[2],k=generateKeyPairSync('ed25519');
 fs.writeFileSync(path.join(d,'private.pem'),k.privateKey.export({format:'pem',type:'pkcs8'}),{flag:'wx',mode:0o600});
 fs.writeFileSync(path.join(d,'public.pem'),k.publicKey.export({format:'pem',type:'spki'}),{flag:'wx',mode:0o600});
 JS
+brokerMaxAge=50s
+coreMaxAge=65s
+if [ "${RC012_QA_J01_OWNER_BIND:-0}" = 1 ];then
+ brokerMaxAge=160s
+ coreMaxAge=150s
+fi
 systemd-run --user --quiet --unit="$brokerUnit" -p NoNewPrivileges=yes \
- -p RuntimeMaxSec=50s -E RC012_NATIVE_BROKER_SCOPE=READ_ONLY_OWNER_WITNESS \
+ -p RuntimeMaxSec="$brokerMaxAge" -E RC012_NATIVE_BROKER_SCOPE=READ_ONLY_OWNER_WITNESS \
  "$node" "$root/tools/linux-native-tunnel-observer-broker.mjs" \
  "$profile" "$dir" "$qa/proof.sock" "$qa/private.pem"
 for i in $(seq 1 40);do [ -S "$qa/proof.sock" ] && break;sleep 0.1;done
@@ -65,7 +71,7 @@ if [ "${RC012_QA_J01_OWNER_BIND:-0}" = 1 ];then
 fi
 systemd-run --user --quiet --pipe --wait --collect --unit="$qaUnit" \
  -p PrivateTmp=yes -p ProtectSystem=full -p NoNewPrivileges=yes \
- -p RuntimeMaxSec=65s \
+ -p RuntimeMaxSec="$coreMaxAge" \
  -E REMOTE_COMMANDER_CONFIG="$config" \
  -E RC012_OWNER_BOOTSTRAP_SCOPE=OWNER_ENROLLED_NO_GRANT \
  -E RC012_CORE_BROKER_QA_SCOPE=NO_EFFECTS \

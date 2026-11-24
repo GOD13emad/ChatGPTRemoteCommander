@@ -32,7 +32,7 @@ test('no-grant owner canary runner launches EXACT checkout Core without absolute
   assert.match(src,/RC012_PRODUCTION_CORE_AND_TUNNEL_UNCHANGED_NO_GRANT_QA_COMPLETE/);
   assert.match(src,/resolvePinnedOwnerTunnelDirectory/);
   assert.doesNotMatch(src,/private-pair\/\$profile/);
-  assert.match(src,/-p RuntimeMaxSec=65s/);
+  assert.match(src,/-p RuntimeMaxSec="\$coreMaxAge"/);
   assert.match(src,/systemctl --user stop "\$qaUnit.service"/);
   assert.match(src,/systemctl --user reset-failed "\$qaUnit.service"/);
 });
@@ -57,4 +57,21 @@ test('private owner PIN identity rejects a different host separately from a prof
   assert.throws(()=>assertOwnerPairEnrollmentScope({
     ...args,configuredHostId:undefined
   }),{code:'RC012_OWNER_BOOTSTRAP_SCOPE_REQUIRED'});
+});
+
+
+test('J01 QA timeouts outlive native dialog and remain fail-closed',()=>{
+  const runner=fs.readFileSync(path.join(root,'tools/qa-v012-protected-broker-run-linux.sh'),'utf8');
+  const qa=fs.readFileSync(core,'utf8');
+  const native=fs.readFileSync(path.join(root,'src/native-owner-session-provider-linux.mjs'),'utf8');
+  const nativeMs=Number(native.match(/dialogTimeoutMs=(\d+)/)?.[1]);
+  const requestMs=Number(qa.match(/name:'v2_private_owner_bind',timeoutMs:(\d+)/)?.[1]);
+  const brokerMs=Number([...runner.matchAll(/brokerMaxAge=(\d+)s/g)].at(-1)?.[1])*1000;
+  const coreMs=Number([...runner.matchAll(/coreMaxAge=(\d+)s/g)].at(-1)?.[1])*1000;
+  assert.equal(nativeMs,120000);
+  assert.ok(requestMs>nativeMs,'request must outlive native dialog');
+  assert.ok(coreMs>requestMs,'core unit must outlive HTTP request');
+  assert.ok(brokerMs>coreMs,'native broker must outlive core unit');
+  assert.match(runner,/RC012_QA_J01_OWNER_BIND:-0/);
+  assert.match(runner,/systemctl --user stop "\$qaUnit.service"/);
 });
