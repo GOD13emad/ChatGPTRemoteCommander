@@ -116,11 +116,20 @@ export function createV2VerifiedObservedCaller({
   if(typeof observedNativeSession!=='function'||typeof now!=='function')fail('V2_ASSERTION_NATIVE_OBSERVER_REQUIRED');
   return async()=>{
     const caller=verifyV2CallerAssertion({route:r,assertion,trust,tool,args,nowMs:now()});
+    const acceptedSignature=assertion.signature;
+    const acceptedKeyId=assertion.keyId;
     const actual=await observedNativeSession();
     if(!safe(actual)||actual!==caller.osSessionId)fail('V2_ASSERTION_NATIVE_SESSION_MISMATCH');
-    // Native owner observation can suspend across assertion expiration or
-    // signer revocation. Never reuse a successful pre-await verification.
-    verifyV2CallerAssertion({route:r,assertion,trust,tool,args,nowMs:now()});
+    // Native owner observation can suspend across assertion expiration,
+    // signer revocation or a replacement signed seat assertion. The exact
+    // original identity and signature must remain stable until admission.
+    const final=verifyV2CallerAssertion({
+      route:r,assertion,trust,tool,args,nowMs:now()
+    });
+    if(final.osSessionId!==caller.osSessionId||final.osSessionId!==actual)
+      fail('V2_ASSERTION_NATIVE_SESSION_MISMATCH');
+    if(assertion.keyId!==acceptedKeyId||assertion.signature!==acceptedSignature)
+      fail('V2_ASSERTION_CHANGED_DURING_NATIVE_SESSION');
     return Object.freeze({
       hostId:caller.hostId,principalId:caller.principalId,
       profileId:caller.profileId,conversationId:caller.conversationId
