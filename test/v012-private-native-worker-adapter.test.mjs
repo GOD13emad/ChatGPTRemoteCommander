@@ -6,6 +6,7 @@ import path from 'node:path';
 import {createHash,generateKeyPairSync} from 'node:crypto';
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 import {readText} from '../src/tools-v0.3.mjs';
+import {canonicalizeRoots} from '../src/security-v0.3.mjs';
 import {createV2PrivatePairOperationGate} from '../src/v2-private-pair-operation-gate.mjs';
 import {createV2PrivateSignedWorkerGrantAdapter} from '../src/v2-private-signed-worker-grant-adapter.mjs';
 import {V2GrantRegistry} from '../src/v2-grant-registry.mjs';
@@ -213,6 +214,9 @@ test('production binding composes real signed Worker, durable grants and receipt
     // Only disposable test resources; no production owner, tunnel, key or lease.
 
     fs.writeFileSync(path.join(f.root,'qa-fixture.txt'),'native-worker-exact-read-fixture');
+    // Windows CI temporary directories may be junction/alias paths.
+    // Resolve the test root without relaxing the real Core containment check.
+    const canonicalRoots=await canonicalizeRoots([f.root]);
     const factory=createV012NativeOwnerWorkerSecurityFactory({
       issuer:'commander.local',audience:'remote-commander',
       workerRegistry:f.workerRegistry,
@@ -267,8 +271,8 @@ test('production binding composes real signed Worker, durable grants and receipt
       execute:async(_route,args,tool)=>{
         assert.equal(tool,'read_text');
         effects++;
-        return readText({roots:[f.root],auditLog:path.join(f.root,'audit.jsonl'),
-          config:{allowedRoots:[f.root],maxReadBytes:524288,
+        return readText({roots:canonicalRoots,auditLog:path.join(f.root,'audit.jsonl'),
+          config:{allowedRoots:canonicalRoots,maxReadBytes:524288,
             powerMode:{enabled:false,fullFilesystem:false}}},args);
       }
     });
