@@ -110,7 +110,7 @@ export function createV2PrivateSignedWorkerGrantAdapter({
       const finalSigned=await workerRegistry.get(workerId);
       return sameRoute(r,finalRoute)&&finalWorker===workerId
         &&finalSigned?.signature===signed.signature
-        &&owner.expiresAtMs>now();
+        &&Math.min(owner.expiresAtMs,d.expiresAtMs)>now();
     }catch{return false;}
   };
 }
