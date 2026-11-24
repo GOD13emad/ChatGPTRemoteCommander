@@ -332,6 +332,74 @@ export function splitWindowsQualificationCommands(command) {
   return parts;
 }
 
+/**
+ * R157 hardened execution: no qualification phase may be reinterpreted by a
+ * command shell. The source-controlled scripts are a finite Node-only grammar.
+ * Nested npm script names are inlined and validated, not passed through cmd/sh.
+ */
+const APPROVED_NESTED_QUALIFICATION_SCRIPTS=new Set([
+  'test:v1-01-worker-grants',
+  'check:v1-01-hybrid-oauth',
+  'test:v1-01-hybrid-oauth'
+]);
+
+export function parseQualificationPhase(part){
+  if(typeof part!=='string'||part.length<1||part.length>7000)
+    throw new Error('CI_QUALIFICATION_PHASE_INVALID');
+  if(part.startsWith('npm run ')){
+    const script=part.slice('npm run '.length);
+    if(!APPROVED_NESTED_QUALIFICATION_SCRIPTS.has(script))
+      throw new Error('CI_QUALIFICATION_NESTED_SCRIPT_DENIED');
+    return {nested:script};
+  }
+  const words=part.split(' ');
+  if(words[0]!=='node'||words.length<2||
+     words.some(x=>!x||!/^[A-Za-z0-9_./:=\-]+$/.test(x)))
+    throw new Error('CI_QUALIFICATION_NODE_ARGV_INVALID');
+  const args=words.slice(1);
+  let start=0;
+  if(args[0]==='--test'){
+    start=1;
+    if(/^--test-concurrency=[1-8]$/.test(args[start]??''))start++;
+  }else if(args[0]==='--check')start=1;
+  if(start===0&&args.length!==1)throw new Error('CI_QUALIFICATION_NODE_ARGV_INVALID');
+  if(args[0]==='--check'&&args.length!==2)
+    throw new Error('CI_QUALIFICATION_NODE_ARGV_INVALID');
+  if(start>=args.length)throw new Error('CI_QUALIFICATION_NODE_ARGV_INVALID');
+  for(const file of args.slice(start)){
+    if(!/^(src|test|tools)\/[A-Za-z0-9_.\/-]+\.mjs$/.test(file)||
+       file.split('/').some(segment=>segment==='.'||segment==='..'))
+      throw new Error('CI_QUALIFICATION_FILE_DENIED');
+  }
+  return {args};
+}
+
+function runQualificationChain(command,scripts,depth=0){
+  if(typeof command!=='string'||depth>3)
+    throw new Error('CI_QUALIFICATION_CHAIN_INVALID');
+  const parts=command.split(' && ');
+  if(parts.length<1||parts.length>160)throw new Error('CI_QUALIFICATION_CHAIN_INVALID');
+  for(const part of parts){
+    const phase=runQualificationPhase(part,scripts,depth);
+    if(phase.error||phase.signal||phase.status!==0)return phase;
+  }
+  return {status:0};
+}
+
+function runQualificationPhase(part,scripts,depth=0){
+  const parsed=parseQualificationPhase(part);
+  if(parsed.nested){
+    if(depth>=3||typeof scripts?.[parsed.nested]!=='string')
+      throw new Error('CI_QUALIFICATION_NESTED_SCRIPT_DENIED');
+    return runQualificationChain(scripts[parsed.nested],scripts,depth+1);
+  }
+  // Keep the inherited, owner-tested Node PATH, but pass each validated argv
+  // atomically. No shell; no dynamic program name or command string.
+  return spawnSync('node',parsed.args,{
+    cwd:root,env:process.env,stdio:'inherit',shell:false
+  });
+}
+
 export function parseQualificationArgs(argv){
   const out={script:null,concurrency:null,prioritizeSensitive:false};
   for(let i=0;i<argv.length;i++){
@@ -387,7 +455,7 @@ function run(){
     for(const [index,part] of phases.entries()){
       const marker=String(index).padStart(2,'0');
       if(process.env.RC_QUALIFICATION_RUN_ID)console.log('RC_QUAL_PHASE_START_'+marker);
-      const phase=spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',part],{cwd:root,env:process.env,stdio:'inherit'});
+      const phase=runQualificationPhase(part,pkg.scripts);
       if(phase.error)throw phase.error;
       if(phase.signal)throw new Error('CI_TEST_SIGNAL_'+phase.signal);
       if(phase.status!==0){process.exitCode=Number.isInteger(phase.status)?phase.status:1;return;}
@@ -395,11 +463,7 @@ function run(){
     }
     return;
   }
-  const child=process.platform==='win32'
-    ? spawnSync(process.env.ComSpec||'cmd.exe',['/d','/s','/c',command],{cwd:root,env:process.env,stdio:'inherit'})
-    // Use a non-login shell: -l resets the caller's tested user-local
-    // Node PATH to a stale system runtime and makes exact-source QA fail.
-    : spawnSync('/bin/sh',['-c',command],{cwd:root,env:process.env,stdio:'inherit'});
+  const child=runQualificationChain(command,pkg.scripts);
   if(child.error)throw child.error;
   if(child.signal)throw new Error(`CI_TEST_SIGNAL_${child.signal}`);
   process.exitCode=Number.isInteger(child.status)?child.status:1;
