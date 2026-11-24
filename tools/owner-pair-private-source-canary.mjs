@@ -70,7 +70,7 @@ export async function createOwnerPrivatePairBootstrap({profileId}={}){
       resolveCurrentOwnerRoute:denied,
       resolveCurrentWorkerId:denied,
       workerAuthority:{authorizeWorker:async()=>null},
-      workerRegistry:{get:async()=>null},
+      workerRegistry:{get:async()=>null,isRevoked:async()=>true},
       withLease:denied
     }
   };

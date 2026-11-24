@@ -52,6 +52,7 @@ export function createV2PrivateSignedWorkerGrantAdapter({
       typeof v==='string'&&HASH.test(v))
     ||typeof workerAuthority?.authorizeWorker!=='function'
     ||typeof workerRegistry?.get!=='function'
+    ||typeof workerRegistry?.isRevoked!=='function'
     ||[resolveCurrentWorkerId,resolveCurrentOwnerRoute,now].some(v=>
       typeof v!=='function'))
     fail('V2_PRIVATE_SIGNED_WORKER_BOOTSTRAP_REQUIRED');
@@ -116,7 +117,13 @@ export function createV2PrivateSignedWorkerGrantAdapter({
       const finalVerified=verifyWorkerRegistration(finalSigned,{
         issuer,audience,now
       });
-      return sameRoute(r,finalRoute)&&finalWorker===workerId
+      // Durable revocation can commit while the final native route,
+      // worker identity and signed registration are being read. Signed
+      // bytes remain valid even after the independent registry revokes.
+      // Recheck revocation at the last asynchronous admission boundary.
+      const finalRevoked=await workerRegistry.isRevoked(workerId,c.bindingId);
+      return finalRevoked===false
+        &&sameRoute(r,finalRoute)&&finalWorker===workerId
         &&finalSigned.signature===signed.signature
         &&finalVerified.keyId===verified.keyId
         &&finalVerified.claims.workerId===workerId

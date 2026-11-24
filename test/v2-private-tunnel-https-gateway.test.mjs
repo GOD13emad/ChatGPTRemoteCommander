@@ -546,7 +546,7 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
       deviceProvider:'native-key-store',deviceIdHash:'d'.repeat(64),keyId
     });
     const POLICY='e'.repeat(64);
-    const workerRegistry={get:async()=>state.worker};
+    const workerRegistry={get:async()=>state.worker,isRevoked:async()=>false};
     const workerAuthority={authorizeWorker:async({workerId:id,invocation})=>{
       if(!state.allow||id!==workerId||invocation.tool!=='read_text'
         ||invocation.arguments.path!==approvedFile)return null;
@@ -847,7 +847,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
               }
               return workerId;
             },
-            workerRegistry:{get:async()=>state.worker},
+            workerRegistry:{get:async()=>state.worker,isRevoked:async()=>false},
             workerAuthority:{authorizeWorker:async({workerId:id,invocation})=>{
               if(!state.allow||id!==workerId||invocation.tool!=='read_text'
                 ||invocation.arguments.path!==approved)return null;

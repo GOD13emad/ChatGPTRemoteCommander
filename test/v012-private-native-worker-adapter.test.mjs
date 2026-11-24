@@ -334,3 +334,37 @@ test('production Worker factory refuses incomplete native authority before any g
     ...defaults,...bad
   }),{code:'V012_NATIVE_WORKER_SECURITY_FACTORY_REQUIRED'});
 });
+
+test('durable native Worker revocation during final route lookup fails closed',async()=>{
+  const f=fixture();
+  try{
+    await f.enable();
+    await f.authority.registerWorker({privateKey:f.keys.privateKey});
+    let routeChecks=0;
+    const check=createV2PrivateSignedWorkerGrantAdapter({
+      ...f.identity,
+      issuer:'commander.local',audience:'remote-commander',
+      workerAuthority:f.authority,workerRegistry:f.workerRegistry,
+      resolveCurrentWorkerId:async()=>f.workerId,
+      resolveCurrentOwnerRoute:async()=>{
+        // Revoke in the real journal after WorkerIdentityAuthority has
+        // already returned "authorized", but before final signed readback.
+        if(++routeChecks===2){
+          const receipt=await f.authority.revokeWorker({
+            workerId:f.workerId,reasonCode:'race-final-route'
+          });
+          assert.equal(receipt.revoked,true);
+        }
+        return f.route();
+      },
+      now:()=>f.state.now
+    });
+    assert.equal(await check({
+      route:f.route(),tool:'read_text',arguments:{path:'qa-fixture.txt'},
+      ownerContext:await f.stack.resolveOwnerContext(f.pair)
+    }),false);
+    assert.equal(routeChecks,2);
+    assert.equal(f.workflow.workerIdentityJournalStatus().eventCount,2,
+      'real durable journal must record registration plus revocation');
+  }finally{f.close();}
+});
