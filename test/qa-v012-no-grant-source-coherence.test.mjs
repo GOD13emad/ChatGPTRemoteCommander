@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createV012PrivateCoreRuntime} from '../src/v012-private-core-runtime.mjs';
+import {assertOwnerPairEnrollmentScope}
+  from '../src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const core=path.join(root,'tools/qa-v012-broker-core-no-grant-linux.mjs');
@@ -28,7 +30,31 @@ test('no-grant owner canary runner launches EXACT checkout Core without absolute
   assert.match(src,/RC012_CORE_BROKER_QA_SCOPE=NO_EFFECTS/);
   assert.match(src,/RC012_QA_J01_OWNER_BIND:-0/);
   assert.match(src,/RC012_PRODUCTION_CORE_AND_TUNNEL_UNCHANGED_NO_GRANT_QA_COMPLETE/);
+  assert.match(src,/resolvePinnedOwnerTunnelDirectory/);
+  assert.doesNotMatch(src,/private-pair\/\$profile/);
   assert.match(src,/-p RuntimeMaxSec=65s/);
   assert.match(src,/systemctl --user stop "\$qaUnit.service"/);
   assert.match(src,/systemctl --user reset-failed "\$qaUnit.service"/);
+});
+
+test('no-grant bootstrap and installer use the same owner PIN directory resolver',()=>{
+  const source=fs.readFileSync(path.join(root,
+    'src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs'),'utf8');
+  assert.match(source,/resolvePinnedOwnerTunnelDirectory/);
+  assert.doesNotMatch(source,/selected==='chatgpt-remote-commander'\?'default':selected/);
+});
+
+test('private owner PIN identity rejects a different host separately from a profile alias',()=>{
+  const args={selectedProfile:'Emad',configuredHostId:'host-one',
+    enrolledProfile:'Emad',enrolledHostId:'host-one'};
+  assert.doesNotThrow(()=>assertOwnerPairEnrollmentScope(args));
+  assert.throws(()=>assertOwnerPairEnrollmentScope({
+    ...args,enrolledHostId:'host-two'
+  }),{code:'RC012_OWNER_BOOTSTRAP_TUNNEL_HOST_MISMATCH'});
+  assert.throws(()=>assertOwnerPairEnrollmentScope({
+    ...args,enrolledProfile:'another-pair'
+  }),{code:'RC012_OWNER_BOOTSTRAP_TUNNEL_PROFILE_MISMATCH'});
+  assert.throws(()=>assertOwnerPairEnrollmentScope({
+    ...args,configuredHostId:undefined
+  }),{code:'RC012_OWNER_BOOTSTRAP_SCOPE_REQUIRED'});
 });

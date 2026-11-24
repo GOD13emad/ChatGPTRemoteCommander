@@ -108,9 +108,21 @@ export function createV2PrivateSignedWorkerGrantAdapter({
       const finalRoute=normalizeV2Route(await resolveCurrentOwnerRoute(owner));
       const finalWorker=await resolveCurrentWorkerId(owner);
       const finalSigned=await workerRegistry.get(workerId);
+      // A matching signature string alone is not proof that the final
+      // durable record still carries the data it signed. Reverify the
+      // actual stored envelope after awaiting the owner and Worker checks;
+      // reject a changed claim/key/public identity even if it copies the
+      // previous signature field.
+      const finalVerified=verifyWorkerRegistration(finalSigned,{
+        issuer,audience,now
+      });
       return sameRoute(r,finalRoute)&&finalWorker===workerId
-        &&finalSigned?.signature===signed.signature
-        &&owner.expiresAtMs>now();
+        &&finalSigned.signature===signed.signature
+        &&finalVerified.keyId===verified.keyId
+        &&finalVerified.claims.workerId===workerId
+        &&finalVerified.claims.bindingId===c.bindingId
+        &&finalVerified.claims.grantRevision===c.grantRevision
+        &&Math.min(owner.expiresAtMs,d.expiresAtMs)>now();
     }catch{return false;}
   };
 }

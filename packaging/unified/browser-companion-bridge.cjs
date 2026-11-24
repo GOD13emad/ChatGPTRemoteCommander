@@ -118,7 +118,7 @@ function createCompanionBridge({port=41267, now=()=>Date.now(), maxClients=8}={}
       return json(res,200,{ok:true,app:APP,paired:true},origin);
     }
     if(body.schema!==1||!['CHAT_OPEN','CHAT_OTHER','NO_CHAT'].includes(body.phase)
-      ||(body.phase==='CHAT_OPEN'&&!CHAT_ID.test(body.conversationId))
+      ||(body.phase==='CHAT_OPEN'&&(typeof body.conversationId!=='string'||!CHAT_ID.test(body.conversationId)))
       ||(body.phase!=='CHAT_OPEN'&&body.conversationId!=null))
       return json(res,400,{ok:false,code:'OBSERVATION_INVALID'},origin);
     record.phase=body.phase;record.lastSeenAtEpochMs=now();

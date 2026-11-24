@@ -54,6 +54,13 @@ export function createV2OAuthObservedCaller({
       fail('V2_OAUTH_PRINCIPAL_MISMATCH');
     // The signature also binds exact chat, target, tool and payload to the
     // native owner session. OAuth subject alone does not identify a chat.
-    return observedAssertion();
+    const observed=await observedAssertion();
+    // A valid bearer at the first check cannot authorize an effect after
+    // native J01 observation awaited long enough for its token to expire.
+    const finalNow=now();
+    if(!Number.isSafeInteger(finalNow)||claims.expiresAtMs<=finalNow
+      ||claims.notBeforeMs>finalNow)
+      fail('V2_OAUTH_TOKEN_NOT_CURRENT');
+    return observed;
   };
 }

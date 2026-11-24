@@ -8,7 +8,7 @@ import {createHash,createPublicKey,randomBytes,sign,verify}
   from 'node:crypto';
 import {createLinuxNativeOwnerSessionProvider}
   from '../src/native-owner-session-provider-linux.mjs';
-import {readLinuxOwnerTunnelPin}
+import {readLinuxOwnerTunnelPin,resolvePinnedOwnerTunnelDirectory}
   from '../src/linux-private-tunnel-owner-pin.mjs';
 import {createSystemdWorkerKeyProvider}
   from '../src/native-worker-key-provider-linux.mjs';
@@ -53,8 +53,11 @@ async function main(){
     ownerIdentityMode:'host-uid-v2'
   });
   const currentOwner=await native.resolveOwnerSidHash();
-  const pair=path.join(home,'.config','chatgpt-remote-commander',
-    'private-pair',profile==='chatgpt-remote-commander'?'default':profile);
+  // The historical "default" directory is valid only for its exact PIN
+  // profile. Reuse the same owner-private resolver as native key provisioning.
+  const pair=resolvePinnedOwnerTunnelDirectory({
+    home,profile,ownerUid:uid
+  });
   const pinned=readLinuxOwnerTunnelPin({directory:pair,ownerUid:uid});
   if(receipt.ownerSidHash!==currentOwner
     ||pinned.profileId!==profile||pinned.hostId!==receipt.hostId

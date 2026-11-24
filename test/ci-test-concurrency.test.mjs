@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands, parseQualificationPhase } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
@@ -766,6 +766,88 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
 });
 
+
+test('qualification refuses an injected shell separator from a modified package script', {skip:process.platform!=='linux'},()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-qualification-shell-injection-'));
+  try{
+    for(const dir of ['tools','test'])fs.mkdirSync(path.join(temp,dir));
+    fs.copyFileSync(path.join(root,'tools/run-bounded-test-script.mjs'),
+      path.join(temp,'tools/run-bounded-test-script.mjs'));
+    fs.writeFileSync(path.join(temp,'package.json'),JSON.stringify({
+      type:'module',
+      scripts:{test:'node --test test/fixture.test.mjs; node tools/out-of-scope.mjs && node --test test/fixture.test.mjs'}
+    }));
+    fs.writeFileSync(path.join(temp,'test/fixture.test.mjs'),
+      "import test from 'node:test'; test('safe',()=>{});\n");
+    fs.writeFileSync(path.join(temp,'tools/out-of-scope.mjs'),
+      "import fs from 'node:fs'; fs.writeFileSync('unsafe-executed','1');\n");
+    const result=spawnSync(process.execPath,[path.join(temp,'tools/run-bounded-test-script.mjs'),
+      '--script','test','--concurrency','1'],{
+      cwd:temp,encoding:'utf8',timeout:10000
+    });
+    assert.equal(result.error,undefined,result.error?.message);
+    assert.notEqual(result.status,0,'shell separators must be denied');
+    assert.equal(fs.existsSync(path.join(temp,'unsafe-executed')),false,
+      'unapproved command must never execute');
+  }finally{
+    fs.rmSync(temp,{recursive:true,force:true});
+  }
+});
+
+test('qualification phase parser accepts current Node and nested scripts, rejects shell grammar',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  for(const key of ['test','check','test:v1-01-worker-grants','test:v1-01-hybrid-oauth','check:v1-01-hybrid-oauth']){
+    const bounded=key==='test'||key==='check'
+      ?boundNodeTestConcurrency(pkg.scripts[key],1).command:pkg.scripts[key];
+    for(const part of bounded.split(' && ')){
+      const phase=parseQualificationPhase(part);
+      assert.ok(phase.args||phase.nested,part);
+    }
+  }
+  assert.deepEqual(parseQualificationPhase('node --test --test-concurrency=1 test/fixture.test.mjs'),
+    {args:['--test','--test-concurrency=1','test/fixture.test.mjs']});
+  for(const bad of ['node --test test/a.mjs;touch-marker',
+    'node --test test/a.mjs | node tools/b.mjs',
+    'node --test ../other/a.mjs',
+    'node --test test/a.mjs && node test/b.mjs',
+    'node --check test/a.mjs test/b.mjs',
+    'npm run arbitrary',
+    'node -e process.exit(0)'])
+    assert.throws(()=>parseQualificationPhase(bad),/CI_QUALIFICATION/);
+});
+
+test('qualification recursively runs only approved nested scripts and rejects injected nested commands',
+  {skip:process.platform!=='linux'},()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-qualification-nested-'));
+  try{
+    for(const dir of ['tools','test','src'])fs.mkdirSync(path.join(temp,dir));
+    fs.copyFileSync(path.join(root,'tools/run-bounded-test-script.mjs'),
+      path.join(temp,'tools/run-bounded-test-script.mjs'));
+    fs.writeFileSync(path.join(temp,'src/fixture.mjs'),'export const value=1;\n');
+    fs.writeFileSync(path.join(temp,'test/fixture.test.mjs'),
+      "import test from 'node:test'; test('safe',()=>{});\n");
+    fs.writeFileSync(path.join(temp,'tools/out-of-scope.mjs'),
+      "import fs from 'node:fs'; fs.writeFileSync('unsafe-executed','1');\n");
+    const pkg={type:'module',scripts:{
+      test:'npm run check:v1-01-hybrid-oauth && node --test test/fixture.test.mjs',
+      'check:v1-01-hybrid-oauth':'node --check src/fixture.mjs'
+    }};
+    const run=()=>{
+      fs.writeFileSync(path.join(temp,'package.json'),JSON.stringify(pkg));
+      return spawnSync(process.execPath,[path.join(temp,'tools/run-bounded-test-script.mjs'),
+        '--script','test','--concurrency','1'],{
+        cwd:temp,encoding:'utf8',timeout:10000
+      });
+    };
+    const ok=run();
+    assert.equal(ok.status,0,ok.stderr||ok.stdout);
+    pkg.scripts['check:v1-01-hybrid-oauth']=
+      'node --check src/fixture.mjs; node tools/out-of-scope.mjs';
+    const blocked=run();
+    assert.notEqual(blocked.status,0,'injected nested commands must be rejected');
+    assert.equal(fs.existsSync(path.join(temp,'unsafe-executed')),false);
+  }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
 
 test('Linux qualification preserves a pinned user-local Node PATH instead of launching a login shell',{
   skip:process.platform!=='linux'

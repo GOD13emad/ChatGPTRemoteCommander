@@ -9,8 +9,18 @@ coreProfile="$1";profile="$2";port="$3";node="$4"
 [[ "$port" =~ ^[0-9]{4,5}$ ]] && ((port>=1024 && port<=65535)) || exit 2
 [ -x "$node" ] && [[ "$node" = /* ]] || exit 2
 root="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
-dir="$HOME/.config/chatgpt-remote-commander/private-pair/$profile"
-[ "$profile" = chatgpt-remote-commander ] && dir="$HOME/.config/chatgpt-remote-commander/private-pair/default"
+# Use the same native PIN-selected directory as key provisioning and Core.
+# Historical "default" is not a wildcard; its owner enrollment must match.
+dir="$("$node" --input-type=module - "$root" "$profile" <<'JS'
+import os from 'node:os';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+const root=process.argv[2],profile=process.argv[3];
+const modulePath=path.join(root,'src','linux-private-tunnel-owner-pin.mjs');
+const {resolvePinnedOwnerTunnelDirectory}=await import(pathToFileURL(modulePath).href);
+process.stdout.write(resolvePinnedOwnerTunnelDirectory({home:os.homedir(),profile}));
+JS
+)"
 config="$HOME/.local/state/chatgpt-remote-commander/profiles/$coreProfile/config.json"
 [ -f "$config" ] && [ -d "$dir" ] || exit 2
 runtime="/run/user/$(id -u)"

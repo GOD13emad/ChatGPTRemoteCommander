@@ -66,6 +66,8 @@ test('Bad JSON schema, non-extension origins and unpaired clients always fail cl
   for(const body of [
     {schema:2,phase:'CHAT_OPEN',conversationId:chatId},
     {schema:1,phase:'CHAT_OPEN',conversationId:'javascript:alert(1)'},
+    {schema:1,phase:'CHAT_OPEN',conversationId:[chatId]},
+    {schema:1,phase:'CHAT_OPEN',conversationId:{value:chatId}},
     {schema:1,phase:'NO_CHAT',conversationId:chatId},
     {schema:1,phase:'INVALID'},
   ])assert.equal((await post(port,chromium,'/observation',body,token)).status,400);
@@ -74,6 +76,8 @@ test('Bad JSON schema, non-extension origins and unpaired clients always fail cl
   assert.equal((await post(port,chromium,'/health',{},token)).status,404);
   assert.equal((await post(port,chromium,'/observation',{schema:1,phase:'NO_CHAT'})).status,401);
   assert.equal(bridge.status().observationsReceived,0);
+  assert.equal(bridge.observe()[0].phase,'PAIRED');
+  assert.equal(bridge.observe()[0].localRef,null);
 });
 test('Bridge pairing is short-lived and cannot be silently replayed',async t=>{
   let now=1000;

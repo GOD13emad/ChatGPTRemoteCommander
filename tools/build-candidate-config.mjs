@@ -24,6 +24,7 @@ function parse(argv){
     else if(a==='--allowed-root')o.allowedRoots.push(v);
     else if(a==='--allowed-program')o.allowedPrograms.push(v);
     else if(a==='--device-name')o.deviceName=v;
+    else if(a==='--owner-pin-profile')o.ownerPinProfile=v;
     else if(a==='--backup-root')o.backupRoot=v;
     else if(a==='--provider-root')o.providerRoot=v;
     else if(a==='--browser-executable')o.browserExecutable=v;
@@ -42,6 +43,23 @@ function atomic(file,text){
   fs.writeFileSync(tmp,text,{encoding:'utf8',mode:0o600});fs.renameSync(tmp,file);
 }
 const a=parse(process.argv.slice(2));
+// Opt-in native owner-pinned candidate construction. Never infer a host
+// identity from an old Core deviceName or a client-supplied chat value.
+// Existing unsigned device-name flows remain available but cannot override
+// this verified PIN-bound mode. This does NOT issue a Worker grant.
+if(a.ownerPinProfile!==undefined){
+  if(process.platform!=='linux')throw Error('CANDIDATE_OWNER_PIN_LINUX_REQUIRED');
+  if(a.deviceName!==undefined)throw Error('CANDIDATE_OWNER_PIN_AMBIGUOUS_DEVICE');
+  const {resolvePinnedOwnerTunnelDirectory,readLinuxOwnerTunnelPin}
+    =await import('../src/linux-private-tunnel-owner-pin.mjs');
+  const directory=resolvePinnedOwnerTunnelDirectory({
+    home:os.homedir(),profile:a.ownerPinProfile
+  });
+  const pin=readLinuxOwnerTunnelPin({directory});
+  if(pin.profileId!==a.ownerPinProfile)
+    throw Error('CANDIDATE_OWNER_PIN_PROFILE_MISMATCH');
+  a.deviceName=pin.hostId;
+}
 const defaults=JSON.parse(fs.readFileSync(a.defaultPath,'utf8'));
 const existing=a.existingPath ? JSON.parse(fs.readFileSync(a.existingPath,'utf8')) : null;
 const workflowDirectory=a.workflowDirectory ?? existing?.durableWorkflows?.directory ?? path.join(a.stateDirectory,'workflows');

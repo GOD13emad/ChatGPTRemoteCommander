@@ -4,6 +4,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash,generateKeyPairSync} from 'node:crypto';
+import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
+import {readText} from '../src/tools-v0.3.mjs';
+import {canonicalizeRoots} from '../src/security-v0.3.mjs';
+import {createV2PrivatePairOperationGate} from '../src/v2-private-pair-operation-gate.mjs';
+import {createV2PrivateSignedWorkerGrantAdapter} from '../src/v2-private-signed-worker-grant-adapter.mjs';
 import {V2GrantRegistry} from '../src/v2-grant-registry.mjs';
 import {WorkflowStore} from '../src/workflow-store.mjs';
 import {createWorkflowStoreWorkerIdentityRegistry}
@@ -141,7 +146,7 @@ function fixture(){
     workflow.close();grants.close();
     fs.rmSync(root,{recursive:true,force:true});
   };
-  return {state,identity,stack,adapter,grants,workflow,workerRegistry,authority,
+  return {root,state,identity,stack,adapter,grants,workflow,workerRegistry,authority,
     keys,workerId,workerContext,pair,route,enable,close};
 }
 
@@ -199,10 +204,19 @@ test('pair J01 owner epoch, exact tool policy, pair source and operation target 
 });
 
 
-test('production binding composes existing owner, signed Worker and receipt store without auto-grant',async()=>{
+test('production binding composes real signed Worker, durable grants and receipt store through exact operation gate',async()=>{
   const f=fixture();
+  let receipts;
   try{
-    const receipts={execute:async()=>{throw Error('NEVER_RUN_UNGRANTED_EFFECT');}};
+    receipts=new MutationIdempotencyStore({
+      directory:path.join(f.root,'receipts'),scope:'native-worker-integration-fixture'
+    });
+    // Only disposable test resources; no production owner, tunnel, key or lease.
+
+    fs.writeFileSync(path.join(f.root,'qa-fixture.txt'),'native-worker-exact-read-fixture');
+    // Windows CI temporary directories may be junction/alias paths.
+    // Resolve the test root without relaxing the real Core containment check.
+    const canonicalRoots=await canonicalizeRoots([f.root]);
     const factory=createV012NativeOwnerWorkerSecurityFactory({
       issuer:'commander.local',audience:'remote-commander',
       workerRegistry:f.workerRegistry,
@@ -222,8 +236,8 @@ test('production binding composes existing owner, signed Worker and receipt stor
         &&(tool!=='read_text'||args.path==='qa-fixture.txt'),
       resolveCurrentOwnerRoute:async()=>f.route(),
       resolveCurrentWorkerId:async()=>f.workerId,
-      // No real effect or machine lease is taken in this disposable fixture.
-      withLease:async()=>{throw Error('NO_SYNTHETIC_EFFECT');},
+      // Single-process test fixture ONLY. Production must supply a machine-global lease.
+      withLease:async(_resource,work)=>work(),
       now:()=>f.state.now
     });
     const identity={...f.identity,resolveTransportIdentity:async()=>({
@@ -239,6 +253,34 @@ test('production binding composes existing owner, signed Worker and receipt stor
       ownerStack:f.stack,identity:f.identity,receiptStore:receipts
     }),{code:'V012_NATIVE_WORKER_CURRENT_OWNER_REQUIRED'});
     const bound=factory({ownerStack:f.stack,identity,receiptStore:receipts});
+    const verifyExactNativeGrant=createV2PrivateSignedWorkerGrantAdapter({
+      ...f.identity,issuer:'commander.local',audience:'remote-commander',
+      workerRegistry:bound.workerRegistry,workerAuthority:bound.workerAuthority,
+      resolveCurrentOwnerRoute:bound.resolveCurrentOwnerRoute,
+      resolveCurrentWorkerId:bound.resolveCurrentWorkerId,now:()=>f.state.now
+    });
+    let effects=0;
+    const gate=createV2PrivatePairOperationGate({
+      ...f.identity,now:()=>f.state.now,
+      attestTransport:async()=>({authenticated:true,
+        peerType:'owner-pinned-private-tunnel-mtls',
+        sessionSource:'native-owner-private-pair'}),
+      resolveOwnerContext:()=>f.stack.resolveOwnerContext(),
+      readCurrentOwnerSidHash:f.stack.readCurrentOwnerSidHash,
+      verifyExactNativeGrant,withLease:bound.withLease,receiptStore:receipts,
+      execute:async(_route,args,tool)=>{
+        assert.equal(tool,'read_text');
+        effects++;
+        return readText({roots:canonicalRoots,auditLog:path.join(f.root,'audit.jsonl'),
+          config:{allowedRoots:canonicalRoots,maxReadBytes:524288,
+            powerMode:{enabled:false,fullFilesystem:false}}},args);
+      }
+    });
+    const invoke=(filename='qa-fixture.txt')=>gate.execute({
+      request:{},route:f.route(),tool:'read_text',arguments:{path:filename}
+    });
+    await assert.rejects(invoke(),{code:'V2_GRANT_REQUIRED'});
+    assert.equal(effects,0);
     assert.equal(bound.receiptStore,receipts);
     assert.equal(bound.workerRegistry,f.workerRegistry);
     assert.equal(bound.resolveCurrentWorkerId instanceof Function,true);
@@ -255,12 +297,19 @@ test('production binding composes existing owner, signed Worker and receipt stor
       tool:'read_text',arguments:{path:'qa-fixture.txt'}
     }};
     assert.equal((await bound.workerAuthority.authorizeWorker(action)).authorized,true);
+    await assert.rejects(invoke('not-granted.txt'),{code:'V2_GRANT_REQUIRED'});
+    assert.equal(effects,0);
+    assert.equal((await invoke()).text,'native-worker-exact-read-fixture');
+    assert.equal((await invoke()).text,'native-worker-exact-read-fixture');
+    assert.equal(effects,1,'durable receipt must prevent duplicate effect');
     await bound.workerAuthority.revokeWorker({
       workerId:f.workerId,reasonCode:'native-qa-owner-revocation'
     });
     await assert.rejects(bound.workerAuthority.authorizeWorker(action),
       {code:'WORKER_IDENTITY_REVOKED'});
-  }finally{f.close();}
+    await assert.rejects(invoke(),{code:'V2_GRANT_REQUIRED'});
+    assert.equal(effects,1);
+  }finally{try{receipts?.close();}finally{f.close();}}
 });
 
 test('production Worker factory refuses incomplete native authority before any grant',()=>{

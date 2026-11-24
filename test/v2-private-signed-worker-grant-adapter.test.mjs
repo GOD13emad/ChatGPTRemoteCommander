@@ -158,3 +158,36 @@ test('current worker and owner route callbacks receive the independently verifie
   assert.equal(routeChecks,2);
   assert.equal(workerChecks,2);
 });
+
+test('worker grant expiration during final registration lookup fails closed',async()=>{
+  const f=fixture();
+  const expiry=NOW+1000;
+  f.state.envelope=f.register({expiresAtMs:expiry});
+  f.dependency.workerAuthority.authorizeWorker=async()=>({
+    authorized:true,workerId:f.workerId,keyId:f.state.envelope.keyId,
+    bindingId:BINDING,capabilityPolicyDigest:POLICY,grantRevision:1,
+    expiresAtMs:expiry
+  });
+  let reads=0;
+  f.dependency.workerRegistry.get=async()=>{
+    if(++reads===2)f.state.now=expiry;
+    return f.state.envelope;
+  };
+  const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
+  assert.equal(await check(f.request()),false);
+});
+
+test('final registration substitution with stale valid signature denies',async()=>{
+  const f=fixture();
+  const initial=f.state.envelope;
+  let reads=0;
+  f.dependency.workerRegistry.get=async()=>{
+    if(++reads===2) return {
+      ...initial,claims:{...initial.claims,grantRevision:2}
+    };
+    return initial;
+  };
+  const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
+  assert.equal(await check(f.request()),false,
+    'the final persisted registration must still have a valid signed payload');
+});
