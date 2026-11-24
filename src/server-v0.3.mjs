@@ -323,6 +323,9 @@ if (config.durableWorkflows?.enabled === true) {
   const { createWorkflowTools } = await import('./workflow-tools.mjs');
   workflowTools = createWorkflowTools({
     config, roots, device: config.deviceName || os.hostname(), configSha256,
+    // Explicitly reserve active and startup-fallback Host configuration.
+    // An autonomous workflow's project root may contain these paths.
+    protectedHostConfigPaths: [configPath, defaultConfigPath, localConfigPath].map(value => path.resolve(value)),
     deliveryStore, conversationController,
     lookup: toolDefinition, validateSchema: validateJsonSchema,
     dispatch: async (name, args, workflow, workflowOperation = null) => {

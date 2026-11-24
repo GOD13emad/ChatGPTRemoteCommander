@@ -23,6 +23,45 @@ test('project-engine tool schema stays stable when runner is disabled',async()=>
   await assert.rejects(f.tool.execute('workflow_run_status',{runId:'disabled'}),/WORKFLOW_RUNNER_DISABLED/);
  }finally{f.dispose();}
 });
+test('workflow cannot write Host config through exact, relative, absent or aliased project paths',async()=>{
+ const f=fixture();let guarded,dispatched=0;
+ const active=path.join(f.root,'config.local.json');
+ const fallback=path.join(f.root,'config.json');
+ const initial='owner-config-must-stay-unchanged';
+ fs.writeFileSync(active,initial);
+ try{
+  guarded=createWorkflowTools({...f.base,
+   protectedHostConfigPaths:[active,fallback],
+   config:{durableWorkflows:{enabled:true,directory:path.join(f.root,'guarded-state'),executionTools:['write_text']}},
+   dispatch:async()=>{dispatched++;return {ok:true};}
+  });
+  await guarded.execute('workflow_create',{id:'p',root:f.root,goal:'Cannot self-edit host config',
+   acceptance:['Owner configuration unchanged'],steps:[{id:'s',title:'Try a write'}]});
+  const attempt=async target=>guarded.execute('workflow_call',{
+   id:'p',stepId:'s',expectedRevision:1,tool:'write_text',arguments:{path:target,content:'wrong'}
+  });
+  for(const target of [active,'config.local.json',fallback,'config.json']){
+   await assert.rejects(attempt(target),/WORKFLOW_HOST_CONFIG_WRITE_DENIED/);
+  }
+  assert.equal(dispatched,0);
+  assert.equal(fs.readFileSync(active,'utf8'),initial);
+  assert.equal(fs.existsSync(fallback),false);
+  const alias=path.join(f.root,'cfg-alias');
+  let symlinkCreated=false;
+  try {fs.symlinkSync(f.root,alias,process.platform==='win32'?'junction':'dir');symlinkCreated=true;}
+  catch(error){if(!['EPERM','EACCES','ENOTSUP'].includes(error?.code))throw error;}
+  if(symlinkCreated){
+   await assert.rejects(attempt(path.join(alias,'config.local.json')),
+    /WORKFLOW_HOST_CONFIG_WRITE_DENIED/);
+  }
+  assert.equal(dispatched,0);
+  assert.equal((await guarded.execute('workflow_get',{id:'p'})).state.revision,1);
+  const allowed=await attempt('ordinary-output.txt');
+  assert.ok(allowed);
+  assert.equal(dispatched,1);
+ }finally{guarded?.close();f.dispose();}
+});
+
 test('default execution policy excludes shell, deletion, credentials and recursive workflow calls',async()=>{const f=fixture();try{
  await f.tool.execute('workflow_create',{id:'x',root:f.root,goal:'Goal',acceptance:['Observe'],steps:[{id:'a',title:'Step'}]});
  for(const name of ['run_shell','delete_path','kill_process','workflow_call'])await assert.rejects(f.tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:name,arguments:{}}),/NOT_APPROVED/);

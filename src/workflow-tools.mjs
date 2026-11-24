@@ -3,11 +3,47 @@
 import { WorkflowStore, fail } from './workflow-store.mjs';
 import { deriveCapabilitySet, FULL_WORKFLOW_EXECUTION_TOOLS } from './capability-profile.mjs';
 import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
 import { codexLaunchAuthorized } from './no-codex-policy.mjs';
 import { processContainmentAvailable } from './process-containment.mjs';
+
+// Workflow proposals are data, not owner configuration authority. An enrolled
+// project may include the Host's local config file inside its writable root.
+// Deny both lexical and canonical aliases before dispatching a write_text action.
+async function denyHostConfigWrite(userPath, projectRoot, protectedConfigPaths) {
+  if (protectedConfigPaths.length === 0) return;
+  if (typeof userPath !== 'string' || !userPath) fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
+  const normalize = value => {
+    const resolved = path.resolve(value);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  const requested = path.resolve(projectRoot, userPath);
+  if (protectedConfigPaths.some(target => normalize(target) === normalize(requested))) {
+    fail('WORKFLOW_HOST_CONFIG_WRITE_DENIED');
+  }
+  const canonical = async value => {
+    try { return await realpath(value); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
+      try { return path.join(await realpath(path.dirname(value)), path.basename(value)); }
+      catch (parentError) {
+        if (parentError?.code !== 'ENOENT') fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
+        return null;
+      }
+    }
+  };
+  const actual = await canonical(requested);
+  if (!actual) return; // The underlying file tool rejects missing parents.
+  for (const target of protectedConfigPaths) {
+    const trusted = await canonical(target);
+    if (trusted && normalize(actual) === normalize(trusted)) {
+      fail('WORKFLOW_HOST_CONFIG_WRITE_DENIED');
+    }
+  }
+}
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 // Node timers accept at most a signed 32-bit millisecond delay. Oversized
@@ -115,7 +151,13 @@ const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null }) {
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null, protectedHostConfigPaths = [] }) {
+  // Populated only by the Host bootstrap, never by workflow caller arguments.
+  if (!Array.isArray(protectedHostConfigPaths) || protectedHostConfigPaths.some(
+    value => typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0'))) {
+    fail('WORKFLOW_HOST_CONFIG_POLICY_INVALID');
+  }
+  const protectedConfigs = [...new Set(protectedHostConfigPaths.map(value => path.resolve(value)))];
   const settings = config.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
@@ -421,6 +463,10 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
               if (!definition) fail('WORKFLOW_TOOL_UNAVAILABLE');
               const errors = validateSchema(input, definition.inputSchema);
               if (errors.length) fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
+              if (tool === 'write_text') {
+                const source = store.get(args.id).state.root;
+                await denyHostConfigWrite(input.path, source, protectedConfigs);
+              }
             }, dispatch
           });
           if (outcome.result?.__mcpContent) {
