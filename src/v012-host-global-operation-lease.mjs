@@ -70,6 +70,14 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
   const safeDir=requireSafePath(directory);
   const file=path.join(safeDir,DB_FILE);
   checkDatabaseFile(file);
+  // SQLite's default create mode depends on umask. Create the pathname with
+  // O_EXCL and owner-only permissions BEFORE opening it as a database.
+  try{
+    const fd=fs.openSync(file,fs.constants.O_WRONLY|fs.constants.O_CREAT
+      |fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
+    fs.closeSync(fd);
+  }catch(e){if(e?.code!=='EEXIST')throw e;}
+  checkDatabaseFile(file);
   const db=new DatabaseSync(file,{timeout:1000,allowExtension:false});
   let closed=false,poisoned=false,active=0;
   try{
