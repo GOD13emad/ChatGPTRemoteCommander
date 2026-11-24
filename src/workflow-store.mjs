@@ -354,6 +354,7 @@ export class WorkflowStore {
   #instance = randomUUID();
   #dbPath;
   #leaseDbPath;
+  #physicalRootFence;
   #profileId;
   #closed = false;
   #authority;
@@ -361,7 +362,10 @@ export class WorkflowStore {
   #schedulerPolicy;
   #workerId = randomUUID();
   #startupRecovery = { scanned:0, recovered:0, truncated:false, limit:2000 };
-  constructor({ directory, rootLeaseDirectory = directory, allowedRoots, device = os.hostname(), configSha256 = ZERO, authority = {}, executionProfile = {}, schedulerPolicy = {} }) {
+  constructor({ directory, rootLeaseDirectory = directory, allowedRoots, device = os.hostname(), configSha256 = ZERO, authority = {}, executionProfile = {}, schedulerPolicy = {}, physicalRootFence = null }) {
+    if(physicalRootFence!==null && typeof physicalRootFence?.withWorkflowRootLease!=='function')
+      fail('WORKFLOW_PHYSICAL_ROOT_FENCE_REQUIRED');
+    this.#physicalRootFence=physicalRootFence;
     if (!Array.isArray(allowedRoots) || !allowedRoots.length) fail('WORKFLOW_ROOTS_REQUIRED');
     this.#roots = allowedRoots.map(r => { noLinks(r); return fs.realpathSync.native(r); });
     if (typeof directory !== 'string' || !path.isAbsolute(directory) || /^(?:\\\\|\/\/)/.test(directory)) fail('WORKFLOW_LOCAL_STORE_REQUIRED');
@@ -1250,7 +1254,15 @@ export class WorkflowStore {
       executionProfile: clone(state.executionProfile), modelProfileRequested: clone(state.executionProfile),
       acceptanceStatus: state.acceptanceStatus ?? 'UNVALIDATED' };
   }
-  async call({ id, stepId, expectedRevision, tool, arguments: args = {} }, { dispatch, validate }) {
+  async call(input,handlers){
+    if(!this.#physicalRootFence)return this.#callWithinStoreLease(input,handlers);
+    // Look up the immutable persisted project root, not a caller-supplied
+    // route/argument. Native host fence remains held until outcome handling.
+    const root=this.get(input?.id).state.root;
+    return this.#physicalRootFence.withWorkflowRootLease(root,
+      ()=>this.#callWithinStoreLease(input,handlers));
+  }
+  async #callWithinStoreLease({ id, stepId, expectedRevision, tool, arguments: args = {} }, { dispatch, validate }) {
     identifier(stepId); safeText(tool, 128);
     if (typeof dispatch !== 'function' || typeof validate !== 'function') fail('WORKFLOW_HOST_DISPATCH_REQUIRED');
     const argsRaw = canonical(args);

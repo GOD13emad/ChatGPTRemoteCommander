@@ -1,0 +1,230 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {createV012HostGlobalOperationLease} from '../src/v012-host-global-operation-lease.mjs';
+import {createV012SharedPhysicalRootFence}
+  from '../src/v012-shared-physical-root-fence.mjs';
+import {WorkflowStore} from '../src/workflow-store.mjs';
+
+const HOST='fixture-host';
+const SHA='1'.repeat(64);
+const route=(id='sample')=>({
+  hostId:HOST,principalId:'owner',profileId:'default',
+  conversationId:'chat-a',operationId:'op-a',
+  target:{kind:'workflow-root',id}
+});
+function fixture(){
+  const top=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'rc012-root-fence-'));
+  const owner=path.join(top,'owner'),data=path.join(top,'data'),root=path.join(top,'project');
+  for(const dir of [owner,data,root])fs.mkdirSync(dir,{mode:0o700});
+  fs.writeFileSync(path.join(root,'proof.txt'),'read only\n');
+  return {
+    top,owner,data,root,
+    cleanup:()=>fs.rmSync(top,{recursive:true,force:true})
+  };
+}
+function newFence(f,{resolver=()=>f.root,allowedRoots=[f.root]}={}){
+  const lease=createV012HostGlobalOperationLease({directory:f.owner,hostId:HOST});
+  const native=Object.freeze({hostId:HOST,withLease:(key,work)=>lease.withLease(key,work)});
+  return {
+    fence:createV012SharedPhysicalRootFence({
+      nativeHostLease:native,hostId:HOST,allowedRoots,resolveTrustedRouteRoot:resolver
+    }),
+    close:()=>lease.close()
+  };
+}
+function newStore(f,physicalRootFence){
+  const store=new WorkflowStore({
+    directory:f.data,allowedRoots:[f.root],device:HOST,configSha256:SHA,
+    authority:{profileId:'default',tier:'FULL_POWER',
+      capabilities:['filesystem.full','workflow.durable','workflow.scheduler']},
+    ...(physicalRootFence?{physicalRootFence}:{})
+  });
+  store.create({
+    id:'sample',root:f.root,goal:'Cross-engine root lease contract',
+    acceptance:['Shared host-pinned lease'],
+    steps:[{id:'first',title:'Read',dependsOn:[]}]
+  });
+  return store;
+}
+async function invoke(store,dispatch){
+  return store.call({
+    id:'sample',stepId:'first',expectedRevision:1,
+    tool:'read_text',arguments:{path:'proof.txt'}
+  },{validate:async()=>{},dispatch});
+}
+function waitMarker(child,marker,timeoutMs=10000){
+  return new Promise((resolve,reject)=>{
+    let output='';
+    const timer=setTimeout(()=>{cleanup();reject(Error('CHILD_MARKER_TIMEOUT:'+output));},timeoutMs);
+    function cleanup(){
+      clearTimeout(timer);
+      child.stdout.off('data',onData);
+      child.off('exit',onExit);
+    }
+    function onData(chunk){
+      output+=chunk.toString();
+      if(output.includes(marker)){cleanup();resolve(output);}
+    }
+    function onExit(code){cleanup();reject(Error('CHILD_EXIT_BEFORE_MARKER:'+code+':'+output));}
+    child.stdout.on('data',onData);child.on('exit',onExit);
+  });
+}
+function waitExit(child,timeoutMs=10000){
+  if(child.exitCode!==null)return Promise.resolve(child.exitCode);
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(Error('CHILD_EXIT_TIMEOUT')),timeoutMs);
+    child.once('exit',code=>{clearTimeout(timer);resolve(code);});
+  });
+}
+if(process.argv[2]==='--holder'){
+  const [root,owner]=process.argv.slice(3);
+  const lease=createV012HostGlobalOperationLease({directory:owner,hostId:HOST});
+  const native={hostId:HOST,withLease:(resource,work)=>lease.withLease(resource,work)};
+  const fence=createV012SharedPhysicalRootFence({
+    nativeHostLease:native,hostId:HOST,allowedRoots:[root],resolveTrustedRouteRoot:()=>root
+  });
+  try{
+    await fence.withDirectRouteLease(route(),async()=>{
+      process.stdout.write('HOLDER_ACQUIRED\n');
+      await new Promise((resolve,reject)=>{
+        process.stdin.once('data',resolve);process.stdin.once('error',reject);
+      });
+    });
+    process.stdout.write('HOLDER_RELEASED\n');
+  }finally{lease.close();}
+}else{
+  test('two physical OS processes contend for the same canonical root and resume after release', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture();let child=null;const holder=newFence(f),worker=newFence(f);
+    let store;
+    try{
+      store=newStore(f,worker.fence);
+      child=spawn(process.execPath,[new URL(import.meta.url).pathname,'--holder',f.root,f.owner],{
+        stdio:['pipe','pipe','pipe']});
+      let childErr='';
+      child.stderr.on('data',v=>childErr+=v);
+      await waitMarker(child,'HOLDER_ACQUIRED');
+      let dispatched=0;
+      await assert.rejects(
+        ()=>invoke(store,async()=>{dispatched++;return{ok:true};}),
+        e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED'
+      );
+      assert.equal(dispatched,0,'no dispatch when another process holds the same root');
+      child.stdin.write('done\n');child.stdin.end();
+      assert.equal(await waitExit(child),0,childErr);
+      child=null;
+      const receipt=await invoke(store,async()=>{dispatched++;return{ok:true};});
+      assert.equal(receipt?.outcome,'RECORDED_NOT_VALIDATED');
+      assert.equal(dispatched,1);
+    }finally{
+      if(child){child.kill();await waitExit(child).catch(()=>{});}
+      store?.close();worker.close();holder.close();f.cleanup();
+    }
+  });
+
+  test('nested trusted WorkflowStore call reuses already-held direct root fence', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),a=newFence(f);let store;
+    try{
+      store=newStore(f,a.fence);
+      const r=await a.fence.withDirectRouteLease(route(),()=>invoke(store,async()=>({ok:true})));
+      assert.equal(r.outcome,'RECORDED_NOT_VALIDATED');
+      await assert.rejects(
+        ()=>a.fence.withDirectRouteLease(route(),()=>a.fence.withDirectRouteLease(
+          {...route(),target:{kind:'browser-target',id:'other'}},async()=>({ok:true}))),
+        e=>e?.code==='V012_SHARED_ROOT_CROSS_RESOURCE_NESTING_DENIED'
+      );
+    }finally{store?.close();a.close();f.cleanup();}
+  });
+
+  test('nested separate adapters never bypass one another through async context', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),first=newFence(f),second=newFence(f);
+    try{
+      await first.fence.withWorkflowRootLease(f.root,async()=>{
+        await assert.rejects(
+          ()=>second.fence.withWorkflowRootLease(f.root,async()=>({ok:true})),
+          e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED');
+        return {ok:true};
+      });
+      const after=await second.fence.withWorkflowRootLease(f.root,async()=>({ok:true}));
+      assert.deepEqual(after,{ok:true});
+    }finally{second.close();first.close();f.cleanup();}
+  });
+
+  test('uncertain workflow outcome returns receipt but quarantines native root lease', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),a=newFence(f);
+    try{
+      const result=await a.fence.withWorkflowRootLease(f.root,async()=>({
+        outcome:'UNCERTAIN',receipt:{errorCode:'UNTRUSTED_EFFECT'}
+      }));
+      assert.equal(result.outcome,'UNCERTAIN');
+      await assert.rejects(
+        ()=>a.fence.withWorkflowRootLease(f.root,async()=>({ok:true})),
+        e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED');
+    }finally{a.close();f.cleanup();}
+  });
+
+  test('trusted owner root mapping refuses paths outside enrollment and alias targets', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture();
+    const outside=path.join(f.top,'outside');
+    fs.mkdirSync(outside,{mode:0o700});
+    const a=newFence(f,{resolver:()=>outside});
+    try{
+      await assert.rejects(
+        ()=>a.fence.withDirectRouteLease(route(),async()=>({ok:true})),
+        e=>e?.code==='V012_SHARED_ROOT_OUTSIDE_ENROLLMENT');
+      if(process.platform!=='win32'){
+        const alias=path.join(f.top,'alias');
+        fs.symlinkSync(f.root,alias,'dir');
+        await assert.rejects(
+          ()=>a.fence.withWorkflowRootLease(alias,async()=>({ok:true})),
+          e=>e?.code==='V012_SHARED_ROOT_ALIAS_DENIED');
+      }
+    }finally{a.close();f.cleanup();}
+  });
+
+  test('pure root-to-key contract is deterministic across route and WorkflowStore shapes',async()=>{
+    const f=fixture(),used=[];
+    const trustedNative={
+      hostId:HOST,
+      async withLease(key,work){
+        used.push(key);
+        return work({markEffectStarted(){}});
+      }
+    };
+    const fence=createV012SharedPhysicalRootFence({
+      nativeHostLease:trustedNative,hostId:HOST,
+      allowedRoots:[f.root],resolveTrustedRouteRoot:()=>f.root
+    });
+    try{
+      await fence.withDirectRouteLease(route(),async()=>({ok:true}));
+      await fence.withWorkflowRootLease(f.root,async()=>({ok:true}));
+      assert.equal(used.length,2);
+      assert.equal(used[0],used[1]);
+      const parsed=JSON.parse(used[0]);
+      assert.equal(parsed[0],1);
+      assert.equal(parsed[1],HOST);
+      assert.equal(parsed[2],'workflow-root');
+      assert.match(parsed[3],/^[a-f0-9]{64}$/);
+      await assert.rejects(
+        ()=>fence.withDirectRouteLease({...route(),hostId:'different-host'},async()=>({ok:true})),
+        e=>e?.code==='V012_SHARED_ROOT_HOST_MISMATCH');
+    }finally{f.cleanup();}
+  });
+
+  test('root admission requires an owner-enrolled canonical map and pinned native host',()=>{
+    const f=fixture();
+    try{
+      assert.throws(()=>createV012SharedPhysicalRootFence({
+        nativeHostLease:{hostId:HOST,withLease:async()=>{}},
+        hostId:HOST,allowedRoots:[f.root]
+      }),e=>e?.code==='V012_SHARED_ROOT_BOOTSTRAP_REQUIRED');
+      assert.throws(()=>createV012SharedPhysicalRootFence({
+        nativeHostLease:{hostId:'other',withLease:async()=>{}},
+        hostId:HOST,allowedRoots:[f.root],resolveTrustedRouteRoot:()=>f.root
+      }),e=>e?.code==='V012_SHARED_ROOT_BOOTSTRAP_REQUIRED');
+    }finally{f.cleanup();}
+  });
+}
