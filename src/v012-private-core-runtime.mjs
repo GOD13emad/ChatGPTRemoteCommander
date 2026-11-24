@@ -26,6 +26,7 @@ function validWorkerSecurity(s){
     &&typeof s.withLease==='function'
     &&typeof s.workerAuthority?.authorizeWorker==='function'
     &&typeof s.workerRegistry?.get==='function'
+    &&typeof s.workerRegistry?.isRevoked==='function'
     &&typeof s.receiptStore?.execute==='function';
 }
 // Core's trusted receiptStore is injected by server-v0.3 and is shared with

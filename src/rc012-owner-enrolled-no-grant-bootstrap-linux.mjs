@@ -167,7 +167,7 @@ export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={
       resolveTrustedToolRoute:denied,
       resolveCurrentOwnerRoute:denied,resolveCurrentWorkerId:denied,
       workerAuthority:{authorizeWorker:denied},
-      workerRegistry:{get:denied},withLease:denied
+      workerRegistry:{get:denied,isRevoked:denied},withLease:denied
     }
   };
 }

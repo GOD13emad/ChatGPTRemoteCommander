@@ -45,7 +45,8 @@ function fixture(patch={}){
     hostId:'pc1',profileId:'profileA',principalId:'accountA',
     expectedTunnelIdHash:TUNNEL,expectedOwnerSidHash:OWNER,
     issuer:'commander.local',audience:'remote-commander',now:()=>state.now,
-    workerRegistry:{get:async()=>{state.reads++;return state.envelope;}},
+    workerRegistry:{get:async()=>{state.reads++;return state.envelope;},
+      isRevoked:async()=>false},
     workerAuthority:{authorizeWorker:async()=>{
       state.calls++;
       return state.permission?{authorized:true,workerId,keyId,bindingId:BINDING,
@@ -128,7 +129,7 @@ test('signed worker adapter composes with exact private operation gate, lease an
 test('signed private worker verifier requires trusted authority and canonical registry',()=>{
   const f=fixture();
   for(const p of [
-    {workerAuthority:null},{workerRegistry:null},
+    {workerAuthority:null},{workerRegistry:null},{workerRegistry:{get:async()=>null}},
     {resolveCurrentWorkerId:null},{resolveCurrentOwnerRoute:null},
     {expectedTunnelIdHash:null},{expectedOwnerSidHash:null}
   ])assert.throws(()=>createV2PrivateSignedWorkerGrantAdapter({...f.dependency,...p}),
@@ -190,4 +191,19 @@ test('final registration substitution with stale valid signature denies',async()
   const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
   assert.equal(await check(f.request()),false,
     'the final persisted registration must still have a valid signed payload');
+});
+
+test('revocation while final trusted route resolves never admits a signed worker',async()=>{
+  const f=fixture();
+  let routeReads=0;
+  let revoked=false;
+  f.dependency.workerRegistry.isRevoked=async(workerId,bindingId)=>
+    workerId===f.workerId&&bindingId===BINDING&&revoked;
+  f.dependency.resolveCurrentOwnerRoute=async()=>{
+    if(++routeReads===2)revoked=true;
+    return route();
+  };
+  const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
+  assert.equal(await check(f.request()),false,
+    'revocation after the initial native authorization must block final admission');
 });
