@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createWindowsNativeOwnerSessionProvider} from '../src/native-owner-session-provider-windows.mjs';
@@ -709,7 +709,15 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
   let fixtureFiles;
   try{fixtureFiles=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
   const f=fixtureFiles;
-  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-private-core-compose-')));
+  // Windows CI's temp volume need not be an owner-private NTFS volume.
+  // Native lease tests must provision the same verified private owner root as production.
+  const root=process.platform==='win32'
+    ? path.join(fs.realpathSync.native(os.homedir()),'rc012-private-core-compose-'+randomUUID())
+    : fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-private-core-compose-')));
+  if(process.platform==='win32'){
+    const {ensureWindowsMonitorDirectories}=await import('../src/browser-companion-windows-private.mjs');
+    await ensureWindowsMonitorDirectories([root],{create:true});
+  }
   const approved=path.join(root,'approved.txt');
   fs.writeFileSync(approved,'private-core-composition-verified\n');
   // Linux has a distinct native owner identity/seat provider; reuse the
