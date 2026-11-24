@@ -7,6 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createV012HostGlobalOperationLease} from '../src/v012-host-global-operation-lease.mjs';
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
+import {executeV2BoundOperation} from '../src/v2-authorized-operation.mjs';
 
 const LINUX=process.platform==='linux';
 const host='qa-owner-host';
@@ -200,4 +201,43 @@ test('rejects aliased SQLite file instead of opening a foreign database', {skip:
   fs.symlinkSync(path.join(directory,'other-file'),path.join(directory,'v012-native-operation-leases.sqlite'));
   assert.throws(()=>createV012HostGlobalOperationLease({directory,hostId:host}),
     {code:'V012_NATIVE_LEASE_DATABASE_UNTRUSTED'});
+});
+
+test('real host-global lease releases only a persisted preflight denial; denied replay cannot execute', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const a=createV012HostGlobalOperationLease({directory,hostId:host});
+  const b=createV012HostGlobalOperationLease({directory,hostId:host});
+  const receipts=new MutationIdempotencyStore({directory:path.join(directory,'receipts'),scope:'native-preeffect'});
+  t.after(()=>{receipts.close();a.close();b.close();});
+  const caller={hostId:host,principalId:'owner',profileId:'qa',conversationId:'chat-qa'};
+  const r={...caller,operationId:'denied-one',target:{kind:'workflow-root',id:'project-one'}};
+  let checks=0,effects=0;
+  const services=lease=>({
+    observedCaller:async()=>caller,
+    hasGrant:async()=>++checks!==3,
+    withLease:lease.withLease,receiptStore:receipts,
+    execute:async()=>{effects++;return {ok:true};}
+  });
+  await assert.rejects(executeV2BoundOperation(r,services(a),'read_text'),{code:'V2_GRANT_REQUIRED'});
+  assert.deepEqual(receipts.status().states,{DENIED:1});
+  await assert.rejects(executeV2BoundOperation(r,services(b),'read_text'),
+    {mutationIdempotencyCode:'MUTATION_PRE_EFFECT_DENIED'});
+  assert.equal(effects,0);
+  assert.deepEqual(await executeV2BoundOperation({...r,operationId:'separate-operation'},
+    services(b),'read_text'),{ok:true});
+  assert.equal(effects,1);
+  assert.deepEqual(receipts.status().states,{DENIED:1,SUCCEEDED:1});
+  // A thrown denial-looking error AFTER dispatch remains uncertain and
+  // a separately opened host-global lease may not admit a new writer.
+  const unsafe={...services(a),execute:async()=>{
+    effects++;throw Object.assign(Error('unknown after dispatch'),{
+      mutationIdempotencyCode:'MUTATION_PRE_EFFECT_DENIED'
+    });
+  }};
+  await assert.rejects(executeV2BoundOperation({...r,operationId:'unknown-operation'},
+    unsafe,'read_text'),/unknown after dispatch/);
+  assert.equal(receipts.status().states.UNCERTAIN,1);
+  await assert.rejects(executeV2BoundOperation({...r,operationId:'must-not-execute'},
+    services(b),'read_text'),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,2);
 });

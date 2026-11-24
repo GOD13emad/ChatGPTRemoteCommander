@@ -55,7 +55,7 @@ const WORKER_CALLBACK_FIELDS=Object.freeze([
  *   lifecycle and durable worker store; no automatic grants are issued.
  */
 export function createV012PrivateCoreRuntime({
-  port,identity,tls,security,core,now=Date.now
+  port,identity,tls,security,core,nativeHostLease=null,now=Date.now
 }={}){
   if(!Number.isInteger(port)||port<0||port>65535
     ||!identity||!tls||!security||!core
@@ -72,6 +72,13 @@ export function createV012PrivateCoreRuntime({
     ||typeof security.directory!=='string'
     ||!path.isAbsolute(security.directory))
     fail('V012_PRIVATE_CORE_BOOTSTRAP_REQUIRED');
+  // Installed owner bootstrap may pin an OS-validated shared host lease.
+  // Never replace the native lease with a per-process Worker mock once pinned.
+  if(nativeHostLease!==null
+    &&(typeof nativeHostLease?.withLease!=='function'
+      ||typeof nativeHostLease?.close!=='function'
+      ||nativeHostLease.hostId!==identity.hostId))
+    fail('V012_PRIVATE_NATIVE_HOST_LEASE_INVALID');
   const factory=security.bindWorkerToNativeOwner;
   if(factory!==undefined
     ? typeof factory!=='function'
@@ -151,7 +158,8 @@ export function createV012PrivateCoreRuntime({
       resolveOwnerContext:route=>
         ownerStack.resolveOwnerContext(route.conversationId),
       readCurrentOwnerSidHash:readOwner,verifyExactNativeGrant,
-      withLease:worker.withLease,receiptStore:worker.receiptStore,now,
+      withLease:nativeHostLease?.withLease??worker.withLease,
+      receiptStore:worker.receiptStore,now,
       execute:async(route,args,tool)=>{
         if(!names.has(tool)
           ||validateJsonSchema(args,names.get(tool).inputSchema).length!==0)

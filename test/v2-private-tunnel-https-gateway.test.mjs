@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createWindowsNativeOwnerSessionProvider} from '../src/native-owner-session-provider-windows.mjs';
@@ -20,6 +20,10 @@ import {createV2PrivateSignedWorkerGrantAdapter} from '../src/v2-private-signed-
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 import {readText} from '../src/tools-v0.3.mjs';
 import {createV012PrivateCoreRuntime} from '../src/v012-private-core-runtime.mjs';
+import {createV012OwnerNativeHostLease}
+  from '../src/v012-owner-native-host-lease-bootstrap.mjs';
+import {ensureWindowsMonitorDirectories}
+  from '../src/browser-companion-windows-private.mjs';
 import {deriveWorkerId} from '../src/worker-identity-authority.mjs';
 import {generateKeyPairSync,sign} from 'node:crypto';
 
@@ -785,19 +789,19 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     execFileImpl:nativeExec,verifyFile:()=>{},
     snapshotTimeoutMs:1000,dialogTimeoutMs:5000
   };
-  let runtime,nativeLease;
+  let runtime,nativeLease,nativeRoot;
   try{
-    // Linux uses the existing native SQLite implementation in this fixture;
-    // Windows keeps the pre-existing test adapter until its native factory
-    // is integrated and verified separately.
-    const leaseDir=path.join(root,'shared-host-lease');
-    if(linux){
-      fs.mkdirSync(leaseDir,{mode:0o700});
-      const {createV012HostGlobalOperationLease}=await import('../src/v012-host-global-operation-lease.mjs');
-      nativeLease=createV012HostGlobalOperationLease({directory:leaseDir,hostId:'host-1'});
-    }
+    // Windows and Linux both use a real OS-validated native host-global
+    // SQLite lease, not a per-process mock, under a disposable owner path.
+    nativeRoot=linux?path.join(root,'shared-host-lease')
+      :path.join(os.tmpdir(),'rc012-private-native-'+randomUUID());
+    if(linux)fs.mkdirSync(nativeRoot,{mode:0o700});
+    else await ensureWindowsMonitorDirectories([nativeRoot],{create:true});
+    nativeLease=await createV012OwnerNativeHostLease({
+      directory:nativeRoot,hostId:'host-1'
+    });
     runtime=createV012PrivateCoreRuntime({
-      port:0,now:()=>now,
+      port:0,now:()=>now,nativeHostLease:nativeLease,
       identity:{
         hostId:'host-1',profileId:'emad',principalId:'account-1',
         expectedOwnerSidHash:ownerHash,expectedTunnelIdHash:tunnelHash,
@@ -865,8 +869,9 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
                 capabilityPolicyDigest:policy,grantRevision:1,
                 expiresAtMs:claims.expiresAtMs};
             }},
-            // Only the Windows fixture still uses a disposable mock.
-            withLease:nativeLease?.withLease??(async(_resource,work)=>work()),receiptStore,
+            // A synthetic Worker callback must NOT replace the separate
+            // native host-global lease selected by protected owner startup.
+            withLease:async(_resource,work)=>work(),receiptStore,
           };
         },
         ownerSessionOptions
@@ -947,6 +952,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     await runtime?.close();
     receiptStore.close();
     nativeLease?.close();
+    if(nativeRoot&&!linux)fs.rmSync(nativeRoot,{recursive:true,force:true});
     f.dispose();
     fs.rmSync(root,{recursive:true,force:true});
   }
