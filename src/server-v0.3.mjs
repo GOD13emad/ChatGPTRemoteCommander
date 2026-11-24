@@ -352,7 +352,7 @@ if (config.durableWorkflows?.enabled === true) {
 let protectedPrivateRuntime=null;
 let protectedIngressFailure=null;
 if(ownerBootstrapModule){
-  let candidate=null;
+  let candidate=null,nativeHostLease=null;
   try{
     if(!path.isAbsolute(ownerBootstrapModule))
       throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_PATH_REQUIRED'),
@@ -369,11 +369,26 @@ if(ownerBootstrapModule){
       ||!options.security||typeof options.security!=='object')
       throw Object.assign(new Error('V012_PRIVATE_BOOTSTRAP_INVALID'),
         {code:'V012_PRIVATE_BOOTSTRAP_INVALID'});
+    // An explicitly configured owner-local bootstrap may supply a canonical,
+    // pre-existing host-wide storage directory. Never use the per-profile
+    // Worker grant directory as an implicit lease root. Existing protected
+    // ingress remains fail-closed if native ACL/ownership checks reject it.
+    if(Object.hasOwn(options.security,'nativeHostLeaseDirectory')){
+      const {createV012OwnerNativeHostLease}=await import(
+        './v012-owner-native-host-lease-bootstrap.mjs');
+      nativeHostLease=await createV012OwnerNativeHostLease({
+        directory:options.security.nativeHostLeaseDirectory,
+        hostId:options.identity?.hostId
+      });
+    }
     // Load only for an explicitly configured owner bootstrap. STANDARD fixture
     // copies of the Core never need this optional protected module.
     const {createV012PrivateCoreRuntime}=await import('./v012-private-core-runtime.mjs');
     candidate=createV012PrivateCoreRuntime({
       ...options,
+      // Never accept a caller-provided nativeHostLease implementation;
+      // only the local Core-created OS-verified instance is passed through.
+      nativeHostLease,
       security:{
         ...options.security,
         // Production uses the installed Core receipt store and native OS
@@ -410,6 +425,8 @@ if(ownerBootstrapModule){
     protectedPrivateRuntime=candidate;
   }catch(error){
     await candidate?.close().catch(()=>{});
+    // A bootstrap failure must not leave a second open native lease handle.
+    try{nativeHostLease?.close();}catch{}
     protectedIngressFailure=error?.code??'V012_PRIVATE_BOOTSTRAP_FAILED';
     console.error('V012_PRIVATE_INGRESS_BOOTSTRAP_FAILED',protectedIngressFailure);
   }

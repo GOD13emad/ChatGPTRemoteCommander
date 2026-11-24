@@ -101,6 +101,9 @@ test "$(node -p 'require(process.argv[1]).version' "$APP/package.json")" = "$VER
 # Core + J01 + signed Worker implementation. Version strings alone are not proof.
 for rel in \
  src/server-v0.3.mjs src/v012-private-core-runtime.mjs \
+ src/v012-owner-native-host-lease-bootstrap.mjs \
+ src/v012-host-global-operation-lease.mjs \
+ src/v012-windows-host-global-lease-acl.mjs \
  src/v2-private-pair-mcp-http-ingress.mjs \
  src/v2-private-tunnel-https-gateway.mjs \
  src/v2-private-pair-operation-gate.mjs \

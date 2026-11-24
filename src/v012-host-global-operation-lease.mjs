@@ -1,13 +1,15 @@
 // Fail-closed, owner-local V0.12 operation lease for one canonical host directory.
 // This is NOT a grant, J01 owner approval, or an alternative to WorkflowStore
 // root leases. All participating protected native Core processes on this host
-// MUST use the same directory; an unknown/crashed operation stays quarantined
+// MUST use the same directory AND the same enrolled host ID. An unknown/crashed
+// operation stays quarantined
 // until a separately authenticated owner reconciliation proves effect cessation.
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {assertWindowsHostLeaseStorage} from './v012-windows-host-global-lease-acl.mjs';
+import {assertWindowsHostLeaseStorage,
+  createV012WindowsPrivateLeaseDatabase} from './v012-windows-host-global-lease-acl.mjs';
 
 const HOST=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -83,6 +85,11 @@ function createCheckedLease({directory,hostId,now=Date.now,windows=false,verifyW
   checkDatabaseFile(file,windows);
   const db=new DatabaseSync(file,{timeout:1000,allowExtension:false});
   let closed=false,poisoned=false,active=0;
+  function assertHostPin(){
+    const rows=db.prepare('SELECT singleton,host_id FROM native_operation_lease_identity LIMIT 2').all();
+    if(rows.length!==1||rows[0].singleton!==1||rows[0].host_id!==hostId)
+      fail('V012_NATIVE_LEASE_HOST_ID_MISMATCH');
+  }
   try{
     if(!windows)fs.chmodSync(file,0o600);
     checkDatabaseFile(file,windows);
@@ -94,12 +101,33 @@ function createCheckedLease({directory,hostId,now=Date.now,windows=false,verifyW
       'acquired_at_ms INTEGER NOT NULL CHECK(acquired_at_ms > 0));');
     if(db.prepare('PRAGMA quick_check').get().quick_check!=='ok')
       fail('V012_NATIVE_LEASE_DATABASE_CORRUPT');
+    // Pin one host namespace for this physical DB under the same SQLite
+    // write lock used for acquisition. Existing uncertain rows must never
+    // be relabelled, deleted or silently admitted under a different host.
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      db.exec('CREATE TABLE IF NOT EXISTS native_operation_lease_identity ('+
+        'singleton INTEGER PRIMARY KEY CHECK(singleton=1),host_id TEXT NOT NULL);');
+      const pin=db.prepare('SELECT singleton,host_id FROM native_operation_lease_identity LIMIT 2').all();
+      if(pin.length===0){
+        // Migrate an older DB only when every persisted resource belongs
+        // to the current owner-enrolled host. An empty DB pins first use.
+        for(const row of db.prepare('SELECT resource FROM native_operation_leases').iterate()){
+          try{checkedResource(row.resource,hostId);}
+          catch{fail('V012_NATIVE_LEASE_HOST_ID_MISMATCH');}
+        }
+        db.prepare('INSERT INTO native_operation_lease_identity(singleton,host_id) VALUES(1,?)').run(hostId);
+      }
+      assertHostPin();
+      db.exec('COMMIT');
+    }catch(error){try{db.exec('ROLLBACK');}catch{}throw error;}
   }catch(e){db.close();throw e;}
   const begin=()=>db.exec('BEGIN IMMEDIATE');
   const rollback=()=>{try{db.exec('ROLLBACK');}catch{}};
   function reserve(key,owner){
     try{
       begin();
+      assertHostPin();
       if(db.prepare('SELECT 1 AS held FROM native_operation_leases WHERE resource=?').get(key))
         fail('V012_NATIVE_LEASE_OCCUPIED');
       const at=now();
@@ -115,6 +143,7 @@ function createCheckedLease({directory,hostId,now=Date.now,windows=false,verifyW
   function release(key,owner){
     try{
       begin();
+      assertHostPin();
       const r=db.prepare('DELETE FROM native_operation_leases WHERE resource=? AND owner=?')
         .run(key,owner);
       if(r.changes!==1)fail('V012_NATIVE_LEASE_RELEASE_MISMATCH');
@@ -199,6 +228,10 @@ export async function createV012WindowsHostGlobalOperationLease({
   }
   const file=path.win32.join(root,DB_FILE);
   const verifyWindowsStorage=()=>assertWindowsHostLeaseStorage(root,file);
+  await verifyWindowsStorage();
+  // Windows cannot use POSIX 0600 for a newly created SQLite file. Apply
+  // native owner SID/DACL at atomic CreateNew, never repair an existing DB.
+  await createV012WindowsPrivateLeaseDatabase(file);
   await verifyWindowsStorage();
   const lease=createCheckedLease({
     directory:root,hostId,now,windows:true,verifyWindowsStorage
