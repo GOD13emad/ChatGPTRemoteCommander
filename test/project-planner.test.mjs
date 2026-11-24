@@ -182,6 +182,12 @@ test('explicitly authorized Codex planner remains proposal-only', () => {
 });
 
 
+test('relative owner-approved Codex selector remains descriptive but cannot launch',async()=>{
+  const planner=createCommandPlanner({kind:'codex',executable:'codex.exe',args:[]},
+    {allowCodex:true});
+  assert.equal(planner.describe().kind,'codex');
+  await assert.rejects(planner.plan({}),{code:'PLANNER_INVALID_CONFIG'});
+});
 test('runtime floor matches unflagged node:sqlite availability',()=>{
   const manifest=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
   assert.equal(manifest.engines?.node,'>=22.13.0');

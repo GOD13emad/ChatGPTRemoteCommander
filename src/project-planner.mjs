@@ -273,6 +273,9 @@ export function createCommandPlanner(config, { allowCodex = false } = {}) {
     },
     async plan(context, { signal } = {}) {
       if (kind === 'claude') throw fail('PLANNER_PROVIDER_UNAVAILABLE');
+      // A relative Codex alias is safe to describe but never to execute.
+      // Resolve only explicitly named absolute owner executables at launch.
+      if (!path.isAbsolute(executable)) throw fail('PLANNER_INVALID_CONFIG');
       if (signal?.aborted) throw fail('PLANNER_ABORTED');
       let serialized;
       try { serialized = JSON.stringify(context); } catch { throw fail('PLANNER_INVALID_CONTEXT'); }
