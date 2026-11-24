@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
+import {assertWindowsHostLeaseStorage} from './v012-windows-host-global-lease-acl.mjs';
 
 const HOST=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -33,13 +34,13 @@ function requireSafePath(directory){
     fail('V012_NATIVE_LEASE_DIRECTORY_NOT_PRIVATE');
   return absolute;
 }
-function checkDatabaseFile(file){
+function checkDatabaseFile(file,windows=false){
   for(const suffix of ['', '-journal', '-wal', '-shm']){
     let s;
     try{s=fs.lstatSync(file+suffix);}
     catch(e){if(e?.code==='ENOENT')continue;throw e;}
     if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1
-      ||s.uid!==process.getuid()||(s.mode&0o077)!==0)
+      ||(!windows&&(s.uid!==process.getuid()||(s.mode&0o077)!==0)))
       fail('V012_NATIVE_LEASE_DATABASE_UNTRUSTED');
   }
 }
@@ -63,13 +64,15 @@ function checkedResource(key,hostId){
  * persisted lease after proving process cessation and effect disposition.
  * This implementation deliberately exports no self-serve force-release API.
  */
-export function createV012HostGlobalOperationLease({directory,hostId,now=Date.now}={}){
+function createCheckedLease({directory,hostId,now=Date.now,windows=false,verifyWindowsStorage=null}={}){
   if(typeof hostId!=='string'||!HOST.test(hostId)
     ||hostId==='.'||hostId==='..'||typeof now!=='function')
     fail('V012_NATIVE_LEASE_CONFIGURATION_INVALID');
-  const safeDir=requireSafePath(directory);
+  if(windows&&typeof verifyWindowsStorage!=='function')
+    fail('V012_WINDOWS_NATIVE_LEASE_PRIVATE_DIRECTORY_REQUIRED');
+  const safeDir=windows?directory:requireSafePath(directory);
   const file=path.join(safeDir,DB_FILE);
-  checkDatabaseFile(file);
+  checkDatabaseFile(file,windows);
   // SQLite's default create mode depends on umask. Create the pathname with
   // O_EXCL and owner-only permissions BEFORE opening it as a database.
   try{
@@ -77,12 +80,12 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
       |fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
     fs.closeSync(fd);
   }catch(e){if(e?.code!=='EEXIST')throw e;}
-  checkDatabaseFile(file);
+  checkDatabaseFile(file,windows);
   const db=new DatabaseSync(file,{timeout:1000,allowExtension:false});
   let closed=false,poisoned=false,active=0;
   try{
-    fs.chmodSync(file,0o600);
-    checkDatabaseFile(file);
+    if(!windows)fs.chmodSync(file,0o600);
+    checkDatabaseFile(file,windows);
     db.exec('PRAGMA busy_timeout=1000; PRAGMA trusted_schema=OFF; PRAGMA synchronous=EXTRA;');
     if(db.prepare('PRAGMA journal_mode').get().journal_mode!=='delete')
       fail('V012_NATIVE_LEASE_JOURNAL_MODE_INVALID');
@@ -125,6 +128,11 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
       if(closed||poisoned)fail('V012_NATIVE_LEASE_NOT_READY');
       if(typeof work!=='function')fail('V012_NATIVE_LEASE_CALLBACK_REQUIRED');
       const key=checkedResource(resource,hostId);
+      if(windows){
+        await verifyWindowsStorage();
+        if(closed||poisoned)fail('V012_NATIVE_LEASE_NOT_READY');
+        checkDatabaseFile(file,true);
+      }
       const owner=randomUUID();
       reserve(key,owner);
       active++;
@@ -158,4 +166,44 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
       closed=true;db.close();
     }
   });
+}
+
+// Linux retains its synchronous POSIX owner-private directory contract.
+export function createV012HostGlobalOperationLease({
+  directory,hostId,now=Date.now
+}={}){
+  // Do not accept externally supplied "windows" or validator arguments;
+  // only the dedicated native Windows factory may enable that code path.
+  return createCheckedLease({directory,hostId,now});
+}
+
+// Windows uses the same durable SQLite lease engine, but requires verified
+// native owner-only NTFS paths, ACLs and files before initialization and
+// before each resource acquisition. No privilege elevation or TTL takeover.
+export async function createV012WindowsHostGlobalOperationLease({
+  directory,hostId,now=Date.now
+}={}){
+  if(process.platform!=='win32'||typeof directory!=='string'
+    ||!path.win32.isAbsolute(directory)
+    ||! /^[a-z]:[\\/]/i.test(directory))
+    fail('V012_WINDOWS_NATIVE_LEASE_PRIVATE_DIRECTORY_REQUIRED');
+  const root=path.win32.resolve(directory);
+  // A canonical physical host path is required across ALL Core processes.
+  // Windows ACL checks alone cannot prove two path aliases share one DB.
+  try{
+    const canonical=fs.realpathSync.native(root);
+    if(path.win32.normalize(canonical).toLowerCase()!==root.toLowerCase())
+      fail('V012_WINDOWS_NATIVE_LEASE_DIRECTORY_ALIAS_DENIED');
+  }catch{
+    fail('V012_WINDOWS_NATIVE_LEASE_PRIVATE_DIRECTORY_REQUIRED');
+  }
+  const file=path.win32.join(root,DB_FILE);
+  const verifyWindowsStorage=()=>assertWindowsHostLeaseStorage(root,file);
+  await verifyWindowsStorage();
+  const lease=createCheckedLease({
+    directory:root,hostId,now,windows:true,verifyWindowsStorage
+  });
+  try{await verifyWindowsStorage();}
+  catch(error){lease.close();throw error;}
+  return lease;
 }

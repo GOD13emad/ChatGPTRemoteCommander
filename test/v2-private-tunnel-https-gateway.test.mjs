@@ -787,14 +787,17 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
   };
   let runtime,nativeLease;
   try{
-    // Linux uses the existing native SQLite implementation in this fixture;
-    // Windows keeps the pre-existing test adapter until its native factory
-    // is integrated and verified separately.
+    // Linux and Windows fixtures use the actual native host-global lease.
     const leaseDir=path.join(root,'shared-host-lease');
     if(linux){
       fs.mkdirSync(leaseDir,{mode:0o700});
       const {createV012HostGlobalOperationLease}=await import('../src/v012-host-global-operation-lease.mjs');
       nativeLease=createV012HostGlobalOperationLease({directory:leaseDir,hostId:'host-1'});
+    }else if(process.platform==='win32'){
+      const {ensureWindowsMonitorDirectories}=await import('../src/browser-companion-windows-private.mjs');
+      const {createV012WindowsHostGlobalOperationLease}=await import('../src/v012-host-global-operation-lease.mjs');
+      await ensureWindowsMonitorDirectories([leaseDir],{create:true});
+      nativeLease=await createV012WindowsHostGlobalOperationLease({directory:leaseDir,hostId:'host-1'});
     }
     runtime=createV012PrivateCoreRuntime({
       port:0,now:()=>now,
@@ -865,7 +868,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
                 capabilityPolicyDigest:policy,grantRevision:1,
                 expiresAtMs:claims.expiresAtMs};
             }},
-            // Only the Windows fixture still uses a disposable mock.
+            // Supported native platforms use the real lease; preserve other fixture behavior.
             withLease:nativeLease?.withLease??(async(_resource,work)=>work()),receiptStore,
           };
         },
@@ -893,12 +896,13 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     const bound=await send(2,'v2_private_owner_bind',{});
     assert.equal(bound.status,200);
     assert.equal(state.consents,1);
-    if(linux){
+    if(nativeLease){
       // A distinct OS process, not just a second connection in this process,
       // holds the exact same canonical resource. Core must not dispatch.
-      const script='import {createV012HostGlobalOperationLease as create} from '
+      const factory=linux?'createV012HostGlobalOperationLease':'createV012WindowsHostGlobalOperationLease';
+      const script='import {'+factory+' as create} from '
         +JSON.stringify(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url).href)
-        +';const l=create({directory:process.argv[1],hostId:"host-1"});'
+        +';const l=await create({directory:process.argv[1],hostId:"host-1"});'
         +'await l.withLease(JSON.stringify([1,"host-1","workflow-root","root-1"]),'
         +'async()=>{console.log("HELD");await new Promise(resolve=>process.stdin.once("data",resolve));});l.close();';
       const child=spawn(process.execPath,['--input-type=module','-e',script,leaseDir],
@@ -910,7 +914,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       let output='';
       try{
         await new Promise((resolve,reject)=>{
-          const timer=setTimeout(()=>reject(Error('independent lease timeout')),5000);
+          const timer=setTimeout(()=>reject(Error('independent lease timeout')),20000);
           child.stdout.on('data',buf=>{output+=buf;if(output.includes('HELD')){
             clearTimeout(timer);resolve();
           }});
@@ -925,7 +929,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
           child.stdin.on('error',()=>{});
           child.stdin.end('release');
         }
-        const timer=setTimeout(()=>child.kill(),5000);
+        const timer=setTimeout(()=>child.kill(),10000);
         try{assert.equal(await exited,0);}finally{clearTimeout(timer);}
       }
     }

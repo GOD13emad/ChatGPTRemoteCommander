@@ -177,21 +177,46 @@ for src,rel in iter_entries(gui):
         raise SystemExit('RC012_MERGE_SPECIAL_FILE '+str(rel))
 native_control=(native/'DEBIAN/control').read_text()
 gui_control=(gui/'DEBIAN/control').read_text()
-def field(s,name):
-    for row in s.splitlines():
+def field(s,name,required=True):
+    # Generated package control fields may use continuation lines.
+    rows=s.splitlines()
+    matches=[]
+    for i,row in enumerate(rows):
         if row.startswith(name+': '):
-            return row.partition(': ')[2]
-    raise SystemExit('RC012_MERGE_MISSING_CONTROL '+name)
+            j=i+1
+            while j<len(rows) and rows[j].startswith((' ','\t')):
+                j+=1
+            matches.append((i,j,' '.join([row.partition(': ')[2]]+[r.strip() for r in rows[i+1:j]])))
+    if len(matches)>1:
+        raise SystemExit('RC012_MERGE_DUPLICATE_CONTROL '+name)
+    if not matches:
+        if required:raise SystemExit('RC012_MERGE_MISSING_CONTROL '+name)
+        return ''
+    return matches[0][2]
+
+def merge_relationship(s,native_control,name,required):
+    specs=[]
+    for value in (field(native_control,name,required),field(s,name,required)):
+        for spec in value.split(','):
+            spec=spec.strip()
+            if spec and spec not in specs:specs.append(spec)
+    if not specs:return s,specs
+    rows=s.splitlines()
+    for i,row in enumerate(rows):
+        if row.startswith(name+': '):
+            j=i+1
+            while j<len(rows) and rows[j].startswith((' ','\t')):j+=1
+            rows[i:j]=[name+': '+', '.join(specs)]
+            return '\n'.join(rows)+'\n',specs
+    i=next((i for i,row in enumerate(rows) if row.startswith('Description: ')),len(rows))
+    rows.insert(i,name+': '+', '.join(specs))
+    return '\n'.join(rows)+'\n',specs
 if field(gui_control,'Package')!=field(native_control,'Package'):
     raise SystemExit('RC012_MERGE_CONTROL_PACKAGE_MISMATCH')
 if field(gui_control,'Architecture')!=field(native_control,'Architecture'):
     raise SystemExit('RC012_MERGE_CONTROL_ARCH_MISMATCH')
-deps=[]
-for spec in (field(native_control,'Depends')+', '+field(gui_control,'Depends')).split(','):
-    spec=spec.strip()
-    if spec and spec not in deps:deps.append(spec)
-gui_control=gui_control.replace('Depends: '+field(gui_control,'Depends'),
-   'Depends: '+', '.join(deps),1)
+gui_control,deps=merge_relationship(gui_control,native_control,'Depends',True)
+gui_control,recommends=merge_relationship(gui_control,native_control,'Recommends',False)
 # The Electron GUI DEB is an input payload, not an authority to install
 # root-running maintainer scripts into the single Native Commander package.
 # The canonical Native DEB deliberately has no maintainer hooks. Fail on

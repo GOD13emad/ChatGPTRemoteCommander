@@ -160,6 +160,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: Remote Commander maintainers
 Depends: libc6 (>= 2.31), ca-certificates, curl (>= 7.68)
+Recommends: python3, python3-pil, python3-gi, xdotool, x11-utils
 Description: Single native Remote Commander application core (V0.12 QA)
  One dpkg-owned immutable code and Node runtime for all local profiles.
  Native owner admission, authenticated G1/J01 and fleet approval are

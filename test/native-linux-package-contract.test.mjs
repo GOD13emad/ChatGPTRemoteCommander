@@ -216,3 +216,29 @@ linuxOnlyTest('native Debian package version equals canonical dev train and adva
   const monotonic=spawnSync('dpkg',['--compare-versions',out.stdout,'gt','0.12.0~dev.12']);
   assert.equal(monotonic.status,0,'dev.13 must upgrade an installed dev.12 package');
 });
+
+linuxOnlyTest('optional native desktop dependencies survive unified DEB control merge',()=>{
+  const merger=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  assert.match(source,/^Recommends: python3, python3-pil, python3-gi, xdotool, x11-utils$/m);
+  const start=merger.indexOf('def field(s,name,required=True):');
+  const end=merger.indexOf("if field(gui_control,'Package')",start);
+  assert.ok(start>=0&&end>start);
+  assert.match(merger,/gui_control,recommends=merge_relationship\(gui_control,native_control,'Recommends',False\)/);
+  const fixture=[
+    merger.slice(start,end),
+    "native='Depends: libc6, ca-certificates\\nRecommends: python3, python3-pil, python3-gi, xdotool, x11-utils\\nDescription: Native\\n'",
+    "gui='Depends: libgtk-3-0,\\n ca-certificates\\nRecommends: libappindicator3-1,\\n python3\\nDescription: GUI\\n multiline text\\n'",
+    "s,deps=merge_relationship(gui,native,'Depends',True)",
+    "s,rec=merge_relationship(s,native,'Recommends',False)",
+    "assert deps==['libc6','ca-certificates','libgtk-3-0']",
+    "assert rec==['python3','python3-pil','python3-gi','xdotool','x11-utils','libappindicator3-1']",
+    "assert 'Description: GUI\\n multiline text\\n' in s",
+    "s2,_=merge_relationship('Depends: libc6\\nDescription: GUI\\n',native,'Recommends',False)",
+    "assert 'Recommends: python3, python3-pil, python3-gi, xdotool, x11-utils\\n' in s2",
+    "try: field('Depends: libc6\\nDepends: curl\\n','Depends')",
+    "except SystemExit as error: assert str(error)=='RC012_MERGE_DUPLICATE_CONTROL Depends'",
+    "else: raise AssertionError('duplicate control accepted')"
+  ].join('\n');
+  const run=spawnSync('/usr/bin/python3',['-c',fixture],{encoding:'utf8',timeout:5000});
+  assert.equal(run.status,0,run.stderr||run.stdout);
+});
