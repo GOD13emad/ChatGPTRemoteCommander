@@ -101,10 +101,16 @@ export function readWindowsOwnerTunnelBinding({
     ||profileName==='.'||profileName==='..'
     ||typeof appData!=='string'||!path.isAbsolute(appData))
     return {profilePresent:false,valid:false};
-  const file=path.join(appData,'tunnel-client',profileName+'.yaml');
+  const directory=path.join(appData,'tunnel-client');
+  const file=path.join(directory,profileName+'.yaml');
   try{
+    // A linked parent can redirect a regular-looking YAML file outside the
+    // owner's tunnel configuration without making the YAML itself a symlink.
+    const parent=fs.lstatSync(directory);
+    if(!parent.isDirectory()||parent.isSymbolicLink())
+      return {profilePresent:true,valid:false};
     const stat=fs.lstatSync(file);
-    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16384)
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>16384)
       return {profilePresent:true,valid:false};
     const binding=parseMainTunnelBinding(fs.readFileSync(file,'utf8'));
     return {profilePresent:true,valid:!!binding,port:binding?.port??null,tls:binding?.tls??false};
