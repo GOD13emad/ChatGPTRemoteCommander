@@ -28,6 +28,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: unified-pilot-${{ github.ref }}
   cancel-in-progress: true
@@ -149,6 +150,37 @@ jobs:
       - name: Actual native first install and exact uninstall via ONE coordinator on disposable OS (NoPromote)
         shell: bash
         run: node test/universal-native-coordinator-hosted.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+      # The native Core and merged candidate now correctly share one version.
+      # A real upgrade must start from different, independently attested bytes.
+      - name: Fetch exact attested historical Linux DEB (NoPromote)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=GOD13emad/ChatGPTRemoteCommander
+          old_commit=e2d58bb0d59eb11ac8d6075913ff4258cab32d47
+          old_ref=refs/heads/fix/rc012-dev12-minimatch-runtime-20261123
+          old_hash=4a6cecd5eef2faca8d726dbf6ac3cd1d6118a4ba86518a3a63dc76e3ae79915e
+          run=45153904956
+          gh run view "$run" --repo "$repo" --json headSha,headBranch,conclusion,event | \
+            jq -e --arg sha "$old_commit" --arg ref "$old_ref" \
+            '.headSha==$sha and ("refs/heads/"+.headBranch)==$ref and .conclusion=="success" and .event=="workflow_dispatch"' >/dev/null
+          dest="$GITHUB_WORKSPACE/dist/qa-historical"
+          test ! -e "$dest" && test ! -L "$dest"
+          mkdir -m 700 "$dest"
+          gh run download "$run" --repo "$repo" --name rc-unified-linux-deb-qa --dir "$dest"
+          old="$dest/Remote-Commander-Unified-0.12.0-dev.12-Linux-amd64.deb"
+          test -f "$old" && test ! -L "$old"
+          printf '%s  %s\n' "$old_hash" "$old" | sha256sum -c -
+          gh attestation verify "$old" --repo "$repo" --source-digest "$old_commit" \
+            --source-ref "$old_ref" --signer-workflow "$repo/.github/workflows/unified-installer-pilot.yml" \
+            --deny-self-hosted-runners
+          test "$(dpkg-deb --field "$old" Package)" = chatgpt-remote-commander
+          test "$(dpkg-deb --field "$old" Version)" = '0.12.0~dev.12'
+          test "$(dpkg-deb --field "$old" Architecture)" = amd64
+          echo RC012_HISTORICAL_DEB_ATTESTED_PASS
       - name: One common native install/upgrade/rollback lifecycle on both hosted OSes (NoPromote)
         shell: bash
         run: node tools/universal-install/native-smoke.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
