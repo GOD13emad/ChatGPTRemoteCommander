@@ -49,9 +49,17 @@ function detectFirefox(explicit){
  return null;
 }
 function detectGecko(){
- const ownerLocal=path.join(os.homedir(),'.local','share','chatgpt-remote-commander','adapters','geckodriver','geckodriver');
- const ownerLocalWin=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'ChatGPTRemoteCommander','adapters','geckodriver','geckodriver.exe');
- for(const p of [which('geckodriver.exe'),which('geckodriver'),ownerLocalWin,ownerLocal,'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
+ // PATH and LOCALAPPDATA are ambient input, not executable authorization.
+ // Use only owner-installed adapter locations or known OS package paths.
+ const home=os.homedir();
+ const ownerLocal=path.join(home,'.local','share','chatgpt-remote-commander','adapters','geckodriver','geckodriver');
+ const ownerBin=path.join(home,'.local','bin','geckodriver');
+ const ownerLocalWin=path.join(home,'AppData','Local','ChatGPTRemoteCommander','adapters','geckodriver','geckodriver.exe');
+ const candidates=process.platform==='win32'
+   ?[ownerLocalWin,'C:\\Program Files\\Mozilla Firefox\\geckodriver.exe',
+     'C:\\Program Files (x86)\\Mozilla Firefox\\geckodriver.exe']
+   :[ownerLocal,ownerBin,'/snap/bin/geckodriver','/usr/bin/geckodriver','/usr/local/bin/geckodriver'];
+ for(const file of candidates)if(exists(file))return path.resolve(file);
  return null;
 }
 async function freePort(){
