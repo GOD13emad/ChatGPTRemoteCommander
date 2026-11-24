@@ -68,6 +68,8 @@ for (const required of [
 ]) {
   if (!builder.includes(required)) throw new Error(`release asset builder missing ${required}`);
 }
+if (!builder.includes('python3 "$ROOT/tools/check-public-release-boundary.py" "$OUT"'))
+  throw new Error('PUBLIC_RELEASE_PRIVATE_EXTENSION_PATH_GATE_MISSING');
 if (!builder.includes('[[ "$count" -eq 19 ]]')) throw new Error('release asset count guard missing');
 if (!builder.includes('Release commit: $COMMIT')) throw new Error('installer bundle provenance missing');
 for (const marker of [
