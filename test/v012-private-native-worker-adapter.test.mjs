@@ -368,3 +368,57 @@ test('durable native Worker revocation during final route lookup fails closed',a
       'real durable journal must record registration plus revocation');
   }finally{f.close();}
 });
+
+test('durable WorkerIdentityAuthority cannot authorize after revocation at final get',async()=>{
+  const f=fixture();
+  try{
+    await f.enable();
+    const registration=await f.authority.registerWorker({
+      privateKey:f.keys.privateKey
+    });
+    assert.equal(f.workflow.workerIdentityJournalStatus().eventCount,1);
+    let reads=0;
+    const registry={
+      ...f.workerRegistry,
+      get:async workerId=>{
+        const envelope=await f.workerRegistry.get(workerId);
+        if(++reads===2){
+          const revoked=await f.authority.revokeWorker({
+            workerId:f.workerId,reasonCode:'during-authority-final-read'
+          });
+          assert.equal(revoked.revoked,true);
+        }
+        return envelope;
+      }
+    };
+    const authority=createWorkerIdentityAuthority({
+      hostId:f.identity.hostId,profileId:f.identity.profileId,
+      issuer:'commander.local',audience:'remote-commander',
+      resolveOwnerContext:f.adapter.resolveOwnerContext,
+      resolveOwnerGrant:f.adapter.resolveOwnerGrant,
+      authorizeExactInvocation:f.adapter.authorizeExactInvocation,
+      resolveCapabilityPolicyDigest:async()=>POLICY,
+      resolveDeviceIdentity:async()=>({
+        source:'native-device-attestor',provider:'native-key-store',
+        deviceIdHash:DEVICE,ownerSidHash:OWNER,verified:true,
+        attestedAtMs:f.state.now-1000,expiresAtMs:f.state.now+100000
+      }),
+      resolveTransportIdentity:async()=>({
+        source:'native-tunnel-attestor',provider:'openai-secure-mcp-tunnel',
+        profileId:f.identity.profileId,tunnelIdHash:TUNNEL,
+        ownerSidHash:OWNER,authenticated:true,
+        controlPlanePollOk:true,healthzStatus:200,readyzStatus:200,
+        lastPollAtMs:f.state.now-1000,expiresAtMs:f.state.now+100000
+      }),
+      registry,now:()=>f.state.now
+    });
+    await assert.rejects(authority.authorizeWorker({
+      workerId:f.workerId,invocation:{
+        tool:'read_text',arguments:{path:'qa-fixture.txt'}
+      }
+    }),{code:'WORKER_IDENTITY_REVOKED'});
+    assert.equal(reads,2);
+    assert.equal(registration.claims.workerId,f.workerId);
+    assert.equal(f.workflow.workerIdentityJournalStatus().eventCount,2);
+  }finally{f.close();}
+});
