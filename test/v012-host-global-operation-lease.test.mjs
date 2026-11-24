@@ -71,6 +71,25 @@ test('real durable receipts cannot authorize a second requestId after an unknown
   assert.equal(await b.withLease(key('browser-target','separate'),async()=>42),42);
 });
 
+test('unknown outcome from parent blocks a distinct process without dispatch', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const a=createV012HostGlobalOperationLease({directory,hostId:host});
+  t.after(()=>a.close());
+  await assert.rejects(a.withLease(key(),async()=>{
+    throw Object.assign(Error('effect started, result unknown'),{code:'OUTCOME_UNCERTAIN'});
+  }),{code:'OUTCOME_UNCERTAIN'});
+  const module=fileURLToPath(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url));
+  const childCode='import {createV012HostGlobalOperationLease} from '+
+    JSON.stringify(pathToFileURL(module).href)+';'+
+    'const l=createV012HostGlobalOperationLease({directory:process.argv[1],hostId:process.argv[2]});'+
+    'try{await l.withLease(process.argv[3],async()=>{process.exit(29)});process.exit(30)}'+
+    'catch(e){if(e.code!=="V012_NATIVE_LEASE_OCCUPIED")process.exit(31);process.exit(28)}';
+  const child=spawnSync(process.execPath,
+    ['--experimental-sqlite','--input-type=module','-e',childCode,directory,host,key()],
+    {encoding:'utf8',timeout:15000});
+  assert.equal(child.status,28,child.stderr||child.stdout);
+});
+
 test('crashed process holds durable denial until separate native reconciliation', {skip:!LINUX},async t=>{
   const directory=setup(t);
   const module=fileURLToPath(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url));
