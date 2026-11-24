@@ -128,10 +128,22 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
       const owner=randomUUID();
       reserve(key,owner);
       active++;
-      try{return await work();}
-      finally{
-        try{release(key,owner);}
-        finally{active--;}
+      // A thrown/rejected effect may have started an external operation before
+      // losing its receipt. Do not make this resource available to another
+      // requestId while cessation/effect disposition is unknown. No automatic
+      // TTL expiry or rollback can prove that an external effect stopped.
+      let fulfilled=false;
+      try{
+        const value=await work();
+        fulfilled=true;
+        return value;
+      }finally{
+        try{
+          if(fulfilled)release(key,owner);
+          // A fulfilled callback is only sufficient when the integration
+          // contract returns AFTER its durable terminal receipt has committed.
+          // This function itself cannot attest to remote effect completion.
+        }finally{active--;}
       }
     },
     close(){
