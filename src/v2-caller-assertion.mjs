@@ -118,6 +118,9 @@ export function createV2VerifiedObservedCaller({
     const caller=verifyV2CallerAssertion({route:r,assertion,trust,tool,args,nowMs:now()});
     const actual=await observedNativeSession();
     if(!safe(actual)||actual!==caller.osSessionId)fail('V2_ASSERTION_NATIVE_SESSION_MISMATCH');
+    // Native owner observation can suspend across assertion expiration or
+    // signer revocation. Never reuse a successful pre-await verification.
+    verifyV2CallerAssertion({route:r,assertion,trust,tool,args,nowMs:now()});
     return Object.freeze({
       hostId:caller.hostId,principalId:caller.principalId,
       profileId:caller.profileId,conversationId:caller.conversationId
