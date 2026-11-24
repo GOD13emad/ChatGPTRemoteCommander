@@ -10,6 +10,16 @@ import { codexLaunchAuthorized } from './no-codex-policy.mjs';
 import { processContainmentAvailable } from './process-containment.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
+// Node timers accept at most a signed 32-bit millisecond delay. Oversized
+// scheduler configuration must fail closed, never collapse to a 1 ms loop.
+function requireWorkflowSchedulerIntervalMs(value) {
+  if (value === undefined) return 5000;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)
+    || value < 1000 || value > 3_600_000)
+    throw new Error('WORKFLOW_SCHEDULER_INTERVAL_INVALID');
+  return value;
+}
+
 const id = { ...text(64), pattern: '^[a-z][a-z0-9_-]{0,63}$' };
 const correlationId = { ...text(128), pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' };
 const rev = { type: 'integer', minimum: 1, maximum: 10000 };
@@ -119,6 +129,8 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   };
   const defaultExecutionProfile = settings.executionProfile?.default ?? {};
   const schedulerPolicy = settings.scheduler ?? { enabled:false };
+  const schedulerIntervalMs = schedulerPolicy.enabled === true
+    ? requireWorkflowSchedulerIntervalMs(schedulerPolicy.intervalMs) : null;
   const store = new WorkflowStore({
     directory: settings.directory, rootLeaseDirectory: settings.rootLeaseDirectory ?? settings.directory,
     allowedRoots: roots, device, configSha256,
@@ -284,9 +296,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
 
   let timer=null;
   if (schedulerPolicy?.enabled === true) {
-    const interval = Number.isSafeInteger(Number(schedulerPolicy.intervalMs)) && Number(schedulerPolicy.intervalMs)>=1000
-      ? Number(schedulerPolicy.intervalMs) : 5000;
-    timer=setInterval(()=>{ schedulerTick({includeDisabled:false}).catch(()=>{}); },interval);
+    timer=setInterval(()=>{ schedulerTick({includeDisabled:false}).catch(()=>{}); },schedulerIntervalMs);
     timer.unref?.();
   }
 
