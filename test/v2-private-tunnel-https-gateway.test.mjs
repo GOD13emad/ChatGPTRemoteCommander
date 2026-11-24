@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
 import {createHash} from 'node:crypto';
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createWindowsNativeOwnerSessionProvider} from '../src/native-owner-session-provider-windows.mjs';
 import {createV2CandidatePrivateTunnelHttpsGateway} from '../src/v2-private-tunnel-https-gateway.mjs';
@@ -785,8 +785,17 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     execFileImpl:nativeExec,verifyFile:()=>{},
     snapshotTimeoutMs:1000,dialogTimeoutMs:5000
   };
-  let runtime;
+  let runtime,nativeLease;
   try{
+    // Linux uses the existing native SQLite implementation in this fixture;
+    // Windows keeps the pre-existing test adapter until its native factory
+    // is integrated and verified separately.
+    const leaseDir=path.join(root,'shared-host-lease');
+    if(linux){
+      fs.mkdirSync(leaseDir,{mode:0o700});
+      const {createV012HostGlobalOperationLease}=await import('../src/v012-host-global-operation-lease.mjs');
+      nativeLease=createV012HostGlobalOperationLease({directory:leaseDir,hostId:'host-1'});
+    }
     runtime=createV012PrivateCoreRuntime({
       port:0,now:()=>now,
       identity:{
@@ -856,8 +865,8 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
                 capabilityPolicyDigest:policy,grantRevision:1,
                 expiresAtMs:claims.expiresAtMs};
             }},
-            // Disposable one-file QA only; production supplies a machine-global lease.
-            withLease:async(_resource,work)=>work(),receiptStore,
+            // Only the Windows fixture still uses a disposable mock.
+            withLease:nativeLease?.withLease??(async(_resource,work)=>work()),receiptStore,
           };
         },
         ownerSessionOptions
@@ -884,6 +893,42 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     const bound=await send(2,'v2_private_owner_bind',{});
     assert.equal(bound.status,200);
     assert.equal(state.consents,1);
+    if(linux){
+      // A distinct OS process, not just a second connection in this process,
+      // holds the exact same canonical resource. Core must not dispatch.
+      const script='import {createV012HostGlobalOperationLease as create} from '
+        +JSON.stringify(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url).href)
+        +';const l=create({directory:process.argv[1],hostId:"host-1"});'
+        +'await l.withLease(JSON.stringify([1,"host-1","workflow-root","root-1"]),'
+        +'async()=>{console.log("HELD");await new Promise(resolve=>process.stdin.once("data",resolve));});l.close();';
+      const child=spawn(process.execPath,['--input-type=module','-e',script,leaseDir],
+        {stdio:['pipe','pipe','inherit']});
+      const exited=new Promise(resolve=>{
+        child.once('error',()=>resolve(null));
+        child.once('exit',code=>resolve(code));
+      });
+      let output='';
+      try{
+        await new Promise((resolve,reject)=>{
+          const timer=setTimeout(()=>reject(Error('independent lease timeout')),5000);
+          child.stdout.on('data',buf=>{output+=buf;if(output.includes('HELD')){
+            clearTimeout(timer);resolve();
+          }});
+          child.once('exit',code=>{clearTimeout(timer);reject(Error('lease child exited '+code));});
+          child.once('error',error=>{clearTimeout(timer);reject(error);});
+        });
+        const blocked=await send(31,'read_text',{path:approved});
+        assert.equal(blocked.status,503);
+        assert.equal(state.effects,0,'no Core dispatch while independent process holds lease');
+      }finally{
+        if(child.exitCode===null&&!child.killed){
+          child.stdin.on('error',()=>{});
+          child.stdin.end('release');
+        }
+        const timer=setTimeout(()=>child.kill(),5000);
+        try{assert.equal(await exited,0);}finally{clearTimeout(timer);}
+      }
+    }
     const first=await send(3,'read_text',{path:approved});
     assert.equal(first.status,200);
     assert.equal(first.body.result.isError,false);
@@ -901,6 +946,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
   }finally{
     await runtime?.close();
     receiptStore.close();
+    nativeLease?.close();
     f.dispose();
     fs.rmSync(root,{recursive:true,force:true});
   }
