@@ -1,5 +1,17 @@
 # Project Brain — ChatGPT Remote Commander
 
+## RC012-SHARED-CORE-WORKFLOW-FENCE-20261124 — source integration, migration open
+
+Owner's current accepted outcome: finish reviewed 0.12 migration with genuine enabled capabilities/FULL_ACCESS and one active installation per host; preserve native OS consent, accounts, working data and verified rollback. This is not yet achieved.
+
+PR610 exact 359b84ff was AI-assisted technically reviewed on actual isolated Windows and Linux source, then merged into Draft carrier PR586 as 25dc7b51 with checked head/base and normal merge. Linux six-suite 73 PASS/7 OS SKIP; Windows 57 PASS/23 OS SKIP, both zero failures including native two-process exclusion. Review is explicit AI-assisted source acceptance, not a separate human or fleet acceptance.
+
+This follow-up connects the same native physical-root fence to both the protected Private Core operation gate and WorkflowTools. Core constructs it from the existing OS-validated native lease and pinned owner module's root resolver; startup failure leaves workflow effects denied. Route identity is captured from the already verified operation rather than reconstructed from resource keys. A configured native host lease cannot silently retain a separate direct-route lock. CI now includes the three previously unscheduled shared-fence suites, preserving all 37 earlier suites and deadlines.
+
+Fresh Windows combined-gate/WorkflowTools checks: 37 PASS; native HTTPS/Core/CI contracts: 62 PASS/3 OS SKIP; zero failures. Exact new regression against unchanged 25dc7b51: 2 FAIL/1 PASS, demonstrating missing composition. New tests use synthetic admission callbacks explicitly; real OS lock tests do not attest production Chat/J01/Worker grants. Linux and hosted combined-head qualification remain pending until independently observed.
+
+READY: exact-source cross-platform/hosted verification and reviewed source admission. BLOCKED migration: enrolled owner-root resolver/bootstrap, actual persistent J01/Worker enrollment and revoke, signed same-head native packages and verified installed canary/rollback; MMZ connection must be rechecked. Current routed fleet remains legacy dev23; no service stopped, candidate installed, security bypass or Stable release here. Do not retire the remaining usable connection before the replacement is independently healthy and reversible.
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair

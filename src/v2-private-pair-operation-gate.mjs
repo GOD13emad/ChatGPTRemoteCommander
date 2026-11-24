@@ -86,7 +86,7 @@ function strictRoute(value){
 export function createV2PrivatePairOperationGate({
   hostId,profileId,principalId,expectedTunnelIdHash,expectedOwnerSidHash,
   attestTransport,resolveOwnerContext,readCurrentOwnerSidHash,
-  verifyExactNativeGrant,withLease,receiptStore,execute,now=Date.now
+  verifyExactNativeGrant,withLease,withRouteLease=null,receiptStore,execute,now=Date.now
 }={}){
   if(![hostId,profileId,principalId].every(v=>typeof v==='string'
     &&ID.test(v)&&v!=='.'&&v!=='..')
@@ -94,7 +94,8 @@ export function createV2PrivatePairOperationGate({
       typeof v==='string'&&HASH.test(v))
     ||[attestTransport,resolveOwnerContext,readCurrentOwnerSidHash,
       verifyExactNativeGrant,withLease,execute,now].some(f=>typeof f!=='function')
-    ||typeof receiptStore?.execute!=='function')
+    ||typeof receiptStore?.execute!=='function'
+    ||(withRouteLease!==null&&typeof withRouteLease!=='function'))
     fail('V2_PRIVATE_OPERATION_BOOTSTRAP_REQUIRED');
 
   async function verify(request,route){
@@ -157,7 +158,11 @@ export function createV2PrivatePairOperationGate({
             route:grantRoute,tool:grantTool,arguments:frozenArgs,ownerContext:c
           }))===true;
         },
-        withLease,receiptStore,
+        // Capture the already normalized and owner-verified route. A shared
+        // physical-root coordinator must not reconstruct identity from a
+        // caller-selected resource key or a mutable current-operation slot.
+        withLease:withRouteLease===null?withLease:
+          (_resource,work)=>withRouteLease(r,work),receiptStore,
         // At-most-once must detect changed arguments for the SAME operationId.
         // Existing MutationIdempotencyStore retains only its input digest.
         receiptInput:Object.freeze({route:r,arguments:frozenArgs}),
