@@ -237,7 +237,11 @@ export function createCommandPlanner(config, { allowCodex = false } = {}) {
   const { kind, executable, model, modelFamily, reasoningEffort, executionMode, profileVersion } = config;
   const args = config.args ?? [];
   assertNoCodexExecutable(executable, { allowCodex });
-  if (typeof executable !== 'string' || !executable || executable.includes('\0')
+  // An owner-approved command must name its exact program; a bare PATH
+  // lookup (or a scratch-relative executable) can select a different binary.
+  if (typeof executable !== 'string' || !executable
+      || (kind === 'command' && !path.isAbsolute(executable))
+      || executable.includes('\0')
       || !Array.isArray(args) || args.length > 64
       || args.some(arg => typeof arg !== 'string' || arg.includes('\0') || arg.length > 8192)
       || (model !== undefined && (typeof model !== 'string' || !model || model.length > 160 || /[\x00-\x1f]/.test(model)))) {

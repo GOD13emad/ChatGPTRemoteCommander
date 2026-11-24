@@ -124,7 +124,7 @@ test('missing executable fails without returning operating system details', asyn
 });
 
 test('legacy configured provider timeout remains loadable but runtime stays transport-bounded', () => {
-  const planner = createCommandPlanner({ kind: 'command', executable: 'x', timeoutMs: 120000 });
+  const planner = createCommandPlanner({ kind: 'command', executable: process.execPath, timeoutMs: 120000 });
   assert.equal(planner.describe().timeoutMs, 30000);
 });
 
@@ -211,4 +211,13 @@ test('Windows termination helpers pin taskkill to trusted machine path even if S
   assert.match(sourcePlanner,/spawn\(WINDOWS_SYSTEM_TASKKILL_EXE,/);
   assert.doesNotMatch(sourcePlatform,/path\.join\(process\.env\.SystemRoot/);
   assert.doesNotMatch(sourcePlanner,/path\.join\(process\.env\.SystemRoot/);
+});
+
+test('trusted command planner rejects relative or ambient PATH-selected executables', () => {
+  for (const executable of ['node','./node','../bin/node','subdir/node','node.exe','./planner']) {
+    assert.throws(() => createCommandPlanner({kind:'command',executable,args:[]}),
+      /PLANNER_INVALID_CONFIG/, 'untrusted executable selector '+executable);
+  }
+  const planner=createCommandPlanner({kind:'command',executable:process.execPath,args:[]});
+  assert.equal(planner.describe().controls,'trusted-command-process');
 });
