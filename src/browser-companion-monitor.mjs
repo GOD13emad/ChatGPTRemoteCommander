@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
-import { mkdir, lstat, chmod, writeFile, rename, unlink } from 'node:fs/promises';
+import { mkdir, lstat, chmod, writeFile, rename, unlink, opendir, open } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 
 const MAX_BYTES = 64 * 1024;
@@ -140,6 +141,73 @@ export async function writeBrowserCompanionInstanceMonitor(base, instance, input
   await provePrivateRoot(base, options);
   await provePrivateRoot(flavor.join(base, 'instances'), options);
   return writeBrowserCompanionMonitor(scopedRoot, input, options);
+}
+
+// Advisory discovery only. CEF still enforces its own native private-file
+// checks; neither a fresh snapshot nor the selection confers any authority.
+const SCOPE_ID=/^[a-f0-9]{64}$/;
+const MAX_SCOPES=128;
+async function inspectExistingPrivateDirectory(root) {
+  const st=await lstat(root);
+  if(!st.isDirectory()||st.isSymbolicLink())throw Error('BROWSER_COMPANION_ROOT_UNSAFE');
+  if(process.platform!=='win32'&&((st.mode&0o077)!==0||
+    (typeof process.getuid==='function'&&st.uid!==process.getuid())))
+    throw Error('BROWSER_COMPANION_ROOT_NOT_PRIVATE');
+}
+async function readInstanceSelection(base,id,now) {
+  if(typeof id!=='string'||!SCOPE_ID.test(id))throw Error('BROWSER_COMPANION_SELECTION_INVALID');
+  const instances=path.join(base,'instances'),root=path.join(instances,id);
+  for(const dir of [base,instances,root])await inspectExistingPrivateDirectory(dir);
+  const file=path.join(root,'commander-monitor.json');
+  const first=await lstat(file);
+  const safe=st=>st.isFile()&&!st.isSymbolicLink()&&st.nlink===1&&st.size>0&&st.size<=MAX_BYTES&&
+    (process.platform==='win32'||((st.mode&0o077)===0&&
+      (typeof process.getuid!=='function'||st.uid===process.getuid())));
+  if(!safe(first))throw Error('BROWSER_COMPANION_SNAPSHOT_UNSAFE');
+  const fd=await open(file,constants.O_RDONLY|(process.platform==='win32'?0:(constants.O_NOFOLLOW??0)));
+  let data;
+  try {
+    const before=await fd.stat();
+    const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs;
+    if(!safe(before)||!same(first,before))throw Error('BROWSER_COMPANION_SNAPSHOT_CHANGED');
+    const buf=Buffer.alloc(MAX_BYTES+1);let total=0;
+    while(total<buf.length){const r=await fd.read(buf,total,buf.length-total,null);if(!r.bytesRead)break;total+=r.bytesRead;}
+    const after=await fd.stat(),current=await lstat(file);
+    if(total!==before.size||!safe(current)||!same(before,after)||!same(before,current))
+      throw Error('BROWSER_COMPANION_SNAPSHOT_CHANGED');
+    data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(buf.subarray(0,total)));
+  }finally{await fd.close();}
+  const identity=data?.identity;
+  if(data?.schema!==1||data.kind!=='COMMANDER_LIVE_MONITOR'||
+    identity?.platform!==process.platform||
+    !/^[a-f0-9]{64}$/.test(identity?.configSha256??'')||
+    typeof identity?.version!=='string'||!/^[A-Za-z0-9._+-]{1,64}$/.test(identity.version)||
+    !Number.isSafeInteger(data.observedAtEpochMs)||!Number.isSafeInteger(data.expiresAtEpochMs)||
+    data.observedAtEpochMs>now||data.expiresAtEpochMs<=now||
+    data.expiresAtEpochMs<data.observedAtEpochMs||data.expiresAtEpochMs-data.observedAtEpochMs>30000||
+    browserCompanionInstanceRoot(base,identity)!==root)
+    throw Error('BROWSER_COMPANION_SELECTION_STALE_OR_MISMATCH');
+  return {scopeId:id,profile:identity.profile,port:identity.port,version:identity.version,
+    expiresAtEpochMs:data.expiresAtEpochMs,root};
+}
+export async function listBrowserCompanionInstances({base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
+  if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
+  try{await inspectExistingPrivateDirectory(base);await inspectExistingPrivateDirectory(path.join(base,'instances'));}
+  catch(error){if(error.code==='ENOENT')return [];throw error;}
+  const found=[];let count=0;
+  const dir=await opendir(path.join(base,'instances'));
+  for await(const entry of dir){
+    if(++count>MAX_SCOPES)throw Error('BROWSER_COMPANION_SCOPE_LIMIT');
+    if(!entry.isDirectory()||entry.isSymbolicLink()||!SCOPE_ID.test(entry.name))continue;
+    try{const {root,...metadata}=await readInstanceSelection(base,entry.name,now);found.push(metadata);}catch{}
+  }
+  return found.sort((a,b)=>a.profile.localeCompare(b.profile)||a.port-b.port);
+}
+export async function selectBrowserCompanionInstance(scopeId,{base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
+  if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
+  const selected=await readInstanceSelection(base,scopeId,now);
+  return {...selected,environmentVariable:'CGWA_COMPANION_ROOT',nativeValidationRequired:true,
+    readOnly:true,actionAuthorization:false,ownerLaunchRequired:true};
 }
 
 export function startBrowserCompanionMonitor({ snapshot, root = defaultBrowserCompanionRoot(), instance, intervalMs = 2000, onError = () => {} } = {}) {

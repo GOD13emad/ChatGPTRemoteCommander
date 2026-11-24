@@ -131,5 +131,4 @@ credentials or auto-grant tool access. The CEF reader's existing private-file
 and freshness checks still apply. Existing root-level monitor/binding files
 are not changed or migrated by this change. A legacy CEF launch with no
 explicit selection will not receive new monitor updates from the corrected
-Core. Full native launcher/GUI selection and installed acceptance are separate
-gates; this is not a new installer or production promotion.
+Core. The unified GUI now discovers fresh exact-scope records and displays the selected root after revalidation; it never launches CEF automatically or chooses a profile by recency. Preview Core has monitor publication disabled. Native CEF launch and installed acceptance remain separate gates; this is not production promotion.

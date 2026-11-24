@@ -142,6 +142,11 @@ async function openInternalCompanionPopup(){
   await popup.loadURL('chrome-extension://'+id+'/popup.html');
   return {ok:true,extensionPopup:true,ownerPairingRequired:true};
 }
+async function monitorSelector(){
+  const core=packagedCore();
+  validateCore(core);
+  return import(pathToFileURL(path.join(core,'src','browser-companion-monitor.mjs')).href);
+}
 async function migrationPreflight(){
   // Fixed local module only, no user-supplied command, path, or privilege.
   const target=pathToFileURL(path.join(__dirname,'migration-preflight.mjs')).href;
@@ -264,6 +269,14 @@ else{
     ipcMain.handle('commander:companion:browser-open',(event,id)=>{
       if(event.sender!==window?.webContents)throw Error('COMPANION_OWNER_WINDOW_REQUIRED');
       return openExtensionManager(id);
+    });
+    ipcMain.handle('commander:monitor:list',async event=>{
+      if(event.sender!==window?.webContents)throw Error('COMPANION_OWNER_WINDOW_REQUIRED');
+      return (await monitorSelector()).listBrowserCompanionInstances();
+    });
+    ipcMain.handle('commander:monitor:select',async(event,id)=>{
+      if(event.sender!==window?.webContents)throw Error('COMPANION_OWNER_WINDOW_REQUIRED');
+      return (await monitorSelector()).selectBrowserCompanionInstance(id);
     });
     ipcMain.handle('commander:chat:open',()=>openChatBrowser());
     ipcMain.handle('commander:chat:extension-popup',()=>openInternalCompanionPopup());

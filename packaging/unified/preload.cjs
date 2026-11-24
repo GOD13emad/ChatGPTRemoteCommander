@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('commander',Object.freeze({
   companionExtensionFolder:()=>ipcRenderer.invoke('commander:companion:extension-folder'),
   companionBrowserList:()=>ipcRenderer.invoke('commander:companion:browser-list'),
   companionBrowserOpen:id=>ipcRenderer.invoke('commander:companion:browser-open',id),
+  monitorInstances:()=>ipcRenderer.invoke('commander:monitor:list'),
+  monitorSelect:id=>ipcRenderer.invoke('commander:monitor:select',id),
   openChatBrowser:()=>ipcRenderer.invoke('commander:chat:open'),
   openChatExtensionPopup:()=>ipcRenderer.invoke('commander:chat:extension-popup')
 }));

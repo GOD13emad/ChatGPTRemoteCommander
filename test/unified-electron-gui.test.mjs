@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
+import {defaultBrowserCompanionRoot,writeBrowserCompanionInstanceMonitor} from '../src/browser-companion-monitor.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
@@ -20,10 +21,10 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
     assert.ok(fs.existsSync(exe),'native OS executable is missing');
     const {_electron}=require('playwright-core');
     const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-e2e-'));
-    const launchEnv={...process.env,APPDATA:isolated,XDG_CONFIG_HOME:isolated};
+    const launchEnv={...process.env,APPDATA:isolated,XDG_CONFIG_HOME:isolated,LOCALAPPDATA:isolated,XDG_STATE_HOME:isolated};
     let app=null;
     try{
-      app=await _electron.launch({executablePath:exe,args:[],
+      app=await _electron.launch({executablePath:exe,args:['--user-data-dir='+isolated],
         env:launchEnv,timeout:25000});
       const page=await app.firstWindow({timeout:20000});
       assert.match(await page.title(),/Remote Commander/);
@@ -36,6 +37,34 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       assert.deepEqual(known.map(x=>x.id),['chrome','edge','brave','chromium','firefox']);
       assert.ok(known.every(x=>typeof x.installed==='boolean' && !Object.hasOwn(x,'executable')));
       assert.ok(!known.find(x=>x.id==='firefox').supported);
+      await page.locator('#monitor-instance').waitFor({timeout:8000});
+      assert.equal(await page.evaluate(()=>typeof window.commander.monitorInstances==='function'),true);
+      await page.locator('#monitor-refresh').click();
+      await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.length>0);
+      assert.equal(await page.locator('#monitor-select').isDisabled(),true);
+      assert.equal(await page.evaluate(async()=>{try{await window.commander.monitorSelect('../escape');return false}catch{return true}}),true);
+      const monitorBase=defaultBrowserCompanionRoot({env:launchEnv});
+      assert.ok(!path.relative(isolated,monitorBase).startsWith('..'));
+      const instance={profile:'gui-qa-fixture',port:51913};
+      const fixture={identity:{...instance,deviceName:'qa',version:'0.12.0-dev.13',
+        configSha256:'a'.repeat(64),platform:process.platform}};
+      const written=await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture);
+      const scopeId=path.basename(path.dirname(written.target));
+      await page.locator('#monitor-refresh').click();
+      await page.locator('#monitor-instance option[value="'+scopeId+'"]').waitFor({state:'attached',timeout:8000});
+      await page.locator('#monitor-instance').selectOption(scopeId);
+      await page.locator('#monitor-select').click();
+      await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('CGWA_COMPANION_ROOT'),null,{timeout:8000});
+      const selected=JSON.parse(await page.locator('#monitor-result').innerText());
+      assert.equal(selected.root,path.dirname(written.target));
+      assert.equal(selected.actionAuthorization,false);
+      assert.equal(selected.ownerLaunchRequired,true);
+      await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture,{now:()=>1});
+      await page.locator('#monitor-select').click();
+      await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('Selection stale or invalid'),null,{timeout:8000});
+      console.log('RC012_CEF_INSTANCE_PICKER_GUI_FIXTURE_PASS');
+
+
       const before=await page.locator('#status').innerText();
       assert.match(before,/source/);
       assert.match(before,/[0-9a-f]{40}/);

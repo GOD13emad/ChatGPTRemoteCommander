@@ -230,6 +230,7 @@ test('immutable packaged source and restricted preview boot',async()=>{
    assert.equal(obj.powerMode.fullFilesystem,false);
    assert.equal(obj.powerMode.allowShell,false);
    assert.equal(obj.autoUpdate.enabled,false);
+   assert.deepEqual(obj.browserCompanionMonitor,{enabled:false});
    assert.deepEqual(obj.allowedPrograms,[]);
    assert.deepEqual(obj.allowedRoots,[cfg.root]);
    const entry=path.join(one.target,'src/server-v0.3.mjs');

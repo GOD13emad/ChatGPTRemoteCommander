@@ -1069,7 +1069,7 @@ server.listen(config.port, config.host, async () => {
   } catch (error) {
     console.error('RUNTIME_STATE_WRITE_FAILED', error.message);
   }
-  if (!browserCompanionMonitor) {
+  if (!browserCompanionMonitor && config.browserCompanionMonitor?.enabled !== false) {
     browserCompanionMonitor = startBrowserCompanionMonitor({
       snapshot: buildBrowserMonitorSnapshot,
       instance: { profile: config.instance?.profile ?? 'default', port: config.port },

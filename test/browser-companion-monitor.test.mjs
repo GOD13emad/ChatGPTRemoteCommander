@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, readFile, stat, rm, symlink, writeFile } from 'node:fs/promises';
-import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor, browserCompanionInstanceRoot, writeBrowserCompanionInstanceMonitor, startBrowserCompanionMonitor } from '../src/browser-companion-monitor.mjs';
+import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor, browserCompanionInstanceRoot, writeBrowserCompanionInstanceMonitor, startBrowserCompanionMonitor, listBrowserCompanionInstances, selectBrowserCompanionInstance } from '../src/browser-companion-monitor.mjs';
 
 test('default roots are platform-separated from Chromium profile data',()=>{
   assert.equal(defaultBrowserCompanionRoot({platform:'win32',env:{LOCALAPPDATA:'C:\\Users\\u\\AppData\\Local'},home:'C:\\Users\\u'}),'C:\\Users\\u\\AppData\\Local\\ChatGPTRemoteCommander\\browser-companion');
@@ -180,5 +180,34 @@ test('invalid instance disables only optional monitor; no shared-root fallback',
   assert.equal(ctl.status().scopeId,null);
   assert.equal(ctl.status().lastError,'BROWSER_COMPANION_INSTANCE_INVALID');
   assert.equal(calls,0);
+  assert.deepEqual(await (await import('node:fs/promises')).readdir(base),[]);
+});
+
+
+test('fresh instance discovery and explicit revalidation refuse stale, mismatched or unsafe records',async t=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-picker-'));
+  t.after(()=>rm(base,{recursive:true,force:true}));
+  const a={profile:'qa-a',port:51913},b={profile:'qa-b',port:51923},c={profile:'qa-c',port:51933};
+  await writeBrowserCompanionInstanceMonitor(base,a,instanceFixture(a.profile,a.port),{now:()=>1000});
+  await writeBrowserCompanionInstanceMonitor(base,b,instanceFixture(b.profile,b.port),{now:()=>2000});
+  const old=await writeBrowserCompanionInstanceMonitor(base,c,instanceFixture(c.profile,c.port),{now:()=>1});
+  const aId=path.basename(browserCompanionInstanceRoot(base,a));
+  const bId=path.basename(browserCompanionInstanceRoot(base,b));
+  const entries=await listBrowserCompanionInstances({base,now:10001});
+  assert.deepEqual(entries.map(x=>x.scopeId),[aId,bId]);assert.ok(entries.every(x=>!Object.hasOwn(x,'root')));
+  const selected=await selectBrowserCompanionInstance(aId,{base,now:10001});
+  assert.equal(selected.root,browserCompanionInstanceRoot(base,a));
+  assert.equal(selected.environmentVariable,'CGWA_COMPANION_ROOT');
+  assert.equal(selected.actionAuthorization,false);assert.equal(selected.nativeValidationRequired,true);
+  await assert.rejects(()=>selectBrowserCompanionInstance(aId,{base,now:11000}),/STALE_OR_MISMATCH/);
+  await assert.rejects(()=>selectBrowserCompanionInstance('../escape',{base,now:10001}),/SELECTION_INVALID/);
+  const forged=JSON.parse(await readFile(old.target,'utf8'));forged.identity.profile=a.profile;forged.observedAtEpochMs=1000;forged.expiresAtEpochMs=11000;
+  await writeFile(old.target,JSON.stringify(forged));
+  assert.equal((await listBrowserCompanionInstances({base,now:10001})).length,2);
+});
+test('absent monitor root is not created by discovery',async t=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-no-create-'));
+  t.after(()=>rm(base,{recursive:true,force:true}));
+  assert.deepEqual(await listBrowserCompanionInstances({base:path.join(base,'missing')}),[]);
   assert.deepEqual(await (await import('node:fs/promises')).readdir(base),[]);
 });
