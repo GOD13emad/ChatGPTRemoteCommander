@@ -238,6 +238,37 @@ if(process.argv[2]==='--holder'){
     }finally{store?.close();a.close();f.cleanup();}
   });
 
+  test('an asynchronous nested effect cannot be released by outer pre-dispatch validation denial',
+    {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
+    const f=fixture(),a=newFence(f);let store,release,entered,child;
+    const hold=new Promise(resolve=>{release=resolve;});
+    const began=new Promise(resolve=>{entered=resolve;});
+    try{
+      store=newStore(f,a.fence);
+      await assert.rejects(
+        ()=>store.call({
+          id:'sample',stepId:'first',expectedRevision:1,
+          tool:'read_text',arguments:{path:'proof.txt'}
+        },{
+          validate:async()=>{
+            child=a.fence.withWorkflowRootLease(f.root,async()=>{
+              entered();await hold;return {ok:true};
+            });
+            await began;
+            throw Object.assign(new Error('DENIED'),{code:'TEST_DENY'});
+          },
+          dispatch:async()=>{throw Error('SHOULD_NOT_DISPATCH');}
+        }),
+        e=>e?.code==='V012_SHARED_ROOT_PRE_EFFECT_UNPROVEN');
+      await assert.rejects(
+        ()=>a.fence.withWorkflowRootLease(f.root,async()=>({ok:true})),
+        e=>e?.code==='V012_NATIVE_LEASE_OCCUPIED');
+    } finally {
+      release?.();await child?.catch(()=>{});
+      store?.close();a.close();f.cleanup();
+    }
+  });
+
   test('uncertain workflow outcome returns receipt but quarantines native root lease', {skip:process.platform==='win32'?'Linux native factory; Windows native ACL suite is separate':false},async()=>{
     const f=fixture(),a=newFence(f);
     try{

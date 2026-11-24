@@ -70,6 +70,7 @@ export function createV012SharedPhysicalRootFence({
       // resurrect a released host-global native lock by inheriting context.
       if(!active.active)fail('V012_SHARED_ROOT_STALE_CONTEXT_DENIED');
       if(active.key!==key)fail('V012_SHARED_ROOT_CROSS_RESOURCE_NESTING_DENIED');
+      active.nestedEntered=true;
       active.inFlight++;
       try{
         const result=await work(active.leaseContext);
@@ -82,16 +83,32 @@ export function createV012SharedPhysicalRootFence({
       }finally{active.inFlight--;}
     }
     let completedValue;
-    const state={key,leaseContext:null,uncertain:false,active:false,inFlight:0};
+    const state={key,leaseContext:null,uncertain:false,active:false,inFlight:0,
+      nestedEntered:false,effectStarted:false};
     try{
       await nativeHostLease.withLease(key, async leaseContext=>{
         if(typeof leaseContext?.markEffectStarted!=='function'
           ||typeof leaseContext?.markSafePreEffectDenial!=='function')
           fail('V012_SHARED_ROOT_NATIVE_CONTEXT_REQUIRED');
-        state.leaseContext=leaseContext;
+        // Pre-effect denial is safe ONLY if no nested work or other external
+        // effect has entered this same native lease. A trusted validator can
+        // launch asynchronous descendants before rejecting an operation.
+        const guardedContext=Object.freeze({
+          markEffectStarted(){
+            state.effectStarted=true;
+            return leaseContext.markEffectStarted();
+          },
+          markSafePreEffectDenial(){
+            if(!state.active||state.effectStarted||state.uncertain
+              ||state.inFlight!==0||state.nestedEntered)
+              fail('V012_SHARED_ROOT_PRE_EFFECT_UNPROVEN');
+            return leaseContext.markSafePreEffectDenial();
+          }
+        });
+        state.leaseContext=guardedContext;
         state.active=true;
         try{
-          completedValue=await scope.run(state,()=>work(leaseContext));
+          completedValue=await scope.run(state,()=>work(guardedContext));
           if(state.inFlight!==0){
             // A fire-and-forget descendant may still be mutating the sink:
             // quarantine the native lease even if the outer caller returned.
