@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { codexLaunchAuthorized, isCodexExecutable } from './no-codex-policy.mjs';
 
 const RUNNER_ALLOWED_TOOLS = Object.freeze([
@@ -8,7 +9,9 @@ const RUNNER_ALLOWED_TOOLS = Object.freeze([
 function clone(value) { return JSON.parse(JSON.stringify(value ?? {})); }
 
 function executableFile(file, platform = process.platform) {
-  if (typeof file !== 'string' || !file || file.includes('\0')) return false;
+  // Config-time fail-closed guard: a relative file resolves through ambient cwd.
+  // A privileged owner provider must use an exact absolute executable path.
+  if (typeof file !== 'string' || !path.isAbsolute(file) || file.includes('\0')) return false;
   try {
     const stat = fs.statSync(file);
     if (!stat.isFile()) return false;
