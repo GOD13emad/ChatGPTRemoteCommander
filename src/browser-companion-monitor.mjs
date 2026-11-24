@@ -3,6 +3,7 @@ import path from 'node:path';
 import { mkdir, lstat, chmod, writeFile, rename, unlink, opendir, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import { ensureWindowsMonitorDirectories } from './browser-companion-windows-private.mjs';
 
 const MAX_BYTES = 64 * 1024;
 
@@ -34,6 +35,10 @@ export function browserCompanionInstanceRoot(base, instance, { platform = proces
 async function provePrivateRoot(root, { platform = process.platform } = {}) {
   const flavor = platform === 'win32' ? path.win32 : path.posix;
   if (!root || !flavor.isAbsolute(root)) throw new Error('BROWSER_COMPANION_ROOT_INVALID');
+  if (platform === 'win32') {
+    await ensureWindowsMonitorDirectories([root]);
+    return root;
+  }
   // Validate existing roots before changing permissions or writing. Do not
   // chmod an existing symlink, shared directory, or foreign-owned directory.
   let stat;
@@ -115,6 +120,10 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
 
 export async function writeBrowserCompanionMonitor(root, input, options = {}) {
   await provePrivateRoot(root, options);
+  return publishMonitor(root, input, options);
+}
+
+async function publishMonitor(root, input, options) {
   const snapshot = sanitizeMonitorSnapshot(input, options.now?.() ?? Date.now());
   const data = JSON.stringify(snapshot) + '\n';
   if (Buffer.byteLength(data) > MAX_BYTES) throw new Error('BROWSER_COMPANION_SNAPSHOT_LIMIT');
@@ -138,8 +147,13 @@ export async function writeBrowserCompanionInstanceMonitor(base, instance, input
     throw new Error('BROWSER_COMPANION_INSTANCE_MISMATCH');
   const flavor = (options.platform ?? process.platform) === 'win32' ? path.win32 : path.posix;
   // Reject unsafe parent directories before entering the instance namespace.
+  const instances = flavor.join(base, 'instances');
+  if ((options.platform ?? process.platform) === 'win32') {
+    await ensureWindowsMonitorDirectories([base, instances, scopedRoot]);
+    return publishMonitor(scopedRoot, input, options);
+  }
   await provePrivateRoot(base, options);
-  await provePrivateRoot(flavor.join(base, 'instances'), options);
+  await provePrivateRoot(instances, options);
   return writeBrowserCompanionMonitor(scopedRoot, input, options);
 }
 
@@ -206,6 +220,7 @@ export async function listBrowserCompanionInstances({base=defaultBrowserCompanio
 export async function selectBrowserCompanionInstance(scopeId,{base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
   if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
   const selected=await readInstanceSelection(base,scopeId,now);
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base,path.join(base,'instances'),selected.root],{create:false});
   return {...selected,environmentVariable:'CGWA_COMPANION_ROOT',nativeValidationRequired:true,
     readOnly:true,actionAuthorization:false,ownerLaunchRequired:true};
 }

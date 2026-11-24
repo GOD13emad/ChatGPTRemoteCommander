@@ -132,3 +132,5 @@ and freshness checks still apply. Existing root-level monitor/binding files
 are not changed or migrated by this change. A legacy CEF launch with no
 explicit selection will not receive new monitor updates from the corrected
 Core. The unified GUI now discovers fresh exact-scope records and displays the selected root after revalidation; it never launches CEF automatically or chooses a profile by recency. Preview Core has monitor publication disabled. Native CEF launch and installed acceptance remain separate gates; this is not production promotion.
+
+Windows first-run monitor directories are created with a native owner/System/Administrators ACL by the optional Core writer, using Windows PowerShell and .NET directory security at creation. Existing roots are validated, never re-ACL'd; a non-NTFS, reparse or unsafe existing root disables publication with an explicit error. Selection rechecks private directory ACLs without creating directories. The native CEF file guard remains authoritative. No administrator elevation or changes to an existing owner profile are requested.

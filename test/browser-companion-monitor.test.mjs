@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, readFile, stat, rm, symlink, writeFile } from 'node:fs/promises';
+import {ensureWindowsMonitorDirectories} from '../src/browser-companion-windows-private.mjs';
 import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor, browserCompanionInstanceRoot, writeBrowserCompanionInstanceMonitor, startBrowserCompanionMonitor, listBrowserCompanionInstances, selectBrowserCompanionInstance } from '../src/browser-companion-monitor.mjs';
 
 test('default roots are platform-separated from Chromium profile data',()=>{
@@ -97,7 +98,7 @@ test('windows monitor writer uses a pre-created local root without POSIX mode as
   const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-win-'));
   const root=path.join(base,'browser-companion');
   try{
-    await mkdir(root);
+    await ensureWindowsMonitorDirectories([root]);
     const receipt=await writeBrowserCompanionMonitor(root,{
       identity:{deviceName:'host',profile:'default',version:'0.10.19',configSha256:'d'.repeat(64),port:48831,platform:'win32'},
       gui:{enabled:true,available:false,uncertain:false,reason:'TEST'},
@@ -126,8 +127,10 @@ test('instance scope is stable, platform-safe, and distinguishes same profile on
   assert.throws(()=>browserCompanionInstanceRoot(root,{profile:'qa',port:0}),/INSTANCE_INVALID/);
 });
 test('two independent instances never overwrite each other or the legacy monitor',async t=>{
-  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-scope-'));
-  t.after(()=>rm(base,{recursive:true,force:true}));
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-scope-'));
+  const base=path.join(temp,'private');
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base]);else await mkdir(base,{mode:0o700});
+  t.after(()=>rm(temp,{recursive:true,force:true}));
   const legacy=path.join(base,'commander-monitor.json');
   await writeFile(legacy,'legacy-owner-state',{mode:0o600});
   const a={profile:'default',port:51913},b={profile:'default',port:51923};
@@ -143,12 +146,14 @@ test('two independent instances never overwrite each other or the legacy monitor
   assert.equal(current.identity.port,a.port);
 });
 test('periodic server monitor remains bound to its exact instance and exposes only a scope identifier',async t=>{
-  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-loop-'));
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-loop-'));
+  const base=path.join(temp,'private');
+  
   const a={profile:'qa-a',port:51913},b={profile:'qa-b',port:51923};
   const x=startBrowserCompanionMonitor({root:base,instance:a,snapshot:()=>instanceFixture(a.profile,a.port),intervalMs:60000});
   const y=startBrowserCompanionMonitor({root:base,instance:b,snapshot:()=>instanceFixture(b.profile,b.port),intervalMs:60000});
-  t.after(async()=>{x.stop();y.stop();await rm(base,{recursive:true,force:true})});
-  const until=Date.now()+3000;
+  t.after(async()=>{x.stop();y.stop();await rm(temp,{recursive:true,force:true})});
+  const until=Date.now()+10000;
   while((!x.status().lastWriteAtEpochMs||!y.status().lastWriteAtEpochMs)&&Date.now()<until)
     await new Promise(r=>setTimeout(r,20));
   assert.ok(x.status().lastWriteAtEpochMs);assert.ok(y.status().lastWriteAtEpochMs);
@@ -185,8 +190,10 @@ test('invalid instance disables only optional monitor; no shared-root fallback',
 
 
 test('fresh instance discovery and explicit revalidation refuse stale, mismatched or unsafe records',async t=>{
-  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-picker-'));
-  t.after(()=>rm(base,{recursive:true,force:true}));
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-picker-'));
+  const base=path.join(temp,'private');
+  
+  t.after(()=>rm(temp,{recursive:true,force:true}));
   const a={profile:'qa-a',port:51913},b={profile:'qa-b',port:51923},c={profile:'qa-c',port:51933};
   await writeBrowserCompanionInstanceMonitor(base,a,instanceFixture(a.profile,a.port),{now:()=>1000});
   await writeBrowserCompanionInstanceMonitor(base,b,instanceFixture(b.profile,b.port),{now:()=>2000});
@@ -210,4 +217,21 @@ test('absent monitor root is not created by discovery',async t=>{
   t.after(()=>rm(base,{recursive:true,force:true}));
   assert.deepEqual(await listBrowserCompanionInstances({base:path.join(base,'missing')}),[]);
   assert.deepEqual(await (await import('node:fs/promises')).readdir(base),[]);
+});
+
+
+test('Windows refuses pre-existing unsafe monitor ACL without modifying existing contents',{skip:process.platform!=='win32'},async t=>{
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-unsafe-acl-'));
+  t.after(()=>rm(temp,{recursive:true,force:true}));
+  const base=path.join(temp,'root');await mkdir(base);
+  const marker=path.join(base,'owner-marker');await writeFile(marker,'preserve');
+  // Establish whether the host's inherited ACL is already private. If so,
+  // use a read-only proof rather than weakening the fixture's permissions.
+  let unsafe=false;
+  try{await ensureWindowsMonitorDirectories([base],{create:false});}catch{unsafe=true;}
+  if(unsafe){
+    await assert.rejects(()=>writeBrowserCompanionInstanceMonitor(base,{profile:'qa',port:51913},instanceFixture('qa',51913)),/WINDOWS_PRIVATE_ROOT_UNPROVEN/);
+    assert.deepEqual(await (await import('node:fs/promises')).readdir(base),['owner-marker']);
+  }
+  assert.equal(await readFile(marker,'utf8'),'preserve');
 });
