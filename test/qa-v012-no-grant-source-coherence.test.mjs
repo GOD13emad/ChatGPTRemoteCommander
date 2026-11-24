@@ -28,7 +28,16 @@ test('no-grant owner canary runner launches EXACT checkout Core without absolute
   assert.match(src,/RC012_CORE_BROKER_QA_SCOPE=NO_EFFECTS/);
   assert.match(src,/RC012_QA_J01_OWNER_BIND:-0/);
   assert.match(src,/RC012_PRODUCTION_CORE_AND_TUNNEL_UNCHANGED_NO_GRANT_QA_COMPLETE/);
+  assert.match(src,/resolvePinnedOwnerTunnelDirectory/);
+  assert.doesNotMatch(src,/private-pair\/\$profile/);
   assert.match(src,/-p RuntimeMaxSec=65s/);
   assert.match(src,/systemctl --user stop "\$qaUnit.service"/);
   assert.match(src,/systemctl --user reset-failed "\$qaUnit.service"/);
+});
+
+test('no-grant bootstrap and installer use the same owner PIN directory resolver',()=>{
+  const source=fs.readFileSync(path.join(root,
+    'src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs'),'utf8');
+  assert.match(source,/resolvePinnedOwnerTunnelDirectory/);
+  assert.doesNotMatch(source,/selected==='chatgpt-remote-commander'\?'default':selected/);
 });

@@ -13,11 +13,12 @@ import {
 import {fileURLToPath} from 'node:url';
 import {createLinuxNativeOwnerSessionProvider}
   from '../src/native-owner-session-provider-linux.mjs';
-import {createPinnedLinuxPrivateTunnelIdentity,readLinuxOwnerTunnelPin}
+import {createPinnedLinuxPrivateTunnelIdentity,readLinuxOwnerTunnelPin,resolvePinnedOwnerTunnelDirectory}
   from '../src/linux-private-tunnel-owner-pin.mjs';
 import {assertTrustedLinuxMappedRootExecutable}
   from '../src/native-linux-host-owner-identity.mjs';
 
+export {resolvePinnedOwnerTunnelDirectory};
 const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SHA=/^[a-f0-9]{64}$/;
 const CRED_NAME='worker-ed25519-seed';
@@ -239,32 +240,6 @@ function sameTunnel(a,b){
   return a?.authenticated===true&&b?.authenticated===true
     &&a?.controlPlanePollOk===true&&b?.controlPlanePollOk===true
     &&['profileId','tunnelIdHash','ownerSidHash'].every(k=>a[k]===b[k]);
-}
-// A pinned owner's technical profile may already be enrolled in the historical
-// 'default' pair directory. Only select it when the exact owner-private pin
-// names the requested profile; never infer authorization from directory names.
-export function resolvePinnedOwnerTunnelDirectory({home,profile,ownerUid=process.getuid?.()}={}){
-  if(typeof home!=='string'||!path.isAbsolute(home)
-    ||typeof profile!=='string'||!PROFILE.test(profile)
-    ||profile==='.'||profile==='..'
-    ||!Number.isSafeInteger(ownerUid)||ownerUid<1)
-    fail('RC012_WORKER_KEY_OWNER_ARGS_REQUIRED');
-  const root=path.join(home,'.config','chatgpt-remote-commander','private-pair');
-  const named=path.join(root,
-    profile==='chatgpt-remote-commander'?'default':profile);
-  // lstat also sees dangling/unsafe symlinks: they must NOT trigger fallback.
-  let namedPresent=false;
-  try{fs.lstatSync(named);namedPresent=true;}
-  catch(e){if(e.code!=='ENOENT')throw e;}
-  if(namedPresent||profile==='chatgpt-remote-commander')return named;
-  const fallback=path.join(root,'default');
-  let fallbackPresent=false;
-  try{fs.lstatSync(fallback);fallbackPresent=true;}
-  catch(e){if(e.code!=='ENOENT')throw e;}
-  if(!fallbackPresent)return named;
-  const pin=readLinuxOwnerTunnelPin({directory:fallback,ownerUid});
-  if(pin.profileId!==profile)fail('RC012_WORKER_KEY_PINNED_TUNNEL_REQUIRED');
-  return fallback;
 }
 async function main(){
   if(process.platform!=='linux'||typeof process.getuid!=='function'
