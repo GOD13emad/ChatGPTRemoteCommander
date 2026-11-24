@@ -225,7 +225,27 @@ test('single-command CLI refuses unpinned package without executing it',()=>{
 });
 
 
-import {stagePinnedInstaller} from '../tools/v1-01/run-installed-denial-acceptance.mjs';
+import {stagePinnedInstaller, runInstalledDenialPreflight} from '../tools/v1-01/run-installed-denial-acceptance.mjs';
+
+test('direct denial preflight refuses an unapproved interpreter before accessing artifacts',async()=>{
+  for(const python of ['unapproved-interpreter', '', null, undefined]){
+    await assert.rejects(()=>runInstalledDenialPreflight({
+      installer:path.resolve('missing-installer-fixture'),
+      expectedSha256:SHA,
+      harness:path.resolve('missing-harness-fixture'),
+      python
+    }), error=>error.code==='PYTHON_COMMAND_INVALID');
+  }
+  // Both supported interpreter names still reach the pinned-file gate.
+  for(const python of ['python', 'python3']){
+    await assert.rejects(()=>runInstalledDenialPreflight({
+      installer:path.resolve('missing-installer-fixture'),
+      expectedSha256:SHA,
+      harness:path.resolve('missing-harness-fixture'),
+      python
+    }), error=>error.code==='PINNED_FILE_MISSING');
+  }
+});
 
 test('single-command runner creates owner-only executable copy and preserves origin',async()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'v101-install-source-'));
