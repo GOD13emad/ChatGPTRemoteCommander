@@ -176,3 +176,18 @@ test('worker grant expiration during final registration lookup fails closed',asy
   const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
   assert.equal(await check(f.request()),false);
 });
+
+test('final registration substitution with stale valid signature denies',async()=>{
+  const f=fixture();
+  const initial=f.state.envelope;
+  let reads=0;
+  f.dependency.workerRegistry.get=async()=>{
+    if(++reads===2) return {
+      ...initial,claims:{...initial.claims,grantRevision:2}
+    };
+    return initial;
+  };
+  const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
+  assert.equal(await check(f.request()),false,
+    'the final persisted registration must still have a valid signed payload');
+});
