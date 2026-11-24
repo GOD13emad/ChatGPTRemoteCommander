@@ -37,11 +37,13 @@ export async function executeV2WorkflowStep({
       if (await authorizeTool(resolvedTool, resolvedArgs, state) !== true) fail('V2_WORKFLOW_TOOL_AUTH_REQUIRED');
       await check();
     },
-    dispatch: async (resolvedTool, resolvedArgs, state) => {
+    dispatch: async (resolvedTool, resolvedArgs, state, workflowScope) => {
       await check();
       // Actual root lease + PREPARED/EXECUTING/UNCERTAIN state already owned by
       // WorkflowStore.call. Never implement a second competing root lease.
-      return dispatch(resolvedTool, resolvedArgs, state);
+      // Preserve the exact trusted fence context produced by WorkflowStore.
+      // Never reconstruct it from caller-controlled route or tool arguments.
+      return dispatch(resolvedTool, resolvedArgs, state, workflowScope);
     }
   });
 }
