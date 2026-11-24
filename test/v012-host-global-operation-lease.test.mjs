@@ -71,6 +71,33 @@ test('real durable receipts cannot authorize a second requestId after an unknown
   assert.equal(await b.withLease(key('browser-target','separate'),async()=>42),42);
 });
 
+test('uncertain receipt and native resource fence both persist across clean service restart', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const first=createV012HostGlobalOperationLease({directory,hostId:host});
+  const receiptDir=path.join(directory,'receipts');
+  const receipts=new MutationIdempotencyStore({directory:receiptDir,scope:'restart-qa'});
+  let effects=0;
+  try{
+    await assert.rejects(first.withLease(key(),()=>receipts.execute({
+      requestId:'before-restart',tool:'run_project_command',input:{step:1}
+    },async()=>{
+      effects++;
+      throw Object.assign(Error('external effect outcome unknown'),{code:'OUTCOME_UNCERTAIN'});
+    })),{code:'OUTCOME_UNCERTAIN'});
+    assert.deepEqual(receipts.status().states,{UNCERTAIN:1});
+  }finally{receipts.close();first.close();}
+  // A clean Core restart is not proof that an unknown external effect ceased.
+  const second=createV012HostGlobalOperationLease({directory,hostId:host});
+  const persisted=new MutationIdempotencyStore({directory:receiptDir,scope:'restart-qa'});
+  t.after(()=>{persisted.close();second.close();});
+  assert.deepEqual(persisted.status().states,{UNCERTAIN:1});
+  await assert.rejects(second.withLease(key(),()=>persisted.execute({
+    requestId:'after-restart',tool:'run_project_command',input:{step:2}
+  },async()=>{effects++;return {ok:true};})),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'restart must not release an uncertain native root for another requestId');
+  assert.equal(await second.withLease(key('workflow-root','independent-project'),async()=>42),42);
+});
+
 test('unknown outcome from parent blocks a distinct process without dispatch', {skip:!LINUX},async t=>{
   const directory=setup(t);
   const a=createV012HostGlobalOperationLease({directory,hostId:host});
