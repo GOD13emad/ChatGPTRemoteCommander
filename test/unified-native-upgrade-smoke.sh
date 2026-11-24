@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Disposable hosted Linux runner only. Exercises actual same-name Debian upgrade,
-# native tunnel persistence, sandboxed GUI and downgrade rollback.
+# Disposable hosted Linux runner only. Exercises same-source, same-version
+# native-only -> merged GUI -> native-only package replacement/rollback.
+# A real previous-release-to-candidate upgrade is a separate acceptance gate.
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == Linux &&
    "${RUNNER_ENVIRONMENT:-}" == github-hosted &&
@@ -27,7 +28,19 @@ NEW="$ROOT/dist/unified/Remote-Commander-Unified-${VERSION}-Linux-amd64.deb"
 test -f "$OLD" && test -f "$NEW"
 test "$(dpkg-deb --field "$OLD" Package)" = chatgpt-remote-commander
 test "$(dpkg-deb --field "$NEW" Package)" = chatgpt-remote-commander
-dpkg --compare-versions "$(dpkg-deb --field "$NEW" Version)" gt "$(dpkg-deb --field "$OLD" Version)"
+# Native-only and merged GUI artifacts are built from the SAME canonical
+# dev train, not different releases. This hosted lifecycle proves a native
+# same-version package reconfiguration and rollback, NOT dev.12 -> dev.13
+# production upgrade, which requires a separately pinned old artifact.
+EXPECTED_NATIVE_VERSION="${VERSION/-dev./~dev.}"
+OLD_VERSION="$(dpkg-deb --field "$OLD" Version)"
+NEW_VERSION="$(dpkg-deb --field "$NEW" Version)"
+test "$OLD_VERSION" = "$EXPECTED_NATIVE_VERSION"
+test "$NEW_VERSION" = "$EXPECTED_NATIVE_VERSION"
+dpkg --compare-versions "$NEW_VERSION" eq "$OLD_VERSION" || {
+  echo RC012_NATIVE_REPACKAGE_VERSION_IDENTITY_MISMATCH >&2; exit 3;
+}
+echo "RC012_NATIVE_REPACKAGE_VERSION_IDENTITY_PASS version=$EXPECTED_NATIVE_VERSION"
 # Audit *actual* Native and merged DEB payload names BEFORE installing even on
 # this disposable hosted runner. The public app payload is only the committed
 # runtime Core, never the complete repository or human project/Skill records.
@@ -93,4 +106,4 @@ sudo dpkg --install "$OLD"
 test "$(dpkg-query -W -f='${Version}' chatgpt-remote-commander)" = "$(dpkg-deb --field "$OLD" Version)"
 test -f "$NATIVE/tunnel/native-tunnel-launch.sh"
 test ! -e '/opt/Remote Commander/remote-commander-unified'
-echo 'RC012_NATIVE_UPGRADE_SANDBOX_GUI_AND_ROLLBACK_PASS'
+echo 'RC012_NATIVE_SAME_VERSION_GUI_REPACKAGE_AND_ROLLBACK_PASS'
