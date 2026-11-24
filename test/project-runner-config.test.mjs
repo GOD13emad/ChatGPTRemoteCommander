@@ -88,6 +88,23 @@ test('explicit non-Codex command runner may be preserved but is never auto-creat
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
 });
 
+test('owner command provider rejects a working-directory-relative executable even if the file exists', () => {
+  const root=temp();
+  try {
+    const executable=makeCommand(root,process.platform);
+    const relative=path.relative(process.cwd(),executable);
+    assert.ok(relative && !path.isAbsolute(relative));
+    const cfg=base({runner:{enabled:true,autoTick:true,
+      provider:{kind:'command',executable:relative}}});
+    const rejected=applyProjectRunnerConfig(cfg,{platform:process.platform});
+    assert.equal(rejected.status,'PROVIDER_MISSING_OR_UNSUPPORTED');
+    assert.equal(rejected.config.durableWorkflows.runner.enabled,false);
+    cfg.durableWorkflows.runner.provider.executable=executable;
+    const authorized=applyProjectRunnerConfig(cfg,{platform:process.platform});
+    assert.equal(authorized.status,'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+    assert.equal(authorized.config.durableWorkflows.runner.provider.executable,executable);
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
 test('Standard authority disables an inherited runner', () => {
   const cfg=base({runner:{enabled:true,autoTick:true,provider:{kind:'command',executable:'C:/old/planner.exe',timeoutMs:30000}}});
   cfg.capabilityProfile.tier='STANDARD';
