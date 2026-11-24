@@ -6,6 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createV012HostGlobalOperationLease} from '../src/v012-host-global-operation-lease.mjs';
+import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 
 const LINUX=process.platform==='linux';
 const host='qa-owner-host';
@@ -31,13 +32,43 @@ test('exact resource is serialized across independently opened host processes', 
   assert.equal(await b.withLease(key(),async()=>99),99);
 });
 
-test('callback failure releases only its owned lease, without converting denial to success', {skip:!LINUX},async t=>{
+test('unknown callback outcome quarantines its resource, leaving independent keys usable', {skip:!LINUX},async t=>{
   const directory=setup(t);
   const a=createV012HostGlobalOperationLease({directory,hostId:host});
   const b=createV012HostGlobalOperationLease({directory,hostId:host});
   t.after(()=>{a.close();b.close();});
-  await assert.rejects(a.withLease(key(),async()=>{throw Error('effect failure');}),/effect failure/);
-  assert.equal(await b.withLease(key(),async()=>true),true);
+  let effects=0;
+  await assert.rejects(a.withLease(key(),async()=>{
+    effects++;
+    throw Object.assign(Error('external effect outcome unknown'),{code:'OUTCOME_UNCERTAIN'});
+  }),{code:'OUTCOME_UNCERTAIN'});
+  await assert.rejects(b.withLease(key(),async()=>{effects++;}),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'unknown-effect resource must not be replayed');
+  assert.equal(await b.withLease(key('workflow-root','unrelated-target'),async()=>42),42);
+  assert.equal(await a.withLease(key('workflow-root','unrelated-target'),async()=>43),43);
+});
+
+test('real durable receipts cannot authorize a second requestId after an unknown effect', {skip:!LINUX},async t=>{
+  const directory=setup(t);
+  const a=createV012HostGlobalOperationLease({directory,hostId:host});
+  const b=createV012HostGlobalOperationLease({directory,hostId:host});
+  const receipts=new MutationIdempotencyStore({directory:path.join(directory,'receipts'),scope:'quarantine-qa'});
+  t.after(()=>{receipts.close();a.close();b.close();});
+  let effects=0;
+  const run=(lease,requestId,shouldFail)=>lease.withLease(key(),()=>receipts.execute({
+    requestId,tool:'run_project_command',input:{step:requestId}
+  },async()=>{
+    effects++;
+    if(shouldFail)throw Object.assign(Error('effect may still be running'),{code:'OUTCOME_UNCERTAIN'});
+    return {ok:true};
+  }));
+  await assert.rejects(run(a,'first',true),{code:'OUTCOME_UNCERTAIN'});
+  assert.deepEqual(receipts.status().states,{UNCERTAIN:1});
+  await assert.rejects(run(b,'second',false),{code:'V012_NATIVE_LEASE_OCCUPIED'});
+  assert.equal(effects,1,'different requestId must not bypass a resource-level quarantine');
+  assert.deepEqual(receipts.status().states,{UNCERTAIN:1});
+  // A separate resource retains forward progress without releasing unknown work.
+  assert.equal(await b.withLease(key('browser-target','separate'),async()=>42),42);
 });
 
 test('crashed process holds durable denial until separate native reconciliation', {skip:!LINUX},async t=>{
