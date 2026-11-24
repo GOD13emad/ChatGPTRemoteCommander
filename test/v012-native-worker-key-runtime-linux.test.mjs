@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
@@ -28,4 +29,10 @@ test('existing owner key QA must fail closed outside a genuine native credential
     assert.match(r.stderr,/RC012_NATIVE_WORKER_QA_SCOPE_REQUIRED/);
     assert.equal(r.stdout,'','never disclose any signing material');
   }
+});
+
+test('Worker key no-grant QA resolves the exact enrolled native PIN alias',()=>{
+  const src=fs.readFileSync(script,'utf8');
+  assert.match(src,/resolvePinnedOwnerTunnelDirectory/);
+  assert.doesNotMatch(src,/profile==='chatgpt-remote-commander'\?'default':profile/);
 });
