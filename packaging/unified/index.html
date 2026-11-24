@@ -13,6 +13,13 @@
 <p>Opens ChatGPT in a separate Commander-owned Chromium profile. Sign in normally; no existing browser cookies, passwords or profile are reused. A companion extension can observe tab presence, not issue commands.</p>
 <button id="chat-open" type="button">Open ChatGPT in Browser Core</button><button id="chat-popup" type="button">Pair internal extension</button>
 <pre id="chat-result" role="status"></pre></section>
+<section><strong>Native CEF monitor — select a Core instance</strong>
+<p>Discover fresh local monitor records, choose the exact profile and port, and show the existing CEF root setting. No automatic launch, account binding, or permission grant.</p>
+<label for="monitor-instance">Core instance</label>
+<select id="monitor-instance"><option value="">Choose an instance</option></select>
+<button id="monitor-refresh" type="button">Refresh instances</button>
+<button id="monitor-select" type="button" disabled>Show selected CEF root</button>
+<pre id="monitor-result" role="status" aria-live="polite"></pre></section>
 <section><strong>Browser Companion (opt-in)</strong><p>Pair a browser extension through an owner-visible, expiring code. Chrome, Edge and Brave can load the packaged folder via their extensions page. Firefox needs separate qualification. No automated ChatGPT messages or privileged tools are enabled.</p>
 <button id="companion-start" type="button">Start companion</button>
 <button id="companion-stop" type="button">Stop companion</button>

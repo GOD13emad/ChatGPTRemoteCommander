@@ -1,7 +1,9 @@
 import os from 'node:os';
 import path from 'node:path';
-import { mkdir, lstat, chmod, writeFile, rename, unlink } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { mkdir, lstat, chmod, writeFile, rename, unlink, opendir, open } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { ensureWindowsMonitorDirectories } from './browser-companion-windows-private.mjs';
 
 const MAX_BYTES = 64 * 1024;
 
@@ -15,19 +17,37 @@ export function defaultBrowserCompanionRoot({ platform = process.platform, env =
     : path.posix.join(home, '.local', 'state', 'chatgpt-remote-commander', 'browser-companion');
 }
 
+// Keep the existing base for the native CEF reader, but never publish a
+// running Core's monitor to the shared legacy filename. Exact profile + port
+// is stable across restarts, separates preview/default/other instances, and
+// cannot be interpreted as a filesystem path (including on Windows).
+export function browserCompanionInstanceRoot(base, instance, { platform = process.platform } = {}) {
+  const flavor = platform === 'win32' ? path.win32 : path.posix;
+  if (typeof base !== 'string' || !flavor.isAbsolute(base)) throw new Error('BROWSER_COMPANION_ROOT_INVALID');
+  const profile = instance?.profile, port = instance?.port;
+  if (typeof profile !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(profile) ||
+      !Number.isInteger(port) || port < 1 || port > 65535)
+    throw new Error('BROWSER_COMPANION_INSTANCE_INVALID');
+  const id = createHash('sha256').update(JSON.stringify([profile, port])).digest('hex');
+  return flavor.join(base, 'instances', id);
+}
+
 async function provePrivateRoot(root, { platform = process.platform } = {}) {
   const flavor = platform === 'win32' ? path.win32 : path.posix;
   if (!root || !flavor.isAbsolute(root)) throw new Error('BROWSER_COMPANION_ROOT_INVALID');
   if (platform === 'win32') {
-    // A new user-local installation may have no browser companion directory.
-    // Preserve the existing root validation: symbolic links still fail closed.
-    await mkdir(root, { recursive: true });
-  } else {
-    await mkdir(root, { recursive: true, mode: 0o700 });
-    await chmod(root, 0o700);
+    await ensureWindowsMonitorDirectories([root]);
+    return root;
   }
+  // Validate existing roots before changing permissions or writing. Do not
+  // chmod an existing symlink, shared directory, or foreign-owned directory.
   let stat;
-  try { stat = await lstat(root); } catch { throw new Error('BROWSER_COMPANION_ROOT_MISSING'); }
+  try { stat = await lstat(root); }
+  catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    await mkdir(root, { recursive: true, ...(platform === 'win32' ? {} : { mode: 0o700 }) });
+    stat = await lstat(root);
+  }
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('BROWSER_COMPANION_ROOT_UNSAFE');
   if (platform !== 'win32') {
     if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) throw new Error('BROWSER_COMPANION_ROOT_OWNER_MISMATCH');
@@ -100,6 +120,10 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
 
 export async function writeBrowserCompanionMonitor(root, input, options = {}) {
   await provePrivateRoot(root, options);
+  return publishMonitor(root, input, options);
+}
+
+async function publishMonitor(root, input, options) {
   const snapshot = sanitizeMonitorSnapshot(input, options.now?.() ?? Date.now());
   const data = JSON.stringify(snapshot) + '\n';
   if (Buffer.byteLength(data) > MAX_BYTES) throw new Error('BROWSER_COMPANION_SNAPSHOT_LIMIT');
@@ -117,16 +141,112 @@ export async function writeBrowserCompanionMonitor(root, input, options = {}) {
   return { target, bytes: Buffer.byteLength(data), observedAtEpochMs: snapshot.observedAtEpochMs };
 }
 
-export function startBrowserCompanionMonitor({ snapshot, root = defaultBrowserCompanionRoot(), intervalMs = 2000, onError = () => {} } = {}) {
+export async function writeBrowserCompanionInstanceMonitor(base, instance, input, options = {}) {
+  const scopedRoot = browserCompanionInstanceRoot(base, instance, options);
+  if (input?.identity?.profile !== instance.profile || input?.identity?.port !== instance.port)
+    throw new Error('BROWSER_COMPANION_INSTANCE_MISMATCH');
+  const flavor = (options.platform ?? process.platform) === 'win32' ? path.win32 : path.posix;
+  // Reject unsafe parent directories before entering the instance namespace.
+  const instances = flavor.join(base, 'instances');
+  if ((options.platform ?? process.platform) === 'win32') {
+    await ensureWindowsMonitorDirectories([base, instances, scopedRoot]);
+    return publishMonitor(scopedRoot, input, options);
+  }
+  await provePrivateRoot(base, options);
+  await provePrivateRoot(instances, options);
+  return writeBrowserCompanionMonitor(scopedRoot, input, options);
+}
+
+// Advisory discovery only. CEF still enforces its own native private-file
+// checks; neither a fresh snapshot nor the selection confers any authority.
+const SCOPE_ID=/^[a-f0-9]{64}$/;
+const MAX_SCOPES=128;
+async function inspectExistingPrivateDirectory(root) {
+  const st=await lstat(root);
+  if(!st.isDirectory()||st.isSymbolicLink())throw Error('BROWSER_COMPANION_ROOT_UNSAFE');
+  if(process.platform!=='win32'&&((st.mode&0o077)!==0||
+    (typeof process.getuid==='function'&&st.uid!==process.getuid())))
+    throw Error('BROWSER_COMPANION_ROOT_NOT_PRIVATE');
+}
+async function readInstanceSelection(base,id,now) {
+  if(typeof id!=='string'||!SCOPE_ID.test(id))throw Error('BROWSER_COMPANION_SELECTION_INVALID');
+  const instances=path.join(base,'instances'),root=path.join(instances,id);
+  for(const dir of [base,instances,root])await inspectExistingPrivateDirectory(dir);
+  const file=path.join(root,'commander-monitor.json');
+  const first=await lstat(file);
+  const safe=st=>st.isFile()&&!st.isSymbolicLink()&&st.nlink===1&&st.size>0&&st.size<=MAX_BYTES&&
+    (process.platform==='win32'||((st.mode&0o077)===0&&
+      (typeof process.getuid!=='function'||st.uid===process.getuid())));
+  if(!safe(first))throw Error('BROWSER_COMPANION_SNAPSHOT_UNSAFE');
+  const fd=await open(file,constants.O_RDONLY|(process.platform==='win32'?0:(constants.O_NOFOLLOW??0)));
+  let data;
+  try {
+    const before=await fd.stat();
+    const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs;
+    if(!safe(before)||!same(first,before))throw Error('BROWSER_COMPANION_SNAPSHOT_CHANGED');
+    const buf=Buffer.alloc(MAX_BYTES+1);let total=0;
+    while(total<buf.length){const r=await fd.read(buf,total,buf.length-total,null);if(!r.bytesRead)break;total+=r.bytesRead;}
+    const after=await fd.stat(),current=await lstat(file);
+    if(total!==before.size||!safe(current)||!same(before,after)||!same(before,current))
+      throw Error('BROWSER_COMPANION_SNAPSHOT_CHANGED');
+    data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(buf.subarray(0,total)));
+  }finally{await fd.close();}
+  const identity=data?.identity;
+  if(data?.schema!==1||data.kind!=='COMMANDER_LIVE_MONITOR'||
+    identity?.platform!==process.platform||
+    !/^[a-f0-9]{64}$/.test(identity?.configSha256??'')||
+    typeof identity?.version!=='string'||!/^[A-Za-z0-9._+-]{1,64}$/.test(identity.version)||
+    !Number.isSafeInteger(data.observedAtEpochMs)||!Number.isSafeInteger(data.expiresAtEpochMs)||
+    data.observedAtEpochMs>now||data.expiresAtEpochMs<=now||
+    data.expiresAtEpochMs<data.observedAtEpochMs||data.expiresAtEpochMs-data.observedAtEpochMs>30000||
+    browserCompanionInstanceRoot(base,identity)!==root)
+    throw Error('BROWSER_COMPANION_SELECTION_STALE_OR_MISMATCH');
+  return {scopeId:id,profile:identity.profile,port:identity.port,version:identity.version,
+    expiresAtEpochMs:data.expiresAtEpochMs,root};
+}
+export async function listBrowserCompanionInstances({base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
+  if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
+  try{await inspectExistingPrivateDirectory(base);await inspectExistingPrivateDirectory(path.join(base,'instances'));}
+  catch(error){if(error.code==='ENOENT')return [];throw error;}
+  const found=[];let count=0;
+  const dir=await opendir(path.join(base,'instances'));
+  for await(const entry of dir){
+    if(++count>MAX_SCOPES)throw Error('BROWSER_COMPANION_SCOPE_LIMIT');
+    if(!entry.isDirectory()||entry.isSymbolicLink()||!SCOPE_ID.test(entry.name))continue;
+    try{const {root,...metadata}=await readInstanceSelection(base,entry.name,now);found.push(metadata);}catch{}
+  }
+  return found.sort((a,b)=>a.profile.localeCompare(b.profile)||a.port-b.port);
+}
+export async function selectBrowserCompanionInstance(scopeId,{base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
+  if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
+  const selected=await readInstanceSelection(base,scopeId,now);
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base,path.join(base,'instances'),selected.root],{create:false});
+  return {...selected,environmentVariable:'CGWA_COMPANION_ROOT',nativeValidationRequired:true,
+    readOnly:true,actionAuthorization:false,ownerLaunchRequired:true};
+}
+
+export function startBrowserCompanionMonitor({ snapshot, root = defaultBrowserCompanionRoot(), instance, intervalMs = 2000, onError = () => {} } = {}) {
   if (typeof snapshot !== 'function') throw new Error('BROWSER_COMPANION_SNAPSHOT_PROVIDER_REQUIRED');
-  const state = { enabled: true, lastWriteAtEpochMs: 0, lastError: '' };
+  const scoped = Object.freeze({ profile: instance?.profile, port: instance?.port });
+  let scopedRoot;
+  try { scopedRoot = browserCompanionInstanceRoot(root, scoped); }
+  catch (error) {
+    // A read-only optional monitor must not prevent the Core from listening.
+    // Do not silently fall back to a shared path on invalid identity.
+    const lastError = String(error?.code ?? error?.message ?? error).slice(0,160);
+    onError(lastError);
+    return { status: () => ({ enabled:false, lastWriteAtEpochMs:0, lastError,
+      scope:'INSTANCE', scopeId:null }), stop: () => {} };
+  }
+  const state = { enabled: true, lastWriteAtEpochMs: 0, lastError: '',
+    scope: 'INSTANCE', scopeId: path.basename(scopedRoot) };
   let stopped = false, running = false;
   const tick = async () => {
     if (stopped || running) return;
     running = true;
     try {
       const value = await snapshot();
-      const receipt = await writeBrowserCompanionMonitor(root, value);
+      const receipt = await writeBrowserCompanionInstanceMonitor(root, scoped, value);
       state.lastWriteAtEpochMs = receipt.observedAtEpochMs;
       state.lastError = '';
     } catch (error) {

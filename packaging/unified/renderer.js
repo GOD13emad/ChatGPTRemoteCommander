@@ -60,3 +60,34 @@ targetOpen.addEventListener('click',async()=>{
   finally{targetOpen.disabled=!target.value||target.selectedOptions[0]?.disabled;}
 });
 void refreshBrowserTargets();
+
+
+const monitorTarget=document.getElementById('monitor-instance');
+const monitorSelect=document.getElementById('monitor-select');
+const monitorResult=document.getElementById('monitor-result');
+async function refreshMonitors(){
+  monitorSelect.disabled=true;monitorTarget.replaceChildren();
+  const placeholder=document.createElement('option');
+  placeholder.value='';placeholder.textContent='Choose an instance';monitorTarget.append(placeholder);
+  try{
+    const entries=await window.commander.monitorInstances();
+    for(const entry of entries){
+      const option=document.createElement('option');
+      option.value=entry.scopeId;option.textContent=entry.profile+' : '+entry.port+' — '+entry.version;
+      monitorTarget.append(option);
+    }
+    monitorTarget.value='';
+    show(monitorResult,entries.length?'Select the exact Core profile and port.':'No fresh instance records.');
+  }catch{show(monitorResult,'Monitor discovery unavailable. No fallback selected.');}
+}
+document.getElementById('monitor-refresh').addEventListener('click',()=>void refreshMonitors());
+monitorTarget.addEventListener('change',()=>{monitorSelect.disabled=!monitorTarget.value;show(monitorResult,'Selection not yet validated.');});
+monitorSelect.addEventListener('click',async()=>{
+  monitorSelect.disabled=true;
+  try{
+    const selected=await window.commander.monitorSelect(monitorTarget.value);
+    show(monitorResult,selected);
+  }catch{show(monitorResult,'Selection stale or invalid. Refresh and select again.');}
+  finally{monitorSelect.disabled=!monitorTarget.value;}
+});
+void refreshMonitors();
