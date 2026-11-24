@@ -30,7 +30,14 @@ const files = [
   "test/native-tunnel-client-observer-linux.test.mjs",
   "test/v012-private-native-worker-adapter.test.mjs",
   "test/v012-private-owner-worker-key-provision.test.mjs",
-  "test/windows-owner-tunnel-host-resolution.test.mjs"
+  "test/windows-owner-tunnel-host-resolution.test.mjs",
+  "test/v012-host-global-operation-lease.test.mjs",
+  "test/v012-windows-host-global-operation-lease.test.mjs",
+  "test/v012-native-operation-lease-gate.test.mjs",
+  "test/v012-owner-native-host-lease-bootstrap.test.mjs",
+  "test/gui-linux-session-route.test.mjs",
+  "test/qa-v012-no-grant-source-coherence.test.mjs",
+  "test/v101-pinned-interop-runner.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -55,7 +62,14 @@ const batches = [
   files.slice(20, 21), // Protected Core: keep native boot scoped to 30s
   files.slice(21, 22), // Windows DPAPI recovery: test-declared 30s and 60s budgets
   files.slice(22, 23), // Linux encrypted recovery: two expensive fixtures
-  files.slice(23, 30) // Native owner, dialogs, Tunnel, Worker, sealed key, hostname
+  files.slice(23, 30), // Native owner, dialogs, Tunnel, Worker, sealed key, hostname
+  files.slice(30, 31), // Native Linux SQLite lease and cross-process tests
+  files.slice(31, 32), // Windows ACL/SQLite native tests: separate aggregate budget
+  files.slice(32, 33), // Protected operation gate with native lease
+  files.slice(33, 34), // Native owner bootstrap: separate aggregate budget
+  files.slice(34, 35), // Linux GUI routing contract
+  files.slice(35, 36), // No-grant bootstrap and J01 timeout coherence
+  files.slice(36, 37) // Pinned Interop runner negative contracts (not positive Interop)
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
@@ -117,8 +131,14 @@ for (let index = range.first-1; index < range.last; index++) {
       // The Windows DPAPI suite has two 30s/60s test deadlines; allow
       // bounded aggregate overhead without relaxing either assertion.
       // Linux owner recovery has two separate 50s/60s fixtures.
+      // Native Linux lease has two 15s subprocess limits; Windows ACL/lease
+      // has 215s of declared test limits; owner bootstrap has 245s.
+      // Bound aggregate overhead separately, without weakening assertions.
       timeout: index === 13 ? 100000
         : index === 14 ? (part === 0 ? 55000 : 65000)
+        : index === 16 ? 60000
+        : index === 17 ? 240000
+        : index === 19 ? 270000
         : 30000
     });
     if (result.error) {
