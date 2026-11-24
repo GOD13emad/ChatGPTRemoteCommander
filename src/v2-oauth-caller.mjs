@@ -4,7 +4,7 @@
 // Simply decoding JWT claims or trusting a model argument is NOT authentication.
 // No live port, login or credentials are installed by this module.
 import { normalizeV2Route } from './v2-routing-contract.mjs';
-import { createV2VerifiedObservedCaller } from './v2-caller-assertion.mjs';
+import { createV2VerifiedObservedCaller, verifyV2CallerAssertion } from './v2-caller-assertion.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 function fail(code){throw Object.assign(new Error(code),{code});}
@@ -55,12 +55,35 @@ export function createV2OAuthObservedCaller({
     // The signature also binds exact chat, target, tool and payload to the
     // native owner session. OAuth subject alone does not identify a chat.
     const observed=await observedAssertion();
+    const ownerProofSignature=assertion.signature;
+    const ownerProofKeyId=assertion.keyId;
+    // A native-owner observation can await an OS dialog while the trusted
+    // account-to-principal binding is revoked or reassigned. Recheck the
+    // SAME OAuth subject against the independently managed principal map
+    // before admitting the exact signed action.
+    const finalPrincipal=await resolvePrincipal(claims.subject);
+    if(!isId(finalPrincipal)||finalPrincipal!==r.principalId
+      ||finalPrincipal!==principal)
+      fail('V2_OAUTH_PRINCIPAL_MISMATCH');
     // A valid bearer at the first check cannot authorize an effect after
-    // native J01 observation awaited long enough for its token to expire.
+    // native J01 observation or the final principal lookup outlasts its TTL.
     const finalNow=now();
     if(!Number.isSafeInteger(finalNow)||claims.expiresAtMs<=finalNow
       ||claims.notBeforeMs>finalNow)
       fail('V2_OAUTH_TOKEN_NOT_CURRENT');
+    // The final principal lookup is another asynchronous trust boundary.
+    // Repeat the pure signature/expiry/revocation check without invoking
+    // native J01 a second time, and require the SAME signed owner proof.
+    const finalAssertion=verifyV2CallerAssertion({
+      route:r,assertion,trust:assertionTrust,tool,args,nowMs:finalNow
+    });
+    if(assertion.signature!==ownerProofSignature
+      ||assertion.keyId!==ownerProofKeyId
+      ||finalAssertion.hostId!==observed.hostId
+      ||finalAssertion.profileId!==observed.profileId
+      ||finalAssertion.principalId!==observed.principalId
+      ||finalAssertion.conversationId!==observed.conversationId)
+      fail('V2_ASSERTION_CHANGED_DURING_NATIVE_SESSION');
     return observed;
   };
 }
