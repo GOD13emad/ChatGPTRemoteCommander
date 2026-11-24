@@ -269,7 +269,14 @@ export function verifyLinuxPrivateProfileBackup({
   if(recoveryDir===undefined)
     return verifyLinuxSixFileOwnerCapsule({home,ownerUid,profileName});
   if(typeof recoveryDir!=='string'||!path.isAbsolute(recoveryDir))return false;
-  if(!recoveryDir.startsWith(path.resolve(home)+path.sep))return false;
+  // A raw string prefix is not containment: /home/owner/../other still
+  // passes it before fs.realpathSync touches the escaped directory.
+  // Validate lexical and normalized containment before any filesystem I/O.
+  const ownerRoot=path.resolve(home);
+  const recoveryRoot=path.resolve(recoveryDir);
+  const child=path.relative(ownerRoot,recoveryRoot);
+  if(!child||child==='..'||child.startsWith('..'+path.sep)
+    ||path.isAbsolute(child)||recoveryDir.split(path.sep).includes('..'))return false;
   const fixedReceipt='rc012-owner-private-profile-backups-verified.json';
   const encryptedName='tunnel-profile-'+profileName+'-owner-restorable.cred';
   const expectedCredentialName=profileName+'-profile-v012';
