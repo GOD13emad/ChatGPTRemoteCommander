@@ -82,3 +82,18 @@ test('candidate read-only proxy uses only reviewed literal port 48839',async()=>
  assert.equal(calls.length,1);
  assert.equal(calls[0].url,'http://127.0.0.1:48839/mcp');
 });
+
+test('read-only owner delegation rejects an oversized stream before fully buffering it',async()=>{
+ let pushed=0;
+ const total=8;
+ const broker=createOwnerWorkspaceReadOnlyProxy({
+  config:cfg(),platform:'win32',primaryStatus:healthyDenied,
+  readFileImpl:async()=>auth,
+  fetchImpl:async()=>new Response(new ReadableStream({
+   pull(controller){if(pushed>=total){controller.close();return;}
+    pushed++;controller.enqueue(new Uint8Array(65536));}
+  }),{status:200})
+ });
+ await assert.rejects(()=>broker.execute('workspace_target_list',{}),/OWNER_WORKSPACE_RESPONSE_TOO_LARGE/);
+ assert.ok(pushed<total,'all chunks were buffered before rejection: '+pushed);
+});
