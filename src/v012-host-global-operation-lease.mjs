@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {assertWindowsHostLeaseStorage} from './v012-windows-host-global-lease-acl.mjs';
+import {assertWindowsHostLeaseStorage,
+  createV012WindowsPrivateLeaseDatabase} from './v012-windows-host-global-lease-acl.mjs';
 
 const HOST=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -199,6 +200,10 @@ export async function createV012WindowsHostGlobalOperationLease({
   }
   const file=path.win32.join(root,DB_FILE);
   const verifyWindowsStorage=()=>assertWindowsHostLeaseStorage(root,file);
+  await verifyWindowsStorage();
+  // Windows cannot use POSIX 0600 for a newly created SQLite file. Apply
+  // native owner SID/DACL at atomic CreateNew, never repair an existing DB.
+  await createV012WindowsPrivateLeaseDatabase(file);
   await verifyWindowsStorage();
   const lease=createCheckedLease({
     directory:root,hostId,now,windows:true,verifyWindowsStorage

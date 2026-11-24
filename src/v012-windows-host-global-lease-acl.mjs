@@ -39,6 +39,62 @@ foreach($suffix in @('','-journal','-wal','-shm')){
 [Console]::Out.Write('RC012_WINDOWS_NATIVE_LEASE_ACL_VALID')
 `;
 
+
+/**
+ * Create a NEW DB file with a native owner-only security descriptor applied
+ * atomically at file creation, not after an untrusted inherited-ACL window.
+ * .NET Framework FileStream(FileSecurity) is the Windows PowerShell 5.1 API.
+ * An existing file is NEVER repaired: the caller validates its full ACL.
+ */
+const CREATE_SCRIPT=String.raw`
+$ErrorActionPreference='Stop'
+$p=$env:RC012_NATIVE_LEASE_DB_FILE
+if([string]::IsNullOrWhiteSpace($p)){throw 'DB_PATH_REQUIRED'}
+$owner=[Security.Principal.WindowsIdentity]::GetCurrent().User
+$allowed=@($owner.Value,'S-1-5-18','S-1-5-32-544')
+$acl=New-Object Security.AccessControl.FileSecurity
+$acl.SetOwner($owner)
+$acl.SetAccessRuleProtection($true,$false)
+foreach($sid in $allowed){
+  $rule=[Security.AccessControl.FileSystemAccessRule]::new(
+    ([Security.Principal.SecurityIdentifier]::new($sid)),
+    [Security.AccessControl.FileSystemRights]::FullControl,
+    [Security.AccessControl.AccessControlType]::Allow)
+  $acl.AddAccessRule($rule)
+}
+try{
+  $stream=[IO.FileStream]::new($p,[IO.FileMode]::CreateNew,
+    [Security.AccessControl.FileSystemRights]::Modify,
+    [IO.FileShare]::ReadWrite,4096,[IO.FileOptions]::None,$acl)
+  try{}finally{$stream.Dispose()}
+}catch [IO.IOException]{
+  if(-not [IO.File]::Exists($p)){throw}
+}
+[Console]::Out.Write('RC012_WINDOWS_LEASE_NEW_DB_READY')
+`;
+
+export async function createV012WindowsPrivateLeaseDatabase(dbFile) {
+  if(process.platform!=='win32'||typeof dbFile!=='string'
+    ||!path.win32.isAbsolute(dbFile)||! /^[a-z]:[\\/]/i.test(dbFile))
+    throw Error('V012_WINDOWS_NATIVE_LEASE_PRIVATE_DIRECTORY_REQUIRED');
+  try{
+    const stdout=await new Promise((resolve,reject)=>{
+      execFile(POWERSHELL,
+        ['-NoLogo','-NoProfile','-NonInteractive','-Command',CREATE_SCRIPT],{
+          windowsHide:true,timeout:8000,maxBuffer:4096,
+          env:{...process.env,RC012_NATIVE_LEASE_DB_FILE:dbFile}
+        },(error,out,err)=>{
+          if(error||err.trim())return reject(error??Error('DB_CREATE_STDERR'));
+          resolve(out);
+        });
+    });
+    if(stdout!=='RC012_WINDOWS_LEASE_NEW_DB_READY')
+      throw Error('DB_CREATE_RESULT_INVALID');
+  }catch{
+    throw Error('V012_WINDOWS_NATIVE_LEASE_STORAGE_UNTRUSTED');
+  }
+}
+
 // Validates storage without returning Windows identity data to the caller.
 // Existing owner-private directory helper checks every path component for
 // reparse points and validates owner SID, protected DACL and NTFS volume.
