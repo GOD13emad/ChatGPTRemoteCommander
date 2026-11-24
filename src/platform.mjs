@@ -4,6 +4,8 @@ import { spawn, spawnSync } from 'node:child_process';
 
 export const IS_WINDOWS = process.platform === 'win32';
 export const IS_LINUX = process.platform === 'linux';
+// Ambient SHELL names a preference, not a trusted executable.
+export const LINUX_SYSTEM_BASH_EXE = '/bin/bash';
 
 export function expandPathValue(value) {
   let text = String(value ?? '');
@@ -27,7 +29,7 @@ export function shellSpec(command, interactive = false) {
       ? { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NoExit', '-Command', command || '-'] }
       : { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command] };
   }
-  const shell = process.env.SHELL || '/bin/bash';
+  const shell = LINUX_SYSTEM_BASH_EXE;
   return interactive
     ? { file: shell, args: ['--noprofile', '--norc'] }
     : { file: shell, args: ['-c', command] };
@@ -63,6 +65,7 @@ export function spawnShell(command, options = {}) {
   const spec = shellSpec(command, options.interactive === true);
   return spawn(spec.file, spec.args, {
     cwd: options.cwd,
+    shell: false,
     windowsHide: true,
     detached: !IS_WINDOWS,
     stdio: options.stdio ?? ['ignore', 'pipe', 'pipe'],
@@ -71,5 +74,5 @@ export function spawnShell(command, options = {}) {
 }
 
 export function shellName() {
-  return IS_WINDOWS ? 'PowerShell 7' : (process.env.SHELL || '/bin/bash');
+  return IS_WINDOWS ? 'PowerShell 7' : LINUX_SYSTEM_BASH_EXE;
 }
