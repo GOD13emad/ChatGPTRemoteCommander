@@ -664,12 +664,14 @@ function linuxFacts({profileName=null}={}){
     units};
 }
 /** Router mapping is an observation, not authorization to change routing. */
-export function classifyObservedRouterStatus(report,listenPort,backendHealthVersion){
-  if(!report||typeof report!=='object'||Array.isArray(report)
+export function classifyObservedRouterStatus(report,listenPort,backendHealthVersion,expectedProfile){
+  if(typeof expectedProfile!=='string'
+    ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(expectedProfile)
+    ||!report||typeof report!=='object'||Array.isArray(report)
     ||report.router!==true||report.listenPort!==listenPort
     ||typeof report.sourceSha256!=='string'
     ||!/^[a-f0-9]{64}$/.test(report.sourceSha256)
-    ||report.profile!=='default'||report.schema!==1
+    ||report.profile!==expectedProfile||report.schema!==1
     ||!Number.isSafeInteger(report.generation)||report.generation<1
     ||!Number.isSafeInteger(report.activePort)
     ||report.activePort<1024||report.activePort>65535
@@ -838,7 +840,14 @@ function windowsFacts({profileName=null}={}){
   const routerReport=tunnel.valid?probeLoopbackRouterStatus(tunnel.port):null;
   const backendVersion=routerReport?.activePort
     ?probeLoopbackCoreVersion(routerReport.activePort):null;
-  const route=classifyObservedRouterStatus(routerReport,tunnel.port,backendVersion);
+  // The canonical install calls its Router profile "default", while named
+  // installed profiles (e.g. MMZ) retain their exact owner-selected name.
+  // Compare the observed Router claim with this local selection, never with
+  // a profile supplied by the loopback peer or a caller-controlled MCP body.
+  const expectedRouterProfile=selectedProfile==='chatgpt-remote-commander'
+    ?'default':selectedProfile;
+  const route=classifyObservedRouterStatus(routerReport,tunnel.port,
+    backendVersion,expectedRouterProfile);
   return {platform:'win32',connectionMode:'private-tunnel',
     legacyInnoPresent:checks.some(c=>c.ok),
     nativeUnifiedNsisPresent:nativePresent.length>0,
