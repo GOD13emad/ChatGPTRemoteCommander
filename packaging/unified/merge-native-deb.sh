@@ -73,9 +73,17 @@ pkg() { dpkg-deb --field "$1" "$2"; }
 [[ "$(pkg "$NATIVE" Architecture)" == amd64 && "$(pkg "$GUI" Architecture)" == amd64 ]] || {
   echo RC012_MERGE_ARCH_MISMATCH >&2; exit 3;
 }
-dpkg --compare-versions "$(pkg "$GUI" Version)" gt "$(pkg "$NATIVE" Version)" || {
-  echo RC012_MERGE_VERSION_NOT_UPGRADE >&2; exit 3;
+# Both DEBs are source-pinned components of ONE candidate, not successive
+# installed releases. A mixed-version pair is a source identity failure.
+# Upgrade ordering is checked separately in the native migration smoke.
+EXPECTED_DEB_VERSION="${VERSION/-dev./~dev.}"
+NATIVE_DEB_VERSION="$(pkg "$NATIVE" Version)"
+GUI_DEB_VERSION="$(pkg "$GUI" Version)"
+[[ "$NATIVE_DEB_VERSION" == "$EXPECTED_DEB_VERSION" &&
+   "$GUI_DEB_VERSION" == "$EXPECTED_DEB_VERSION" ]] || {
+  echo RC012_MERGE_VERSION_IDENTITY_MISMATCH >&2; exit 3;
 }
+echo "RC012_MERGE_CANONICAL_VERSION_PASS version=$EXPECTED_DEB_VERSION"
 WORK="$(mktemp -d "$BASE/dist/unified/.native-merge-XXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
 mkdir "$WORK/native" "$WORK/gui"

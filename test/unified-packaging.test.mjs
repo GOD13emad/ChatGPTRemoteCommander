@@ -490,3 +490,23 @@ test('hosted public native DEB path policy admits audited packaging files and re
   assert.notEqual(missingProvenance.status,0);
   assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
 });
+
+test('native DEB merger pins identical canonical Core and GUI candidate versions',()=>{
+ const source=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ const version=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8')).version;
+ const expected=version.replace('-dev.','~dev.');
+ assert.match(version,/^0\.12\.0-dev\.[1-9][0-9]*$/);
+ assert.match(source,/EXPECTED_DEB_VERSION="\$\{VERSION\/-dev\.\/~dev\.\}"/);
+ assert.match(source,/NATIVE_DEB_VERSION="\$\(pkg "\$NATIVE" Version\)"/);
+ assert.match(source,/GUI_DEB_VERSION="\$\(pkg "\$GUI" Version\)"/);
+ assert.match(source,/\$NATIVE_DEB_VERSION" == "\$EXPECTED_DEB_VERSION"/);
+ assert.match(source,/\$GUI_DEB_VERSION" == "\$EXPECTED_DEB_VERSION"/);
+ assert.match(source,/RC012_MERGE_VERSION_IDENTITY_MISMATCH/);
+ assert.doesNotMatch(source,/RC012_MERGE_VERSION_NOT_UPGRADE/);
+ if(process.platform==='linux'){
+  const same=spawnSync('dpkg',['--compare-versions',expected,'eq',expected],{encoding:'utf8'});
+  assert.equal(same.status,0,same.stderr);
+  const newer=spawnSync('dpkg',['--compare-versions',expected,'gt','0.12.0~dev.12'],{encoding:'utf8'});
+  assert.equal(newer.status,0,newer.stderr);
+ }
+});
