@@ -16,6 +16,40 @@ const MUTATIONS=new Set(['workspace_window_click','workspace_browser_attach',
 const AUTH=/^[a-f0-9]{64}$/;
 const REQ=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const fail=(c)=>Object.assign(new Error(c),{code:c});
+// Enforce the reply cap while bytes arrive. A post-response.text() check
+// protects the JSON parser but still allows an oversized local reply to be
+// fully allocated in memory before rejection.
+async function readBoundedOwnerReply(response) {
+ const body=response.body;
+ if(typeof body?.getReader!=='function'){
+  // Preserve support for injected text-only response mocks. Node fetch uses
+  // streaming Response.body for nonempty network replies.
+  const text=await response.text();
+  if(text.length>8_000_000)throw fail('WORKSPACE_OWNER_REPLY_LIMIT');
+  return text;
+ }
+ const reader=body.getReader();
+ const decoder=new TextDecoder();
+ const parts=[];
+ let received=0,finished=false;
+ try{
+  while(true){
+   const {done,value}=await reader.read();
+   if(done){finished=true;break;}
+   if(!(value instanceof Uint8Array))throw fail('WORKSPACE_OWNER_INVALID_RESPONSE');
+   received+=value.byteLength;
+   if(received>8_000_000)throw fail('WORKSPACE_OWNER_REPLY_LIMIT');
+   parts.push(decoder.decode(value,{stream:true}));
+  }
+  parts.push(decoder.decode());
+  return parts.join('');
+ }finally{
+  if(!finished){
+   try{void reader.cancel().catch(()=>{});}catch{}
+  }
+  reader.releaseLock();
+ }
+}
 export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,readFileImpl=readFile,timeoutSignal=AbortSignal.timeout}={}){
  const policy=config?.ownerWorkspaceDelegation;
  if(policy?.enabled!==true)return null;
@@ -53,8 +87,7 @@ export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,rea
       (name==='workspace_native_ui_set_value'||name==='workspace_native_ui_invoke')?22000:6500)});}
   catch{throw fail('WORKSPACE_OWNER_AGENT_UNAVAILABLE');}
   if(response.status!==200)throw fail('WORKSPACE_OWNER_AGENT_DENIED');
-  const txt=await response.text();
-  if(txt.length>8_000_000)throw fail('WORKSPACE_OWNER_REPLY_LIMIT');
+  const txt=await readBoundedOwnerReply(response);
   let body;
   try{body=JSON.parse(txt);}catch{throw fail('WORKSPACE_OWNER_INVALID_RESPONSE');}
   if(body.jsonrpc!=='2.0'||body.id!==1||!body.result||body.error||
