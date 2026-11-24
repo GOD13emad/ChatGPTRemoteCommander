@@ -797,6 +797,9 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       :path.join(os.tmpdir(),'rc012-private-native-'+randomUUID());
     if(linux)fs.mkdirSync(nativeRoot,{mode:0o700});
     else await ensureWindowsMonitorDirectories([nativeRoot],{create:true});
+    // GitHub-hosted Windows TMP may be exposed through a path alias.
+    // Use its verified canonical path; never relax native owner/ACL checks.
+    nativeRoot=fs.realpathSync.native(nativeRoot);
     nativeLease=await createV012OwnerNativeHostLease({
       directory:nativeRoot,hostId:'host-1'
     });

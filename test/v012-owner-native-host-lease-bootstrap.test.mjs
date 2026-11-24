@@ -17,7 +17,7 @@ async function freshOwnerRoot(){
   const root=path.join(os.tmpdir(),'rc012-owner-host-lease-'+randomUUID());
   if(win)await ensureWindowsMonitorDirectories([root],{create:true});
   else fs.mkdirSync(root,{mode:0o700});
-  return root;
+  return fs.realpathSync.native(root);
 }
 test('owner bootstrap refuses ambiguous host or missing pre-existing private directory',{
   skip:!win&&!linux,timeout:20000
