@@ -229,7 +229,7 @@ test('RSA public keys below 2048 bits are rejected even if signature verifies',a
 });
 
 test('OAuth bearer expiry during awaited native session is rejected before admission',async()=>{
-  let current=NOW;
+  let current=NOW,principalRevoked=false,revokeOnObservation=false;
   const route={hostId:'host',principalId:'user-1',profileId:'alice',
     conversationId:'chat-a',operationId:'write',target:{kind:'workflow-root',id:'flow-a'}};
   const args={path:'a.txt',content:'ok'};
@@ -253,11 +253,18 @@ test('OAuth bearer expiry during awaited native session is rejected before admis
     readAuthorization:async()=> 'Bearer '+token('EdDSA',
       payload({exp:Math.floor(NOW/1000)+2})),
     verifyAccessToken:createV2JwksTokenVerifier({...config,now:()=>current}),
-    resolvePrincipal:async()=> 'user-1',
-    observedNativeSession:async()=>{current+=3000;return 'owner-session';},
+    resolvePrincipal:async()=>principalRevoked?'other-principal':'user-1',
+    observedNativeSession:async()=>{
+      if(revokeOnObservation)principalRevoked=true;
+      else current+=3000;
+      return 'owner-session';
+    },
     issuer:ISS,audience:AUD,now:()=>current
   });
   await assert.rejects(observed(),{code:'V2_OAUTH_TOKEN_NOT_CURRENT'});
+  current=NOW;
+  revokeOnObservation=true;
+  await assert.rejects(observed(),{code:'V2_OAUTH_PRINCIPAL_MISMATCH'});
 });
 test('signed chat assertion expiry during awaited native session is rejected',async()=>{
   let current=NOW,swapSession=false,rotateProof=false;

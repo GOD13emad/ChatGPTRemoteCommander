@@ -55,8 +55,16 @@ export function createV2OAuthObservedCaller({
     // The signature also binds exact chat, target, tool and payload to the
     // native owner session. OAuth subject alone does not identify a chat.
     const observed=await observedAssertion();
+    // A native-owner observation can await an OS dialog while the trusted
+    // account-to-principal binding is revoked or reassigned. Recheck the
+    // SAME OAuth subject against the independently managed principal map
+    // before admitting the exact signed action.
+    const finalPrincipal=await resolvePrincipal(claims.subject);
+    if(!isId(finalPrincipal)||finalPrincipal!==r.principalId
+      ||finalPrincipal!==principal)
+      fail('V2_OAUTH_PRINCIPAL_MISMATCH');
     // A valid bearer at the first check cannot authorize an effect after
-    // native J01 observation awaited long enough for its token to expire.
+    // native J01 observation or the final principal lookup outlasts its TTL.
     const finalNow=now();
     if(!Number.isSafeInteger(finalNow)||claims.expiresAtMs<=finalNow
       ||claims.notBeforeMs>finalNow)
