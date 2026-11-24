@@ -89,16 +89,28 @@ for (let index = range.first-1; index < range.last; index++) {
   // The two disjoint name filters and their complement execute every test
   // exactly once; no tool behavior, assertions, or deadlines are skipped.
   const slowPattern = '^(?:' + slowWorkflowTests.join('|') + ')$';
+  // On hosted Windows, the two distinct native mTLS/Gateway test files
+  // individually fit the established 30s limit, but the shared process can
+  // exceed it under runner load. One process per file, same assertions,
+  // same deadline per process, unchanged batch indexes and exact coverage.
+  const isolatedWindowsTunnel = process.platform === 'win32' && index === 9;
+  if (isolatedWindowsTunnel &&
+    (batch.length !== 2 ||
+     batch[0] !== 'test/v2-private-tunnel-mtls-attestor.test.mjs' ||
+     batch[1] !== 'test/v2-private-tunnel-https-gateway.test.mjs'))
+    throw new Error('V012_SOURCE_REGRESSION_TUNNEL_BATCH_INVALID');
   const partitions = index === 5 ? [
     ...slowWorkflowTests.map(name => ['--test-name-pattern=^' + name + '$']),
     ['--test-skip-pattern=' + slowPattern]
-  ] : index === 14 ? linuxOwnerRecoveryTests.map(name =>
+  ] : isolatedWindowsTunnel ? [[], []]
+    : index === 14 ? linuxOwnerRecoveryTests.map(name =>
     ['--test-name-pattern=^' + name + '$']) : [[]];
   for (let part = 0; part < partitions.length; part++) {
     process.stdout.write('V012_SOURCE_REGRESSION_BATCH_START_' + (index + 1) + '/' + batches.length +
       ' files=' + batch.length + ' partition=' + (part + 1) + '/' + partitions.length + '\n');
+    const activeFiles = isolatedWindowsTunnel ? [batch[part]] : batch;
     const result = spawnSync(process.execPath, [
-      '--test', '--test-concurrency=1', ...partitions[part], ...batch
+      '--test', '--test-concurrency=1', ...partitions[part], ...activeFiles
     ], {
       stdio: 'inherit',
       windowsHide: true,

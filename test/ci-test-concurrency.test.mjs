@@ -760,6 +760,15 @@ test('V012 source regression retains every pinned test exactly once with bounded
     'ordinary fixtures retain 30s, Windows DPAPI has a bounded 100s aggregate for its declared 30s/60s tests, Linux recovery has isolated 55/65s budgets');
   assert.ok(runner.includes('index === 14 ? linuxOwnerRecoveryTests.map(name =>'),
     'only the named Linux native credential tests may use separate bounded deadlines');
+  assert.ok(runner.includes("process.platform === 'win32' && index === 9"),
+    'Windows host TLS/Gateway fixtures must retain a separate process per file');
+  assert.ok(runner.includes("isolatedWindowsTunnel ? [[], []]"),
+    'both native tunnel files must run once in distinct Windows partitions');
+  assert.ok(runner.includes("isolatedWindowsTunnel ? [batch[part]] : batch"),
+    'non-Windows paths retain full source batches and Windows includes every file');
+  assert.ok(runner.includes("batch[0] !== 'test/v2-private-tunnel-mtls-attestor.test.mjs'") &&
+    runner.includes("batch[1] !== 'test/v2-private-tunnel-https-gateway.test.mjs'"),
+    'named tunnel batches must fail closed if the exact pinned file identities drift');
   for(const name of ['Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',
     'profile-specific owner recovery capsules never share a Tunnel or private TLS pair'])
     assert.ok(runner.includes(name),'native credential fixture must remain covered: '+name);
