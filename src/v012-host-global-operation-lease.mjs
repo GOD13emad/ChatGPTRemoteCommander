@@ -128,12 +128,19 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
       const owner=randomUUID();
       reserve(key,owner);
       active++;
-      let effectStarted=false,completed=false;
-      // Only the protected executor knows when the OS effect is about to
-      // start. If it starts and the result is unknown, keep the durable
-      // fencing row; a second request must await native reconciliation.
+      let effectStarted=false,completed=false,provenNoEffect=false;
+      // A rejected callback has an unknown external outcome by DEFAULT.
+      // Only trusted Core admission may prove no effect occurred. The owner
+      // must reconcile a quarantined row after independently proving cessation.
       const leaseContext=Object.freeze({
-        markEffectStarted(){effectStarted=true;}
+        markEffectStarted(){
+          if(provenNoEffect)fail('V012_NATIVE_LEASE_EFFECT_AFTER_DENIAL');
+          effectStarted=true;
+        },
+        markSafePreEffectDenial(){
+          if(effectStarted)fail('V012_NATIVE_LEASE_EFFECT_ALREADY_STARTED');
+          provenNoEffect=true;
+        }
       });
       try{
         const result=await work(leaseContext);
@@ -141,7 +148,7 @@ export function createV012HostGlobalOperationLease({directory,hostId,now=Date.no
         return result;
       }finally{
         try{
-          if(completed||!effectStarted)release(key,owner);
+          if(completed||provenNoEffect)release(key,owner);
         }finally{active--;}
       }
     },
