@@ -9,38 +9,58 @@ import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
 import { codexLaunchAuthorized } from './no-codex-policy.mjs';
 import { processContainmentAvailable } from './process-containment.mjs';
+import { expandPathValue } from './platform.mjs';
 
-// Workflow proposals are data, not owner configuration authority. An enrolled
-// project may include the Host's local config file inside its writable root.
-// Deny both lexical and canonical aliases before dispatching a write_text action.
-async function denyHostConfigWrite(userPath, projectRoot, protectedConfigPaths) {
-  if (protectedConfigPaths.length === 0) return;
-  if (typeof userPath !== 'string' || !userPath) fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
+// Workflow file effects must not mutate the Host control plane. Match the
+// actual dispatch path semantics (legacy write_text vs Power path expansion)
+// and protect directory-level replacement/removal as well as individual files.
+// This is not an OS sandbox for separately authorized executable tools.
+const WORKFLOW_HOST_CONFIG_EFFECTS = new Set([
+  'write_text','write_file','create_directory','copy_path','move_path','delete_path'
+]);
+async function denyHostConfigMutation(tool, input, projectRoot, protectedConfigPaths) {
+  if (!protectedConfigPaths.length || !WORKFLOW_HOST_CONFIG_EFFECTS.has(tool)) return;
   const normalize = value => {
     const resolved = path.resolve(value);
     return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
   };
-  const requested = path.resolve(projectRoot, userPath);
-  if (protectedConfigPaths.some(target => normalize(target) === normalize(requested))) {
-    fail('WORKFLOW_HOST_CONFIG_WRITE_DENIED');
-  }
+  const contains = (parent, child) => {
+    const rel = path.relative(normalize(parent), normalize(child));
+    return rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
+  };
+  // Canonicalize the deepest existing ancestor, including multi-level missing
+  // paths accepted by Power createParents. Fail closed on unexpected errors.
   const canonical = async value => {
-    try { return await realpath(value); }
-    catch (error) {
-      if (error?.code !== 'ENOENT') fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
-      try { return path.join(await realpath(path.dirname(value)), path.basename(value)); }
-      catch (parentError) {
-        if (parentError?.code !== 'ENOENT') fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
-        return null;
+    let cursor = value;
+    const suffix = [];
+    for (;;) {
+      try { return path.join(await realpath(cursor), ...suffix); }
+      catch (error) {
+        if (error?.code !== 'ENOENT') fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
+        const parent = path.dirname(cursor);
+        if (parent === cursor) fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
+        suffix.unshift(path.basename(cursor));
+        cursor = parent;
       }
     }
   };
-  const actual = await canonical(requested);
-  if (!actual) return; // The underlying file tool rejects missing parents.
-  for (const target of protectedConfigPaths) {
-    const trusted = await canonical(target);
-    if (trusted && normalize(actual) === normalize(trusted)) {
+  const targets = tool === 'copy_path' ? [input.destination]
+    : tool === 'move_path' ? [input.source, input.destination] : [input.path];
+  const mayReplaceAncestor = tool !== 'create_directory';
+  const overlaps = (requested, trusted) =>
+    contains(trusted, requested) || (mayReplaceAncestor && contains(requested, trusted));
+  for (const raw of targets) {
+    if (typeof raw !== 'string' || !raw) fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
+    const expanded = tool === 'write_text' ? raw : expandPathValue(raw);
+    const requested = path.resolve(path.isAbsolute(expanded) ? expanded : path.join(projectRoot, expanded));
+    if (protectedConfigPaths.some(target => overlaps(requested, target))) {
       fail('WORKFLOW_HOST_CONFIG_WRITE_DENIED');
+    }
+    const actual = await canonical(requested);
+    for (const target of protectedConfigPaths) {
+      if (overlaps(actual, await canonical(target))) {
+        fail('WORKFLOW_HOST_CONFIG_WRITE_DENIED');
+      }
     }
   }
 }
@@ -463,9 +483,9 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
               if (!definition) fail('WORKFLOW_TOOL_UNAVAILABLE');
               const errors = validateSchema(input, definition.inputSchema);
               if (errors.length) fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
-              if (tool === 'write_text') {
+              if (WORKFLOW_HOST_CONFIG_EFFECTS.has(tool)) {
                 const source = store.get(args.id).state.root;
-                await denyHostConfigWrite(input.path, source, protectedConfigs);
+                await denyHostConfigMutation(tool, input, source, protectedConfigs);
               }
             }, dispatch
           });
