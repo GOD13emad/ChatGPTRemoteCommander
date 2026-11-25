@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import {guardFileWrite,readBoundHostConfiguration} from '../src/file-write-guard.mjs';
 import {writeText} from '../src/tools-v0.3.mjs';
 
@@ -98,4 +99,29 @@ test('Host config reads are bounded before allocating bytes, without fallback',a
   fs.writeFileSync(localConfigPath,'{}');
   fs.truncateSync(localConfigPath,8*1024*1024+1);
   await assert.rejects(readBoundHostConfiguration({localConfigPath,defaultConfigPath}),{code:'HOST_CONFIG_TOO_LARGE'});
+});
+
+test('Windows Host config accepts identity-verified NTFS short names but writes and junctions stay denied',
+ {skip:process.platform!=='win32'}, async t=>{
+  const root=fixture(t),dir=path.join(root,'Long Configuration Directory');
+  fs.mkdirSync(dir);
+  const file=path.join(dir,'config.json'),raw='{"source":"short-name"}';
+  fs.writeFileSync(file,raw);
+  // Fixed command, fixed relative fixture name, no untrusted interpolation.
+  const cmd=path.join(process.env.SystemRoot||'C:\\\\Windows','System32','cmd.exe');
+  const shortDir=execFileSync(cmd,['/d','/c','for %I in ("Long Configuration Directory") do @echo %~sI'],
+    {cwd:root,encoding:'utf8'}).trim();
+  assert.equal(fs.realpathSync.native(shortDir).toLowerCase(),dir.toLowerCase());
+  if(shortDir.toLowerCase()===dir.toLowerCase())return t.skip('NTFS short-name generation disabled on this test volume');
+  const shortFile=path.join(shortDir,'config.json');
+  assert.equal((await readBoundHostConfiguration({explicitConfigPath:shortFile})).configRaw,raw);
+  await assert.rejects(guardFileWrite(shortFile),{code:'FILE_WRITE_ALIAS'});
+  const alias=path.join(root,'alias');fs.symlinkSync(dir,alias,'junction');
+  await assert.rejects(readBoundHostConfiguration({explicitConfigPath:path.join(alias,'config.json')}),
+    {code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  const missing=path.join(shortDir,'absent.json');
+  assert.equal((await readBoundHostConfiguration({localConfigPath:missing,defaultConfigPath:shortFile})).configRaw,raw);
+  fs.linkSync(file,path.join(dir,'hard.json'));
+  await assert.rejects(readBoundHostConfiguration({explicitConfigPath:shortFile}),
+    {code:'HOST_CONFIG_PATH_UNTRUSTED'});
 });

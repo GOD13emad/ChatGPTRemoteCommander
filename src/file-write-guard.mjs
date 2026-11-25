@@ -11,6 +11,32 @@ function fail(code) { throw Object.assign(new Error(code), { code }); }
  * This is a filesystem precondition, not isolation from another local OS actor.
  */
 export async function guardFileWrite(target, expected) {
+  return inspectFilePath(target, expected);
+}
+
+// A Windows startup path may use a genuine NTFS 8.3 name (e.g. RUNNER~1).
+// Admit it only for Host reads, and only when every canonical component
+// has the same non-reparse identity as the inspected original component.
+async function verifyWindowsShortNames(original, canonical, records) {
+  const a = path.parse(original), b = path.parse(canonical);
+  if (key(a.root) !== key(b.root)) fail('FILE_WRITE_ALIAS');
+  const from = original.slice(a.root.length).split(path.sep).filter(Boolean);
+  const to = canonical.slice(b.root.length).split(path.sep).filter(Boolean);
+  if (from.length !== to.length || records.length !== from.length + 1) fail('FILE_WRITE_ALIAS');
+  let cursor = b.root;
+  for (let i = -1; i < to.length; i++) {
+    if (i >= 0) {
+      if (from[i].toLowerCase() !== to[i].toLowerCase()
+          && !/^[^\\/:*?"<>|~. ]{1,6}~[0-9]+(?:\.[^\\/:*?"<>|~. ]{1,3})?$/.test(from[i])) {
+        fail('FILE_WRITE_ALIAS');
+      }
+      cursor = path.join(cursor, to[i]);
+    }
+    const info = await lstat(cursor, { bigint: true });
+    if (info.isSymbolicLink() || !sameIdentity(records[i + 1].info, info)) fail('FILE_WRITE_ALIAS');
+  }
+}
+async function inspectFilePath(target, expected, allowWindowsShortNames = false) {
   target = path.resolve(target);
   const parsed = path.parse(target);
   const parts = target.slice(parsed.root.length).split(path.sep).filter(Boolean);
@@ -42,7 +68,12 @@ export async function guardFileWrite(target, expected) {
   // the caller does not have, even when this exact descendant is authorized.
   // Never ignore canonicalization errors, and never canonicalize a missing leaf.
   if (!deepestExisting) fail('FILE_WRITE_PARENT_NOT_DIRECTORY');
-  if (key(await realpath(deepestExisting)) !== key(deepestExisting)) fail('FILE_WRITE_ALIAS');
+  const canonical = await realpath(deepestExisting);
+  if (key(canonical) !== key(deepestExisting)) {
+    if (process.platform !== 'win32' || !allowWindowsShortNames) fail('FILE_WRITE_ALIAS');
+    await verifyWindowsShortNames(deepestExisting, canonical,
+      leaf ? [...ancestors, { path: deepestExisting, info: leaf }] : ancestors);
+  }
   if (expected !== undefined) {
     if ((expected.leaf === null) !== (leaf === null) || (leaf !== null && !sameFile(expected.leaf, leaf))) fail('FILE_WRITE_TARGET_CHANGED');
     for (const before of expected.ancestors) {
@@ -60,7 +91,7 @@ const MAX_HOST_CONFIG_BYTES = 8 * 1024 * 1024;
 async function readHostConfigPath(value, { optional = false } = {}) {
   const configPath = path.resolve(value);
   const inspect = async expected => {
-    try { return await guardFileWrite(configPath, expected); }
+    try { return await inspectFilePath(configPath, expected, true); }
     catch { fail('HOST_CONFIG_PATH_UNTRUSTED'); }
   };
   const snapshot = await inspect();
