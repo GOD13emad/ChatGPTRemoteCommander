@@ -13,10 +13,11 @@ TEMPBASE="$(realpath "$RUNNER_TEMP")"
 TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
 EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
-# Preserve the legacy migration test; rollback must target a schema-compatible
-# accepted dev.23 predecessor, not the pre-Workspace immutable 0.10.20 tag.
-ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'
-ROLLBACK_VERSION='0.11.0-dev.23'
+# The migration upgrades the already-installed v0.12 Core dev12 package.
+# dev23 is a separate active legacy route and predates workspace_window_type;
+# it is not a schema-compatible rollback target for this v0.12 package update.
+ROLLBACK_BASELINE='46a8256186e09f3355b10f796717aefee29ed309'
+ROLLBACK_VERSION='0.12.0-dev.12'
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
 node "$WORKSPACE/tools/isolated-qa-policy.mjs" || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
@@ -155,6 +156,103 @@ if [[ "$ROLLBACK_CODE" != 0 ]]; then
 fi
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$ROLLBACK_BASELINE" ]] || { echo R170_ROLLBACK_CONTROL_SHA_FAIL >&2; exit 75; }
 grep -q "AUTO_UPDATE_PASS version=$ROLLBACK_VERSION" "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_NOT_ACCEPTED >&2; exit 76; }
+grep -q '^SCHEMA_CONTINUITY_GATE_PASS profile=default
+node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_ROLLBACK.json"
+python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$ROLLBACK_BASELINE" "$ROLLBACK_VERSION" <<'PY'
+import json,sys
+r=json.load(open(sys.argv[1]))
+assert r['active']['commit']==sys.argv[2]
+assert r['active']['version']==sys.argv[3]
+print('R170_LINUX_ROLLBACK_ROUTE_PASS')
+PY
+curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_ROLLBACK.json"
+# Do not let an unrelated source mutation masquerade as an isolated rollback PASS.
+# Keep a sanitized pathname receipt for triage. A host checkout's declared PS1
+# CRLF attribute may cause a worktree-only EOL status; tolerate that only if
+# there are no untracked/staged files and no semantic tracked diff.
+source_status="$(git -C "$WORKSPACE" status --porcelain=v1 --untracked-files=normal)"
+if [[ -n "$source_status" ]]; then
+  printf '%s\n' "$source_status" > "$ROOT/SOURCE_STATUS_R170.txt"
+  source_safe=true
+  git -C "$WORKSPACE" diff --cached --quiet -- || source_safe=false
+  # Byte-exact semantic parity is checked below: normalize CRLF only, never other whitespace.
+  while IFS= read -r line; do
+    [[ "$line" == ' M '* ]] || source_safe=false
+    file="$(printf '%s' "$line" | cut -c4-)"
+    case "$file" in
+      *.ps1)
+        [[ "$(git -C "$WORKSPACE" check-attr eol -- "$file")" == *': eol: crlf' ]] || source_safe=false
+        ;;
+      desktop/RemoteCommanderDashboard/Program.cs)
+        # Known source blob has CRLF in the Git index but eol=lf in .gitattributes.
+        # Linux checkout may report this one path dirty despite an EOL-only diff.
+        eolmeta="$(git -C "$WORKSPACE" ls-files --eol -- "$file")"
+        [[ "$eolmeta" == i/crlf* && ( "$eolmeta" == *w/lf* || "$eolmeta" == *w/crlf* ) && "$eolmeta" == *"attr/text eol=lf"* ]] || source_safe=false
+        [[ "$(git -C "$WORKSPACE" rev-parse "HEAD:$file")" == d67eeb4bc6eb72f98bfbc3c286c2e70b0bb8a246 ]] || source_safe=false
+        echo R170_KNOWN_DASHBOARD_EOL_CONFLICT_CHECKED
+        ;;
+      *) source_safe=false ;;
+    esac
+    # Refuse any semantic change, including whitespace edits other than CRLF/LF.
+    # This is stricter than 'git diff --ignore-space-at-eol --quiet'.
+    if ! python3 - "$WORKSPACE" "$file" <<'PY'
+import pathlib, subprocess, sys
+repo, rel = sys.argv[1:3]
+target = pathlib.Path(repo) / rel
+if not target.is_file() or target.is_symlink():
+    raise SystemExit(1)
+baseline = subprocess.check_output(['git','-C',repo,'show','HEAD:'+rel])
+current = target.read_bytes()
+def normalize(value):
+    normalized = value.replace(b'\r\n',b'\n')
+    if b'\r' in normalized:
+        raise ValueError('lone CR byte')
+    return normalized
+if normalize(current) != normalize(baseline):
+    raise SystemExit(1)
+print('R170_EOL_BYTES_EQUAL')
+PY
+    then
+      source_safe=false
+      echo R170_EOL_BYTES_MISMATCH
+    fi
+  done <<< "$source_status"
+  if [[ "$source_safe" != true ]]; then echo R170_SOURCE_CHANGED >&2; exit 77; fi
+  echo R170_SOURCE_BOUNDED_EOL_ONLY_ACCEPTED
+else
+  echo R170_SOURCE_CLEAN_PASS
+fi
+python3 "$WORKSPACE/test/release-rollback-owned-cleanup-r172.py" --root "$ROOT"
+python3 - "$ROOT/CLEANUP_R172.json" <<'PY'
+import json,sys
+r=json.load(open(sys.argv[1]))
+assert r["status"]=="PASS_ZERO_OWNED_NODE_AFTER_ROLLBACK" and not r["ownedAfter"]
+print("R172_ROLLBACK_ZERO_OWNED_NODE_ACCEPTED")
+PY
+python3 - "$ROOT" "$TARGET" "$ROLLBACK_BASELINE" "$START" "$BASELINE" <<'PY'
+import json,hashlib,pathlib,sys,datetime
+root=pathlib.Path(sys.argv[1])
+def h(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+record={
+'schema':1,'revision':'R170','status':'PASS_LINUX_REAL_PROMOTION_AND_ROLLBACK_IN_ISOLATED_HOST',
+'candidateHead':sys.argv[2],'rollbackHead':sys.argv[3],'startedUtc':sys.argv[4],
+'legacyIncompatibleBaseline':sys.argv[5],'legacySchemaRefused':True,
+'legacyRefusalLogSha256':h(root/'REJECTED_INCOMPATIBLE_ROLLBACK.log'),
+'completedUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+'isolatedHost':True,'userHostMutation':False,
+'promoteLogSha256':h(root/'PROMOTE_R170.log'),
+'rollbackLogSha256':h(root/'ROLLBACK_R170.log'),
+'routePromoteSha256':h(root/'ROUTE_AFTER_PROMOTE.json'),
+'routeRollbackSha256':h(root/'ROUTE_AFTER_ROLLBACK.json'),
+'cleanupSha256':h(root/'CLEANUP_R172.json'),
+'ownedNodeCleanup':json.loads((root/'CLEANUP_R172.json').read_text()),
+'signingAndNativeUIAcceptance':'OPEN'
+}
+p=root/'RETURN_R170.json'
+p.write_text(json.dumps(record,indent=2)+'\n')
+print('R170_PASS exact='+sys.argv[2]+' receiptSha='+h(p))
+PY "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_SCHEMA_CONTINUITY_NOT_ACCEPTED >&2; exit 76; }
+echo R170_ROLLBACK_SCHEMA_CONTINUITY_PASS
 node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_ROLLBACK.json"
 python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$ROLLBACK_BASELINE" "$ROLLBACK_VERSION" <<'PY'
 import json,sys

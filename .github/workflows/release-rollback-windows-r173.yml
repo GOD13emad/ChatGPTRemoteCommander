@@ -69,7 +69,7 @@ jobs:
           $runner=Join-Path $env:GITHUB_WORKSPACE 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
           if(-not(Test-Path -LiteralPath $runner -PathType Leaf)){throw 'R173_PINNED_JOB_RUNNER_MISSING'}
           Write-Output 'R173_STATIC_EXACT_HEAD_PRESTATE_PASS'
-      - name: Real candidate promotion and compatible dev23 rollback under standard token
+      - name: Real candidate promotion and compatible v0.12.0-dev.12 rollback under standard token
         shell: pwsh
         timeout-minutes: 53
         run: |
@@ -84,7 +84,7 @@ jobs:
           $cleanup=Get-Content -LiteralPath $cleanupPath -Raw|ConvertFrom-Json
           if($cleanup.revision -ne 'R173_STANDARD_USER_CLEANUP' -or $cleanup.status -ne 'PASS' -or $cleanup.accountCreated -ne $true -or $cleanup.userRemoved -ne $true -or $cleanup.ownedProcesses -ne 0){throw 'R173_STANDARD_USER_CLEANUP_NOT_ACCEPTED'}
           $receipt=Get-Content -LiteralPath (Join-Path $root 'RETURN_R173.json') -Raw|ConvertFrom-Json
-          if($receipt.status -ne 'PASS_WINDOWS_REAL_PROMOTION_ROLLBACK_ZERO_OWNED' -or $receipt.candidateHead -ne $sha -or $receipt.rollbackHead -ne '8ccf0fd16355a4ab79844feec6c295366763df0d'){throw 'R173_FINAL_RECEIPT_NOT_ACCEPTED'}
+          if($receipt.status -ne 'PASS_WINDOWS_REAL_PROMOTION_ROLLBACK_ZERO_OWNED' -or $receipt.candidateHead -ne $sha -or $receipt.rollbackHead -ne '46a8256186e09f3355b10f796717aefee29ed309'){throw 'R173_FINAL_RECEIPT_NOT_ACCEPTED'}
           Write-Output 'R173_STANDARD_USER_AND_COMPATIBLE_ROLLBACK_PASS'
       - name: Upload scoped CI-only evidence
         if: ${{ always() }}

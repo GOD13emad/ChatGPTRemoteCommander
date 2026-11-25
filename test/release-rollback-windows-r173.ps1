@@ -11,8 +11,8 @@ $Source=[IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
 $Root=Join-Path ([IO.Path]::GetFullPath($env:RUNNER_TEMP)) 'remote-commander-rollback-r173'
 $Install=Join-Path $Root 'INSTALL'
 $Baseline='362375c464948be3001b307650c13fc3353ed05b'
-$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'
-$RollbackVersion='0.11.0-dev.23'
+$RollbackBaseline='46a8256186e09f3355b10f796717aefee29ed309'
+$RollbackVersion='0.12.0-dev.12'
 $OldLocal=[string]$env:LOCALAPPDATA
 $OldRoaming=[string]$env:APPDATA
 $OldTemp=[string]$env:TEMP
@@ -58,7 +58,6 @@ function Update([string]$Name,[string]$Sha){
   if((Test-Path $stdout) -or (Test-Path $stderr)){throw ('R185_NO_BLIND_RERUN_'+$Name)}
   if($Source -match '\s' -or $Install -match '\s'){throw 'R185_UNSAFE_ARGUMENT_PATH_WHITESPACE'}
   $args=@('-NoLogo','-NoProfile','-NonInteractive','-File',(Join-Path $Source 'auto-update-windows.ps1'),'-InstallDir',$Install,'-SourceRef',$Sha,'-ExpectedCommit',$Sha,'-TargetProfile','default','-WindowsJobRunnerPath',$JobRunner,'-Force')
-  if($Name -eq 'ROLLBACK'){$args+= '-PinnedLegacyRunnerOverlay'}
   $updater=Start-Process -FilePath 'pwsh.exe' -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ErrorAction Stop
   if($null -eq $updater -or $updater.Id -le 0){throw 'R185_UPDATER_PID_UNAVAILABLE'}
   Write-Output ('R185_'+$Name+'_UPDATER_PID='+$updater.Id)
@@ -173,8 +172,11 @@ try {
   Assert-Head $Install $ExpectedCommit
   Readback 'PROMOTE' $ExpectedCommit $CandidateVersion
   Update 'ROLLBACK' $RollbackBaseline
-  $overlayMarkers=@(Select-String -LiteralPath (Join-Path $Root 'ROLLBACK.stdout.log') -SimpleMatch 'R173_PINNED_LEGACY_RUNNER_OVERLAY_VERIFIED exactBaseline=8ccf0fd1')
-  if($overlayMarkers.Count -ne 1){throw 'R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'}
+  $rollbackLog=Join-Path $Root 'ROLLBACK.stdout.log'
+  $schemaMarkers=@(Select-String -LiteralPath $rollbackLog -SimpleMatch 'SCHEMA_CONTINUITY_GATE_PASS profile=default')
+  if($schemaMarkers.Count -ne 1){throw 'R173_ROLLBACK_SCHEMA_CONTINUITY_NOT_ATTESTED'}
+  $runnerMarkers=@(Select-String -LiteralPath $rollbackLog -SimpleMatch 'WINDOWS_JOB_RUNNER_STAGE_VERIFIED sha256=57b50598798c328ee6fb06c926e8eb16b4da71dc83ac76344e41952383a848d4')
+  if($runnerMarkers.Count -ne 1){throw 'R173_ROLLBACK_JOB_RUNNER_STAGE_NOT_ATTESTED'}
   Assert-Head $Install $RollbackBaseline
   Readback 'ROLLBACK' $RollbackBaseline $RollbackVersion
 }catch{$Failure=$_.Exception.Message}
