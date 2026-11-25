@@ -33,6 +33,10 @@ test('Inno [Run] extracts a dontcopy Browser payload and validates its actual by
   assert.match(functionBody,/GetSHA256OfFile\(BrowserPath\)/);
   assert.match(functionBody,/CompareText\(ActualSha, '\{#BrowserSetupSHA256\}'\)/);
   assert.match(functionBody,/BROWSER_PAYLOAD_EXTRACTED_SHA256_MISMATCH/);
+  const preflight=iss.indexOf("if WizardIsComponentSelected('browser') and ShouldInstallBundledBrowser()");
+  const prerequisite=iss.indexOf('    EnsurePowerShell7;');
+  assert.ok(preflight>0 && prerequisite>preflight,'Browser must be checked before prerequisite/Core effects');
+  assert.match(iss,/BROWSER_PAYLOAD_PRECHECK_PASS/);
 });
 
 const available=spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-Command','$PSVersionTable.PSVersion.Major'],{
