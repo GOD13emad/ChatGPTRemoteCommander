@@ -1,3 +1,39 @@
+## OWNER STABLE-MINOR RELEASE POLICY — 2026-11-10 (ACCEPTED; supersedes the 2026-10-28 development-train policy)
+
+The owner has explicitly directed that **every published numbered Commander 1 minor release starting with `v0.12.0` must be Stable**, including `v0.13.0`, `v0.14.0` and each subsequent release through `v1.0.0`. The older section below authorizing forward-only public numbered **development** releases through `v1.0.0` is retained solely as historical provenance and **is no longer applicable to publication/admission of `v0.12.0+`**. Historical preview tags, candidates, R170/R173 failures and known-good rollback baselines remain available for evidence and recovery; do not rewrite published tags or delete owner state. Internal `-dev.N`, `-alpha.N`, `-beta.N`, and `-rc.N` builds can be used for isolated QA/canaries, but they are **never Stable** or the production/latest automatic update channel.
+
+**Stable release cadence (scope allocation, not evidence of implementation):**
+
+| Stable tag | Additive release objective (all previous capabilities remain supported) |
+| --- | --- |
+| `v0.12.0` | First fully integrated Stable: all nine required component groups, one product installation per host, Personal/Server modes on qualified Windows/Linux, three access tiers with real native owner/grant enforcement, functional Browser/GUI (on eligible desktop), Headless, Workflow, Delivery, Local AI, Transfer Mesh, Control Center and Installer/Updater. Fleet/profile migration, secure authentication, exact-commit CI, native rollout and rollback are mandatory. |
+| `v0.13.0` | Delivery/Conversation 2.0: robust identity-bound ACK, reconnect, outbox ageing and multi-chat reliability. The *basic authenticated successful delivery and no-blind-replay requirement already belongs to v0.12*. |
+| `v0.14.0` | Browser/GUI 2.0: multi-engine authorized sessions, stronger native/virtual provider routing, target and focus isolation. Basic real same-owner GUI/Browser acceptance remains mandatory in v0.12. |
+| `v0.15.0` | Fleet/Coordinator 2.0: multi-host dispatch, transfer/resume, host enrollment and live fleet policies. Base eight-host acceptance already belongs to v0.12. |
+| `v0.16.0` | Workflow 2.0: bounded project autonomy, conflict-free multi-worker Git/worktree workflow and independently verified completion. |
+| `v0.17.0` | AI/Provider 2.0: local model routing, benchmarks and resource-aware inference with explicitly authorized optional fallback. |
+| `v0.18.0` | Control Center/Observability 2.0: integrated UI, end-to-end trace/receipts and fleet diagnostics. |
+| `v0.19.0` | Advanced native authorization, policy hardening, revocation and auditable security controls, without deferring v0.12's core G1/J01/Full Access safety. |
+| `v0.20.0` | Broader qualified Windows/Linux architecture/distribution matrix, resource/performance optimization and reliable packaging. No promise of every obsolete OS or unsupported hardware. |
+| `v1.0.0` | Public GA maturity: stable API/package contract, compatible migrations, documented operational security, long-run recovery/soak, complete cumulative acceptance. |
+
+This staged baseline does not require artificial releases `0.21`–`0.99` before `1.0.0`; additional Stable minors/patches are allowed only by a recorded roadmap scope change and their own acceptance.
+
+**Mandatory Definition of Done for *each* Stable tag:**
+1. Freeze exact source SHA, supported OS/arch/capabilities, bill of materials/licences, nine-component-required (or applicable additive component) manifest and provenance; verify release against the same exact source tree, not a historical passing commit.
+2. Both authorized positive E2E *and* negative fail-closed authentication/permission tests; skipped or N/A tests never certify a required working capability. Privileged `FULL_ACCESS` is a real revocable OS administrator/root broker plus native consent/grants, not a `FULL_POWER` label or unrestricted cross-user access.
+3. Windows/Linux/Headless reference-native smoke, user-vs-system service, same-owner browser/GUI, profile isolation, workflow/identity/Delivery and installer/update/rollback on each supported deployment mode. Headless interactive GUI is explicitly not applicable rather than falsely enabled.
+4. Preserve durable jobs, receipts, outbox, user profiles and system state during migration. No blind replay/ACK/deletion of uncertain effects. A reversible upgrade to the new Stable and verified return to the last *known-good* Stable are required; an old broken rollback target is never forced.
+5. Pass exact-artifact multi-host canaries and acceptance required by the current release manifest, resolve all P0/P1 blockers in declared support scope, verify signing/provenance, then permit a single immutable signed tag/public Stable and staged auto-update. Publish, install, and source-test completion are distinct states.
+6. Preserve the one-core-per-host model (multi-process user workers are expected); installer mode `PERSONAL` or `SERVER` does not grant OS privileges. Keep user-level state separated by authenticated owner; never migrate browser credentials across users.
+7. Keep the project at zero mandatory added cost or mandatory paid cloud. Reuse qualified, pinned, appropriately licensed upstream repositories (Inno Setup, WinSW/systemd, nFPM, official MCP SDK, Playwright/CEF, FlaUI/Portal/libei, TUF/Cosign, optional Ansible/MeshCentral) as *adapters*, not duplicate orchestrators. Each third-party candidate requires its own security/licence/platform pilot before inclusion.
+
+**Roadmap/identity/continuity authority:** The existing [Project Brain](PROJECT_BRAIN.md) retains origin, exact Git evidence and current technical acceptance; [Commander Architecture](COMMANDER_ARCHITECTURE.md) retains component boundaries; the owner's accepted detailed per-version roadmap and private host/profile migration mapping are recorded in the existing Commander V1 Notion coordination entry: https://app.notion.com/p/410d5b4a86f6813c88dcd3e68ed10833. Do not duplicate the private per-account mapping in a public repository. Update machine-readable `docs/release-train-0.12.json` only with verified acceptance receipts and under the canonical release writer.
+
+**Admission state at time of this decision:** PR #445 `a91da0373982c92ed995788e34df6b41ad12ad03` is a Draft v0.12 source candidate; no 0.12 fleet install or Stable admission is established by this documentation change. The separate installer/migration writer keeps host deployment authority. No signed publication or live promotion is authorized.
+
+---
+
 ## OWNER DEV-TRAIN POLICY — 2026-10-28 (accepted; supersedes pre-v1 rollback-only release blockers)
 
 Before the first fully accepted Stable `v1.0.0`, owner directs **forward-only numbered development builds** on all five pilot hosts and generic Windows/Linux/Headless packages. Qualification of a development build no longer requires successful promotion back to an earlier broken `0.10.x` product or passing the old **rollback-specific** R170/R173 tests. Retain and explicitly label prior failed R170/R173 evidence; they are still valuable for installer faults, but their rollback subchecks are not pre-v1 gates. No development build is Stable, and all secure source, build, installer, manifest, per-platform startup, profile, data, browser, Control Center and GUI permission gates stay mandatory. The Windows R157 failure is **not** excused merely because it mentions rollback: separately test native Windows installer, integrity, no-promotion guard and healthy start. Preserve exact install and configuration rescue copies, but do not switch the active route back to a known broken release as a routine acceptance step. If a candidate cannot start, leave the last healthy route in place and issue a corrected `dev.N+1`; do not destroy live connectivity. For `v1.0.0`, repeat full rollback, integrity, recovery and cross-platform soak qualifications.
