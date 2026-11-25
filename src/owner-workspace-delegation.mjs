@@ -7,6 +7,40 @@ const AUTH=/^[a-f0-9]{64}$/;
 const handle=/^[1-9][0-9]{0,18}$/;
 const firefox=/^firefox(?:\.exe)?$/i;
 const error=code=>{throw Error('OWNER_WORKSPACE_'+code);};
+// Bound native fetch response bytes before allocating the full reply. The
+// text-only injected response fallback preserves existing test doubles.
+async function readBoundedOwnerInventoryReply(response){
+ const body=response.body;
+ if(typeof body?.getReader!=='function'){
+  let text;
+  try{text=await response.text();}catch{error('TRANSPORT_UNAVAILABLE');}
+  if(typeof text!=='string'||text.length>192000)error('RESPONSE_TOO_LARGE');
+  return text;
+ }
+ const reader=body.getReader();
+ const decoder=new TextDecoder();
+ const parts=[];
+ let received=0,finished=false;
+ try{
+  while(true){
+   const {done,value}=await reader.read();
+   if(done){finished=true;break;}
+   if(!(value instanceof Uint8Array))error('RESPONSE_INVALID');
+   received+=value.byteLength;
+   if(received>192000)error('RESPONSE_TOO_LARGE');
+   parts.push(decoder.decode(value,{stream:true}));
+  }
+  parts.push(decoder.decode());
+  return parts.join('');
+ }catch(e){
+  if(e?.message==='OWNER_WORKSPACE_RESPONSE_TOO_LARGE'
+   ||e?.message==='OWNER_WORKSPACE_RESPONSE_INVALID')throw e;
+  error('TRANSPORT_UNAVAILABLE');
+ }finally{
+  if(!finished){try{void reader.cancel().catch(()=>{});}catch{}}
+  reader.releaseLock();
+ }
+}
 export function createOwnerWorkspaceReadOnlyProxy({
  config,primaryStatus,platform=process.platform,fetchImpl=globalThis.fetch,readFileImpl=readFile
 }={}){
@@ -42,9 +76,7 @@ export function createOwnerWorkspaceReadOnlyProxy({
     });
    }catch{error('TRANSPORT_UNAVAILABLE');}
    if(response.status!==200)error('TRANSPORT_REJECTED');
-   let text;
-   try{text=await response.text();}catch{error('TRANSPORT_UNAVAILABLE');}
-   if(typeof text!=='string'||text.length>192000)error('RESPONSE_TOO_LARGE');
+   const text=await readBoundedOwnerInventoryReply(response);
    let data;
    try{data=JSON.parse(text);}catch{error('RESPONSE_INVALID');}
    if(data?.jsonrpc!=='2.0'||data?.id!==1||data.error||data.result?.isError===true)

@@ -70,3 +70,18 @@ test('transport, credential, RPC and response errors fail closed',async()=>{
  await assert.rejects(fixture({extra:{error:{code:-32601,message:'denied'}}}).broker.execute('workspace_target_list',{}),/RPC_REJECTED/);
  await assert.rejects(fixture({rows:[{pid:3,window_id:9,app_name:undefined}]}).broker.execute('workspace_target_list',{}),/WINDOW_ID_INVALID/);
 });
+
+test('read-only owner delegation rejects an oversized stream before fully buffering it',async()=>{
+ let pushed=0;
+ const total=8;
+ const broker=createOwnerWorkspaceReadOnlyProxy({
+  config:cfg(),platform:'win32',primaryStatus:healthyDenied,
+  readFileImpl:async()=>auth,
+  fetchImpl:async()=>new Response(new ReadableStream({
+   pull(controller){if(pushed>=total){controller.close();return;}
+    pushed++;controller.enqueue(new Uint8Array(65536));}
+  }),{status:200})
+ });
+ await assert.rejects(()=>broker.execute('workspace_target_list',{}),/OWNER_WORKSPACE_RESPONSE_TOO_LARGE/);
+ assert.ok(pushed<total,'all chunks were buffered before rejection: '+pushed);
+});
