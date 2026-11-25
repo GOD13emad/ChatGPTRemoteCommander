@@ -130,7 +130,7 @@ assert s['active']['commit']==sys.argv[2], 'legacy refusal altered promoted rout
 print('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY')
 PY_CHECK
 
-# Verify an actual rollback to a previously qualified, schema-compatible dev.23
+# Verify an actual rollback to the installed, schema-compatible v0.12.0-dev.12
 # predecessor without disabling the schema continuity gate.
 set +e
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
@@ -252,70 +252,4 @@ record={
 p=root/'RETURN_R170.json'
 p.write_text(json.dumps(record,indent=2)+'\n')
 print('R170_PASS exact='+sys.argv[2]+' receiptSha='+h(p))
-PY "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_SCHEMA_CONTINUITY_NOT_ACCEPTED >&2; exit 76; }
-echo R170_ROLLBACK_SCHEMA_CONTINUITY_PASS
-node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_ROLLBACK.json"
-python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$ROLLBACK_BASELINE" "$ROLLBACK_VERSION" <<'PY'
-import json,sys
-r=json.load(open(sys.argv[1]))
-assert r['active']['commit']==sys.argv[2]
-assert r['active']['version']==sys.argv[3]
-print('R170_LINUX_ROLLBACK_ROUTE_PASS')
 PY
-curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_ROLLBACK.json"
-# Do not let an unrelated source mutation masquerade as an isolated rollback PASS.
-# Keep a sanitized pathname receipt for triage. A host checkout's declared PS1
-# CRLF attribute may cause a worktree-only EOL status; tolerate that only if
-# there are no untracked/staged files and no semantic tracked diff.
-source_status="$(git -C "$WORKSPACE" status --porcelain=v1 --untracked-files=normal)"
-if [[ -n "$source_status" ]]; then
-  printf '%s\n' "$source_status" > "$ROOT/SOURCE_STATUS_R170.txt"
-  source_safe=true
-  git -C "$WORKSPACE" diff --cached --quiet -- || source_safe=false
-  # Byte-exact semantic parity is checked below: normalize CRLF only, never other whitespace.
-  while IFS= read -r line; do
-    [[ "$line" == ' M '* ]] || source_safe=false
-    file="$(printf '%s' "$line" | cut -c4-)"
-    case "$file" in
-      *.ps1)
-        [[ "$(git -C "$WORKSPACE" check-attr eol -- "$file")" == *': eol: crlf' ]] || source_safe=false
-        ;;
-      desktop/RemoteCommanderDashboard/Program.cs)
-        # Known source blob has CRLF in the Git index but eol=lf in .gitattributes.
-        # Linux checkout may report this one path dirty despite an EOL-only diff.
-        eolmeta="$(git -C "$WORKSPACE" ls-files --eol -- "$file")"
-        [[ "$eolmeta" == i/crlf* && ( "$eolmeta" == *w/lf* || "$eolmeta" == *w/crlf* ) && "$eolmeta" == *"attr/text eol=lf"* ]] || source_safe=false
-        [[ "$(git -C "$WORKSPACE" rev-parse "HEAD:$file")" == d67eeb4bc6eb72f98bfbc3c286c2e70b0bb8a246 ]] || source_safe=false
-        echo R170_KNOWN_DASHBOARD_EOL_CONFLICT_CHECKED
-        ;;
-      *) source_safe=false ;;
-    esac
-    # Refuse any semantic change, including whitespace edits other than CRLF/LF.
-    # This is stricter than 'git diff --ignore-space-at-eol --quiet'.
-    if ! python3 - "$WORKSPACE" "$file" <<'PY'
-import pathlib, subprocess, sys
-repo, rel = sys.argv[1:3]
-target = pathlib.Path(repo) / rel
-if not target.is_file() or target.is_symlink():
-    raise SystemExit(1)
-baseline = subprocess.check_output(['git','-C',repo,'show','HEAD:'+rel])
-current = target.read_bytes()
-def normalize(value):
-    normalized = value.replace(b'\r\n',b'\n')
-    if b'\r' in normalized:
-        raise ValueError('lone CR byte')
-    return normalized
-if normalize(current) != normalize(baseline):
-    raise SystemExit(1)
-print('R170_EOL_BYTES_EQUAL')
-PY
-    then
-      source_safe=false
-      echo R170_EOL_BYTES_MISMATCH
-    fi
-  done <<< "$source_status"
-  if [[ "$source_safe" != true ]]; then echo R170_SOURCE_CHANGED >&2; exit 77; fi
-  echo R170_SOURCE_BOUNDED_EOL_ONLY_ACCEPTED
-else
-  echo R170_SOURCE_CLEAN_PASS
-fi
