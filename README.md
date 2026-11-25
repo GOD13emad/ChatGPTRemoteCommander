@@ -2,13 +2,17 @@
 
 > **Current development identity (2026-11-22):** `0.12.0-dev.9` is the next dev23-based integration candidate (NoPromote), not an accepted release or Stable. Commander 2 / `dev19` remains a separate source lineage until its capabilities are reconciled and accepted into the unified tree. The suite has **no currently accepted Stable**. Prior GitHub releases remain historical artifacts; a GitHub `Latest` badge is not full-product acceptance. `1.0.0` remains reserved for the first fully verified Stable. See [0.12 release train](docs/RELEASE_TRAIN_0.12.md).
 
-> **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
+> **Official project brand:** **[TandemVector Labs](https://github.com/TandemVector-Labs)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
 
 > **Release status:** [v0.10.20](docs/RELEASE_0.10.20.md) is a historically published Core release, not an accepted Stable of the integrated suite. See [release authority and open gates](docs/RELEASE_AUTHORITY.md) and the [0.12 release train](docs/RELEASE_TRAIN_0.12.md). `main` is not itself a release. Historical release links and legacy `releases/latest` installation examples below do not authorize a current installation or update: verify the exact version and asset admission first. Do not disable or bypass Windows security protections.
 
 [Historical GitHub releases](https://github.com/GOD13emad/ChatGPTRemoteCommander/releases) · [Setup and prerequisites](START_HERE.md) · [Report an issue](https://github.com/GOD13emad/ChatGPTRemoteCommander/issues) · [Star this repository if useful](https://github.com/GOD13emad/ChatGPTRemoteCommander)
 
 ![ChatGPT Remote Commander icon](assets/plugin-icon.png)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/GOD13emad/GOD13emad/main/assets/projects/ChatGPTRemoteCommander-hero-20261030.png" alt="ChatGPT Remote Commander — original approved 1774×887 conceptual illustration of controlled remote workflows, not an application screenshot" width="720">
+</p>
 
 Cross-platform Windows + Linux MCP server for controlled remote project and machine access from ChatGPT through OpenAI Secure MCP Tunnel.
 
