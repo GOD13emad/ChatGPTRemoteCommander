@@ -2,13 +2,14 @@
 // Trust comes from a separately enrolled protected authenticator credential.
 // No private key, key enrollment, fake owner UI, user login or OS input occurs here.
 import {createHash,createPublicKey,verify as cryptoVerify,timingSafeEqual} from 'node:crypto';
-import {canonicalJ01Grant} from './gui-j01-owner-grant-verifier.mjs';
+import {canonicalJ01Grant,snapshotJ01PlainData,
+  snapshotJ01GrantPayload,snapshotJ01ExpectedContext}
+  from './gui-j01-owner-grant-verifier.mjs';
 
 const RECORD=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const WORD=x=>typeof x==='string'&&x.length>0&&x.length<=256&&!/[\x00-\x1f\x7f]/.test(x);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const fail=code=>Object.freeze({verified:false,code,grantConsumed:false});
-const schema=(o,keys)=>RECORD(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const b64=/^[A-Za-z0-9_-]+$/;
 const sha256=b=>createHash('sha256').update(b).digest();
 function decodeB64(value, min,max) {
@@ -54,38 +55,45 @@ export function createJ01WebAuthnVerifier({
   const publicFingerprint=sha256(key.export({format:'der',type:'spki'})).toString('hex');
 
   return async function verifyJ01WebAuthn({signedOwnerGrant,expected}={}) {
-    if(!schema(signedOwnerGrant,['payload','webAuthnAssertion'])||
-       !RECORD(expected)||!schema(signedOwnerGrant.webAuthnAssertion,
-         ['credentialId','clientDataJSON','authenticatorData','signature']))
-      return fail('J01_WEBAUTHN_ASSERTION_REQUIRED');
-    const p=signedOwnerGrant.payload;
+    // Verify one immutable snapshot for signed challenge, exact operation,
+    // nonce claim and archival. Caller mutation during an await cannot
+    // redirect the recorded owner consent to an unsigned operation.
+    let envelope,p,context,a;
+    try {
+      envelope=snapshotJ01PlainData(signedOwnerGrant,
+        ['payload','webAuthnAssertion'],'J01_WEBAUTHN_ASSERTION_REQUIRED');
+      p=snapshotJ01GrantPayload(envelope.payload);
+      context=snapshotJ01ExpectedContext(expected);
+      a=snapshotJ01PlainData(envelope.webAuthnAssertion,
+        ['credentialId','clientDataJSON','authenticatorData','signature'],
+        'J01_WEBAUTHN_ASSERTION_REQUIRED');
+    } catch{return fail('J01_WEBAUTHN_ASSERTION_REQUIRED')}
     let expectedChallenge;
     try {expectedChallenge=buildChallenge(p)}
     catch{return fail('J01_GRANT_SCHEMA_INVALID')}
     if(p.signerPrincipal!==signerPrincipal||p.keyId!==keyId||
-       !WORD(expected.incidentId)||!WORD(expected.operationId)||
-       !WORD(expected.callerPrincipal)||
-       p.incidentId!==expected.incidentId||
-       p.operationId!==expected.operationId||
-       p.callerPrincipal!==expected.callerPrincipal||
-       !RECORD(expected.session)||
-       p.ownerPrincipal!==expected.session.ownerPrincipal||
-       p.sessionId!==expected.session.sessionId||
-       p.seatId!==expected.session.seatId||
-       p.displayId!==expected.session.displayId||
-       !UUID.test(expected.consentNonce??'')||
-       p.consentNonce!==expected.consentNonce||
-       !RECORD(expected.requestedInput)||
-       p.requestedInput.pointer!==expected.requestedInput.pointer||
-       p.requestedInput.keyboard!==expected.requestedInput.keyboard||
-       p.ttlSeconds!==expected.ttlSeconds)
+       !WORD(context.incidentId)||!WORD(context.operationId)||
+       !WORD(context.callerPrincipal)||
+       p.incidentId!==context.incidentId||
+       p.operationId!==context.operationId||
+       p.callerPrincipal!==context.callerPrincipal||
+       !RECORD(context.session)||
+       p.ownerPrincipal!==context.session.ownerPrincipal||
+       p.sessionId!==context.session.sessionId||
+       p.seatId!==context.session.seatId||
+       p.displayId!==context.session.displayId||
+       !UUID.test(context.consentNonce??'')||
+       p.consentNonce!==context.consentNonce||
+       !RECORD(context.requestedInput)||
+       p.requestedInput.pointer!==context.requestedInput.pointer||
+       p.requestedInput.keyboard!==context.requestedInput.keyboard||
+       p.ttlSeconds!==context.ttlSeconds)
       return fail('J01_SIGNED_GRANT_CONTEXT_MISMATCH');
     const now=clock();
     if(!Number.isSafeInteger(now)||p.issuedAtMs>now+3000||
        now-p.issuedAtMs>30000||p.expiresAtMs<=now||
        p.expiresAtMs>p.issuedAtMs+p.ttlSeconds*1000)
       return fail('J01_GRANT_EXPIRED_OR_TIME_INVALID');
-    const a=signedOwnerGrant.webAuthnAssertion;
     if(a.credentialId!==enrolledCredentialId)
       return fail('J01_WEBAUTHN_CREDENTIAL_MISMATCH');
     const clientBytes=decodeB64(a.clientDataJSON,10,8192);
@@ -136,9 +144,9 @@ export function createJ01WebAuthnVerifier({
       return fail('J01_REPLAY_OR_COUNTER_NOT_RESERVED');
     try{
       const archived=await archiveExactGrant({
-        grant:signedOwnerGrant,grantSha256:digest,
+        grant:Object.freeze({payload:p,webAuthnAssertion:a}),grantSha256:digest,
         enrolledPublicKeyFingerprint:publicFingerprint,
-        rpId,origin,attestedCaller:expected.callerPrincipal
+        rpId,origin,attestedCaller:context.callerPrincipal
       });
       if(archived?.archived!==true)
         return fail('J01_SIGNED_GRANT_ARCHIVE_UNCONFIRMED');

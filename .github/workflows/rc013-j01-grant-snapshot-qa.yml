@@ -1,0 +1,30 @@
+name: RC013 Signed J01 Grant Snapshot QA (NoPromote)
+on:
+  pull_request:
+    paths:
+      - 'src/gui-j01-owner-grant-verifier.mjs'
+      - 'src/gui-j01-webauthn-verifier.mjs'
+      - 'test/j01-owner-snapshot.test.mjs'
+      - 'test/v101-j01-webauthn-standalone.test.mjs'
+      - 'test/j01-binding-v101-bridge.test.mjs'
+      - '.github/workflows/rc013-j01-grant-snapshot-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  j01-signed-snapshot:
+    name: signed J01 immutable grant (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - run: node --check src/gui-j01-owner-grant-verifier.mjs
+      - run: node --check test/j01-owner-snapshot.test.mjs
+      - run: node --check src/gui-j01-webauthn-verifier.mjs
+      - run: node --test test/j01-owner-snapshot.test.mjs test/j01-binding-v101-bridge.test.mjs test/v101-j01-webauthn-standalone.test.mjs
