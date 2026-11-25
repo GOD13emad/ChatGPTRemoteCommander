@@ -38,6 +38,7 @@ import {
 } from './no-codex-policy.mjs';
 
 let workflowTools = null;
+let protectedPhysicalRootFence=null;
 let browserCompanionMonitor = null;
 const VERSION = '0.12.0-dev.13';
 const MODERN_VERSION = '2026-07-28';
@@ -173,6 +174,13 @@ const conversationController = createConversationController({
 });
 const asyncOperationTools = createAsyncOperationTools({
   config,
+  nativeRootExecution:{
+    required:()=>Boolean(ownerBootstrapModule),
+    bind:meta=>{
+      if(!protectedPhysicalRootFence)throw Error('V012_PRIVATE_SHARED_PHYSICAL_ROOT_FENCE_NOT_READY');
+      return protectedPhysicalRootFence.bindDeferredOperation(meta);
+    }
+  },
   deliveryStore,
   onTerminal: state => conversationController.signalOperation(state),
   validateContinuation: continuation => conversationController.validateContinuation(continuation),
@@ -321,7 +329,6 @@ for (const tool of TOOLS) {
 // An owner-bootstrap Core may never silently fall back to the independent
 // WorkflowStore root lock while protected ingress is starting or has failed.
 // This closure is local startup state, never an RPC/config-supplied adapter.
-let protectedPhysicalRootFence=null;
 const ownerWorkflowRootFence=ownerBootstrapModule?Object.freeze({
   withWorkflowRootLease(root,work){
     if(!protectedPhysicalRootFence)
@@ -399,7 +406,8 @@ if(ownerBootstrapModule){
         nativeHostLease,hostId:options.identity?.hostId,allowedRoots:roots,
         // The resolver must be supplied by the pinned native owner module,
         // backed by its enrolled root registry. Never infer it from RPC args.
-        resolveTrustedRouteRoot:options.security.resolveTrustedWorkflowRoot
+        resolveTrustedRouteRoot:options.security.resolveTrustedWorkflowRoot,
+        readDeferredCompletion:request=>asyncOperationTools.readNativeRootCompletion(request)
       });
     }
     // Load only for an explicitly configured owner bootstrap. STANDARD fixture
@@ -425,7 +433,7 @@ if(ownerBootstrapModule){
       },
       core:{
         catalog:TOOLS,
-        dispatch:async(name,args,route)=>{
+        dispatch:async(name,args,route,nativeAuthorization)=>{
           const definition=toolDefinition(name);
           if(!definition
             ||validateJsonSchema(args,definition.inputSchema).length!==0)
@@ -436,7 +444,7 @@ if(ownerBootstrapModule){
             ?{...args,requestId:route.operationId}:args;
           if(isDirectMutationTool(name)&&runtimeArgs.requestId!==route.operationId)
             throw Error('V012_PRIVATE_OPERATION_ID_MISMATCH');
-          const result=await executeTool(name,runtimeArgs);
+          const result=await executeTool(name,runtimeArgs,nativeAuthorization);
           await audit(ctx,{action:'private_pair_tool',tool:name,ok:true});
           extensionEventRelay.emitTool(name, { failed: result?.ok === false || result?.isError === true });
           return result;
@@ -559,7 +567,7 @@ async function executeTool(name, args, executionContext = {}) {
       arguments: effectArgs,
       ...(continuation ? { continuation } : {}),
       ...(executionContext.requestIdSource === 'transport' ? { __deliveryMode: 'transport-retry-only' } : {})
-    });
+    },executionContext);
   }
   // OAuth callbacks are short process-local leases; never replay a stale login
   // URL through a durable mutation idempotency receipt.
@@ -577,7 +585,7 @@ async function executeTool(name, args, executionContext = {}) {
       ? {...effectArgs,requestId} : effectArgs;
     return mutationIdempotency.execute({ requestId, tool: name, input: effectArgs }, () => executeToolEffect(name, forwarded, { requestId }));
   }
-  return executeToolEffect(name, args);
+  return executeToolEffect(name, args, executionContext);
 }
 async function executeDelegationTool(name, args) {
   if (name === 'delegation_requirement') {
@@ -645,7 +653,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
   if (!toolDefinition(name)) throw protocolFailure(200, -32602, 'Unknown tool');
   if (name.startsWith('delegation_')) return executeDelegationTool(name, args);
   if (name.startsWith('conversation_')) return conversationController.execute(name, args);
-  if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args);
+  if (name.startsWith('operation_')) return asyncOperationTools.execute(name, args, delegationContext);
   if (name.startsWith('delivery_')) return deliveryTools.execute(name, args);
   if (name.startsWith('agent_extension_')) return agentExtensions.execute(name, args);
   if (name.startsWith('transfer_mesh_')) return transferMesh.execute(name, args);

@@ -386,3 +386,23 @@ test('revocation after durable receipt reservation denies without quarantining a
     assert.equal(effects,1);
   }finally{receipts.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('deferred launch capability rechecks the exact immutable action and live owner grant after Core preparation',async()=>{
+  let allowed=true,launches=0;
+  const args={command:'fixture-public-command'};
+  const {gate}=setup({
+    verifyExactNativeGrant:async({route:r,tool,arguments:actual,ownerContext:c})=>{
+      assert.equal(r.operationId,'step1');assert.equal(tool,'run_shell');
+      assert.equal(JSON.stringify(actual),JSON.stringify(args));assert.equal(Object.isFrozen(actual),true);
+      assert.equal(c.bindingId,BINDING);return allowed;
+    },
+    execute:async(_r,_args,_tool,capability)=>{
+      assert.equal(Object.isFrozen(capability),true);
+      assert.equal(await capability.authorizeNativeLaunch(),true);
+      allowed=false;
+      if(await capability.authorizeNativeLaunch())launches++;
+      return {launches};
+    }
+  });
+  assert.deepEqual(await gate.execute({...call(),arguments:args}),{launches:0});
+});

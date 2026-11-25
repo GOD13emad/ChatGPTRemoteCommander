@@ -31,6 +31,7 @@ export async function createV012OwnerNativeHostLease({directory,hostId}={}){
   return Object.freeze({
     hostId,
     withLease:(resource,work)=>lease.withLease(resource,work),
+    reconcileDeferred:(resource,readCompletion)=>lease.reconcileDeferred(resource,readCompletion),
     close:()=>lease.close()
   });
 }
