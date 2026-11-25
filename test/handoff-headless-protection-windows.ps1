@@ -57,7 +57,7 @@ try {
         $queued=if($script:FixtureMode -eq 'incomplete'){$null}else{0}
         return [pscustomobject]@{result=[pscustomobject]@{isError=$false;structuredContent=[pscustomobject]@{
           concurrency=[pscustomobject]@{activeOperations=0;queued=$queued};
-          durableWorkflows=[pscustomobject]@{schedulerState=[pscustomobject]@{currentLeases=0}}
+          durableWorkflows=[pscustomobject]@{schedulerState=[pscustomobject]@{currentLeases=0;rootLeasesBlocking=0;expiredLeasesRequiringReconciliation=0}}
         }}}
       }
       'gui_status' {return [pscustomobject]@{result=[pscustomobject]@{isError=$false;structuredContent=[pscustomobject]@{leased=$false;busy=$false}}}}

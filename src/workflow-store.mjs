@@ -557,8 +557,15 @@ export class WorkflowStore {
     const pending = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE enabled=1 AND lifecycle NOT IN ('COMPLETED','FAILED','CANCELLED')").get().n;
     const interrupted = this.#db.prepare("SELECT COUNT(*) AS n FROM scheduler_jobs WHERE lifecycle='INTERRUPTED'").get().n;
     const leaseNow = new Date().toISOString();
-    this.#leaseDb.prepare('DELETE FROM root_leases WHERE expires_at <= ?').run(leaseNow);
-    const leases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at > ?').get(leaseNow).n;
+    // Expiry is not proof of cessation. Status/health must never erase a
+    // fencing record; only exact completion or reconciliation may release it.
+    // Count all categories in one SQLite statement so they share one snapshot.
+    const leaseCounts = this.#leaseDb.prepare(
+      'SELECT COUNT(*) AS total, COUNT(CASE WHEN expires_at > ? THEN 1 END) AS active FROM root_leases'
+    ).get(leaseNow);
+    const leases = Number(leaseCounts.active);
+    const rootLeasesBlocking = Number(leaseCounts.total);
+    const expiredLeases = rootLeasesBlocking - leases;
     const reconciliationRequired = this.#db.prepare("SELECT COUNT(*) AS n FROM operations WHERE status='UNCERTAIN'").get().n;
     return {
       enabled: this.#schedulerPolicy.enabled,
@@ -572,6 +579,8 @@ export class WorkflowStore {
       interrupted: Number(interrupted),
       reconciliationRequired: Number(reconciliationRequired),
       currentLeases: Number(leases),
+      rootLeasesBlocking,
+      expiredLeasesRequiringReconciliation: expiredLeases,
       hasActiveLease: Number(leases) > 0,
       lifecycleCounts: counts,
       workerId: this.#workerId,
