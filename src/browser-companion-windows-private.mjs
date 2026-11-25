@@ -67,7 +67,9 @@ export function ensureWindowsMonitorDirectories(roots,{create=true}={}) {
     return Promise.reject(Error('BROWSER_COMPANION_WINDOWS_ROOT_INVALID'));
   return new Promise((resolve,reject)=>{
     execFile(POWERSHELL,['-NoLogo','-NoProfile','-NonInteractive','-Command',SCRIPT],{
-      windowsHide:true,timeout:8000,maxBuffer:4096,
+      // PowerShell cold starts can exceed 8 seconds on a loaded hosted Windows
+      // runner; keep the native ACL proof bounded without failing valid roots.
+      windowsHide:true,timeout:20000,maxBuffer:4096,
       env:{...process.env,RC_MONITOR_DIRS_JSON:JSON.stringify(roots),RC_MONITOR_DIRS_CREATE:create?'1':'0'}
     },(error,stdout,stderr)=>{
       if(error||stderr.trim()||stdout!=='RC_MONITOR_PRIVATE_DIRECTORIES_OK')

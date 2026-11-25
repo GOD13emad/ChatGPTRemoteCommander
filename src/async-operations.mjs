@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { watch as fsWatch } from 'node:fs';
+import { watch as fsWatch, constants as fsConstants } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { mkdir, open, readFile, readdir, realpath, rename, stat, lstat, unlink, writeFile } from 'node:fs/promises';
 import { expandPathValue } from './platform.mjs';
@@ -1402,14 +1402,34 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       const dir=path.join(stateRoot,'operations',operationId);
       const p={dir,result:path.join(dir,'result.json')},proofFile=path.join(dir,'native-completion.json');
       const readPrivate=async file=>{
-        const before=await lstat(file);
-        if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size>1024*1024
-          ||process.platform==='linux'&&(before.uid!==process.getuid()||(before.mode&0o077)!==0)
-          ||await realpath(file)!==file)throw Error('ASYNC_NATIVE_PROOF_FILE_UNTRUSTED');
-        const bytes=await readFile(file),after=await lstat(file);
-        if(before.ino!==after.ino||before.dev!==after.dev||before.size!==bytes.length
-          ||before.mtimeMs!==after.mtimeMs)throw Error('ASYNC_NATIVE_PROOF_FILE_CHANGED');
-        return bytes;
+        let handle;
+        try{
+          // Pin the inode BEFORE inspecting it. NONBLOCK also makes a FIFO
+          // substituted at the private path reject without hanging the Core.
+          handle=await open(file,fsConstants.O_RDONLY|(fsConstants.O_NOFOLLOW||0)
+            |(fsConstants.O_NONBLOCK||0)|(fsConstants.O_NOCTTY||0));
+          // Preserve full native file IDs and nanosecond change times.
+          // Number-valued NTFS inode IDs can lose precision.
+          const before=await handle.stat({bigint:true}),leaf=await lstat(file,{bigint:true});
+          const same=other=>['dev','ino','size','nlink','mode','uid','gid','mtimeNs','ctimeNs']
+            .every(key=>other[key]===before[key]);
+          if(!before.isFile()||!leaf.isFile()||leaf.isSymbolicLink()||before.nlink!==1n
+            ||before.size>1048576n||!same(leaf)
+            ||process.platform==='linux'&&(before.uid!==BigInt(process.getuid())||(before.mode&0o077n)!==0n)
+            ||await realpath(file)!==file)throw Error('ASYNC_NATIVE_PROOF_FILE_UNTRUSTED');
+          const buffer=Buffer.alloc(Number(before.size)+1);
+          let count=0;
+          while(count<buffer.length){
+            const {bytesRead}=await handle.read(buffer,count,buffer.length-count,null);
+            if(bytesRead===0)break;
+            count+=bytesRead;
+          }
+          const after=await handle.stat({bigint:true}),last=await lstat(file,{bigint:true});
+          if(before.size!==BigInt(count)||!same(after)||!same(last)
+            ||!last.isFile()||last.isSymbolicLink()
+            ||await realpath(file)!==file)throw Error('ASYNC_NATIVE_PROOF_FILE_CHANGED');
+          return buffer.subarray(0,count);
+        }finally{await handle?.close();}
       };
       try{
         await nativePrivateDirectories([stateRoot,path.join(stateRoot,'operations'),path.join(stateRoot,'requests'),p.dir],false);

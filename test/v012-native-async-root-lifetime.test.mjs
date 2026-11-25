@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {createAsyncOperationTools} from '../src/async-operations.mjs';
 import {createV012OwnerNativeHostLease} from '../src/v012-owner-native-host-lease-bootstrap.mjs';
 import {createV012SharedPhysicalRootFence} from '../src/v012-shared-physical-root-fence.mjs';
@@ -66,6 +67,19 @@ test('native background worker keeps root, returns receipt, and releases only wi
      await pause(200);
    }
    assert.ok(completed,'requires durable exact-reservation native process proof');
+   const proofFile=path.join(f.root,'async','operations',queued.operationId,'native-completion.json');
+   const alias=proofFile+'.test-hardlink';
+   fs.linkSync(proofFile,alias);
+   try{assert.equal(await f.tools.readNativeRootCompletion(f.observed),null,'a linked proof is not private evidence');}
+   finally{fs.unlinkSync(alias);}
+   if(process.platform==='linux'){
+     const held=proofFile+'.test-fifo-held';
+     fs.renameSync(proofFile,held);
+     try{
+       execFileSync('/usr/bin/mkfifo',[proofFile],{timeout:3000});
+       assert.equal(await f.tools.readNativeRootCompletion(f.observed),null,'a substituted FIFO must reject without blocking');
+     }finally{if(fs.existsSync(proofFile))fs.unlinkSync(proofFile);fs.renameSync(held,proofFile);}
+   }
    const requestFile=path.join(f.observed.storage.stateRoot,'requests',f.observed.storage.requestKey+'.json');
    const heldRequest=requestFile+'.test-held';
    fs.renameSync(requestFile,heldRequest);
