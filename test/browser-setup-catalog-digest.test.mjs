@@ -23,6 +23,7 @@ test('Windows setup revalidates exact BrowserSetup catalog identity before and a
 test('Inno [Run] extracts a dontcopy Browser payload and validates its actual bytes before execution',()=>{
   const iss=fs.readFileSync(path.join(root,'installer','RemoteCommander.iss'),'utf8');
   assert.match(iss,/#error BROWSER_SETUP_EXACT_DIGEST_REQUIRED/);
+  assert.doesNotMatch(iss,/^\s*\{[^\n]*\{tmp\}/m,'Inno Pascal comments must not nest {tmp} braces');
   assert.match(iss,/Source: "\{#BrowserSetup\}".*Flags: dontcopy/);
   assert.match(iss,/Filename: "\{tmp\}\\\{#BrowserSetupName\}".*Check: ShouldInstallBundledBrowser/);
   const functionStart=iss.indexOf('function ShouldInstallBundledBrowser(): Boolean;');
