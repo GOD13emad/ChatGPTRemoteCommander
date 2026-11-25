@@ -58,7 +58,7 @@ export function isLinuxOwnerGraphicalRebindUnit({unit,execStart,fragmentPath,hom
     ||typeof execStart!=='string'||typeof fragmentPath!=='string')return false;
   const m=/^(chatgpt-remote-commander-[a-z0-9][a-z0-9._-]{0,63})-graphical-rebind\.service$/.exec(unit);
   if(!m||fragmentPath!==path.posix.join(home,'.config','systemd','user',unit))return false;
-  const command=/^\{ path=([^ ;]+) ; argv\[\]=([^;]+) ;/.exec(execStart);
+  const command=/^\{ path=([^ ;]+) ; argv\[\]=([^;]+) ; ignore_errors=(?:yes|no) ; [^{}]*\}$/.exec(execStart);
   return !!command&&command[1]==='/usr/bin/systemctl'
     &&command[2].trim()==='/usr/bin/systemctl --user try-restart '+m[1]+'.service';
 }

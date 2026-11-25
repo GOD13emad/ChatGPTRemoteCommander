@@ -912,3 +912,16 @@ test('read-only inventory counts graphical rebind auxiliary separately while ret
   assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,...bad}),false);
  }
 });
+
+
+test('graphical rebind inventory rejects multiple ExecStart entries and truncated records',()=>{
+ const home='/home/fixture';
+ const unit='chatgpt-remote-commander-fixture-graphical-rebind.service';
+ const start='{ path=/usr/bin/systemctl ; argv[]=/usr/bin/systemctl --user try-restart chatgpt-remote-commander-fixture.service ; ignore_errors=no ; }';
+ const fixture={unit,home,fragmentPath:home+'/.config/systemd/user/'+unit};
+ const other='{ path=/usr/bin/true ; argv[]=/usr/bin/true ; ignore_errors=no ; }';
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start}),true);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start+' '+other}),false);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.split('ignore_errors')[0]}),false);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.replace(' ; }',' ; pid=0 ; status=0/0 }')}),true);
+});
