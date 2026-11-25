@@ -23,6 +23,104 @@ test('project-engine tool schema stays stable when runner is disabled',async()=>
   await assert.rejects(f.tool.execute('workflow_run_status',{runId:'disabled'}),/WORKFLOW_RUNNER_DISABLED/);
  }finally{f.dispose();}
 });
+test('workflow cannot write Host config through exact, relative, absent or aliased project paths',async()=>{
+ const f=fixture();let guarded,dispatched=0;
+ const active=path.join(f.root,'config.local.json');
+ const fallback=path.join(f.root,'config.json');
+ const initial='owner-config-must-stay-unchanged';
+ fs.writeFileSync(active,initial);
+ try{
+  guarded=createWorkflowTools({...f.base,
+   protectedHostConfigPaths:[active,fallback],
+   config:{durableWorkflows:{enabled:true,directory:path.join(f.root,'guarded-state'),executionTools:['write_text']}},
+   dispatch:async()=>{dispatched++;return {ok:true};}
+  });
+  await guarded.execute('workflow_create',{id:'p',root:f.root,goal:'Cannot self-edit host config',
+   acceptance:['Owner configuration unchanged'],steps:[{id:'s',title:'Try a write'}]});
+  const attempt=async target=>guarded.execute('workflow_call',{
+   id:'p',stepId:'s',expectedRevision:1,tool:'write_text',arguments:{path:target,content:'wrong'}
+  });
+  for(const target of [active,'config.local.json',fallback,'config.json']){
+   await assert.rejects(attempt(target),/WORKFLOW_HOST_CONFIG_WRITE_DENIED/);
+  }
+  assert.equal(dispatched,0);
+  assert.equal(fs.readFileSync(active,'utf8'),initial);
+  assert.equal(fs.existsSync(fallback),false);
+  const alias=path.join(f.root,'cfg-alias');
+  let symlinkCreated=false;
+  try {fs.symlinkSync(f.root,alias,process.platform==='win32'?'junction':'dir');symlinkCreated=true;}
+  catch(error){if(!['EPERM','EACCES','ENOTSUP'].includes(error?.code))throw error;}
+  if(symlinkCreated){
+   await assert.rejects(attempt(path.join(alias,'config.local.json')),
+    /WORKFLOW_HOST_CONFIG_WRITE_DENIED/);
+  }
+  assert.equal(dispatched,0);
+  assert.equal((await guarded.execute('workflow_get',{id:'p'})).state.revision,1);
+  const allowed=await attempt('ordinary-output.txt');
+  assert.ok(allowed);
+  assert.equal(dispatched,1);
+ }finally{guarded?.close();f.dispose();}
+});
+
+test('all workflow file mutation tools preserve Host config and containing directories',async()=>{
+ const f=fixture();let guarded;
+ const control=path.join(f.root,'control');
+ const active=path.join(control,'config.local.json');
+ const fallback=path.join(control,'missing','config.json');
+ const envKey='RC_WF_CONFIG_GUARD_FIXTURE_ROOT';
+ const prior=process.env[envKey];
+ const dispatched=[];
+ fs.mkdirSync(control);
+ fs.writeFileSync(active,'owner config');
+ fs.writeFileSync(path.join(f.root,'ordinary.txt'),'ordinary project data');
+ try{
+  process.env[envKey]=control;
+  const tools=['write_text','write_file','create_directory','copy_path','move_path','delete_path'];
+  guarded=createWorkflowTools({...f.base,protectedHostConfigPaths:[active,fallback],
+   config:{durableWorkflows:{enabled:true,directory:path.join(f.root,'guarded-effects'),executionTools:tools}},
+   dispatch:async(name,args)=>{dispatched.push({name,args});return {ok:true};}
+  });
+  await guarded.execute('workflow_create',{id:'effects',root:f.root,goal:'Preserve control plane',
+   acceptance:['Owner configuration unchanged'],steps:[{id:'s',title:'File mutation'}]});
+  const attempt=(tool,args)=>guarded.execute('workflow_call',{
+   id:'effects',stepId:'s',expectedRevision:1,tool,arguments:args
+  });
+  const blocked=[
+   ['write_file',{path:active,content:'wrong'}],
+   ['write_file',{path:'%'+envKey+'%/config.local.json',content:'wrong'}],
+   ['write_file',{path:path.join(fallback,'nested','file.txt'),content:'wrong'}],
+   ['create_directory',{path:fallback}],
+   ['create_directory',{path:path.join(fallback,'child')}],
+   ['copy_path',{source:'ordinary.txt',destination:active,overwrite:true}],
+   ['copy_path',{source:'ordinary.txt',destination:control,overwrite:true}],
+   ['move_path',{source:active,destination:'other.json'}],
+   ['move_path',{source:control,destination:'other'}],
+   ['move_path',{source:'ordinary.txt',destination:control,overwrite:true}],
+   ['delete_path',{path:active}],
+   ['delete_path',{path:control}],
+   ['delete_path',{path:'.'}]
+  ];
+  for(const [name,args] of blocked){
+   await assert.rejects(attempt(name,args),/WORKFLOW_HOST_CONFIG_WRITE_DENIED/,name+':'+JSON.stringify(args));
+  }
+  const alias=path.join(f.root,'control-alias');
+  fs.symlinkSync(control,alias,process.platform==='win32'?'junction':'dir');
+  await assert.rejects(attempt('delete_path',{path:alias}),/WORKFLOW_HOST_CONFIG_WRITE_DENIED/);
+  await assert.rejects(attempt('write_file',{path:path.join(alias,'missing','config.json','child'),content:'wrong'}),
+   /WORKFLOW_HOST_CONFIG_WRITE_DENIED/);
+  assert.equal(dispatched.length,0);
+  assert.equal(fs.readFileSync(active,'utf8'),'owner config');
+  assert.equal(fs.existsSync(fallback),false);
+  assert.equal((await guarded.execute('workflow_get',{id:'effects'})).state.revision,1);
+  // A sibling with a similar name is not the reserved file.
+  await attempt('write_file',{path:path.join(control,'config.local.json.backup'),content:'ok'});
+  assert.equal(dispatched.length,1);
+ }finally{
+  if(prior===undefined)delete process.env[envKey];else process.env[envKey]=prior;
+  guarded?.close();f.dispose();
+ }
+});
+
 test('default execution policy excludes shell, deletion, credentials and recursive workflow calls',async()=>{const f=fixture();try{
  await f.tool.execute('workflow_create',{id:'x',root:f.root,goal:'Goal',acceptance:['Observe'],steps:[{id:'a',title:'Step'}]});
  for(const name of ['run_shell','delete_path','kill_process','workflow_call'])await assert.rejects(f.tool.execute('workflow_call',{id:'x',stepId:'a',expectedRevision:1,tool:name,arguments:{}}),/NOT_APPROVED/);

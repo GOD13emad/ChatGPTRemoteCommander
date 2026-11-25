@@ -3,11 +3,67 @@
 import { WorkflowStore, fail } from './workflow-store.mjs';
 import { deriveCapabilitySet, FULL_WORKFLOW_EXECUTION_TOOLS } from './capability-profile.mjs';
 import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
 import { codexLaunchAuthorized } from './no-codex-policy.mjs';
 import { processContainmentAvailable } from './process-containment.mjs';
+import { expandPathValue } from './platform.mjs';
+
+// Workflow file effects must not mutate the Host control plane. Match the
+// actual dispatch path semantics (legacy write_text vs Power path expansion)
+// and protect directory-level replacement/removal as well as individual files.
+// This is not an OS sandbox for separately authorized executable tools.
+const WORKFLOW_HOST_CONFIG_EFFECTS = new Set([
+  'write_text','write_file','create_directory','copy_path','move_path','delete_path'
+]);
+async function denyHostConfigMutation(tool, input, projectRoot, protectedConfigPaths) {
+  if (!protectedConfigPaths.length || !WORKFLOW_HOST_CONFIG_EFFECTS.has(tool)) return;
+  const normalize = value => {
+    const resolved = path.resolve(value);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  const contains = (parent, child) => {
+    const rel = path.relative(normalize(parent), normalize(child));
+    return rel === '' || (rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel));
+  };
+  // Canonicalize the deepest existing ancestor, including multi-level missing
+  // paths accepted by Power createParents. Fail closed on unexpected errors.
+  const canonical = async value => {
+    let cursor = value;
+    const suffix = [];
+    for (;;) {
+      try { return path.join(await realpath(cursor), ...suffix); }
+      catch (error) {
+        if (error?.code !== 'ENOENT') fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
+        const parent = path.dirname(cursor);
+        if (parent === cursor) fail('WORKFLOW_HOST_CONFIG_PATH_UNAVAILABLE');
+        suffix.unshift(path.basename(cursor));
+        cursor = parent;
+      }
+    }
+  };
+  const targets = tool === 'copy_path' ? [input.destination]
+    : tool === 'move_path' ? [input.source, input.destination] : [input.path];
+  const mayReplaceAncestor = tool !== 'create_directory';
+  const overlaps = (requested, trusted) =>
+    contains(trusted, requested) || (mayReplaceAncestor && contains(requested, trusted));
+  for (const raw of targets) {
+    if (typeof raw !== 'string' || !raw) fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
+    const expanded = tool === 'write_text' ? raw : expandPathValue(raw);
+    const requested = path.resolve(path.isAbsolute(expanded) ? expanded : path.join(projectRoot, expanded));
+    if (protectedConfigPaths.some(target => overlaps(requested, target))) {
+      fail('WORKFLOW_HOST_CONFIG_WRITE_DENIED');
+    }
+    const actual = await canonical(requested);
+    for (const target of protectedConfigPaths) {
+      if (overlaps(actual, await canonical(target))) {
+        fail('WORKFLOW_HOST_CONFIG_WRITE_DENIED');
+      }
+    }
+  }
+}
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 // Node timers accept at most a signed 32-bit millisecond delay. Oversized
@@ -115,7 +171,13 @@ const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null }) {
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null, protectedHostConfigPaths = [] }) {
+  // Populated only by the Host bootstrap, never by workflow caller arguments.
+  if (!Array.isArray(protectedHostConfigPaths) || protectedHostConfigPaths.some(
+    value => typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0'))) {
+    fail('WORKFLOW_HOST_CONFIG_POLICY_INVALID');
+  }
+  const protectedConfigs = [...new Set(protectedHostConfigPaths.map(value => path.resolve(value)))];
   const settings = config.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
@@ -421,6 +483,10 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
               if (!definition) fail('WORKFLOW_TOOL_UNAVAILABLE');
               const errors = validateSchema(input, definition.inputSchema);
               if (errors.length) fail('WORKFLOW_TOOL_ARGUMENTS_INVALID');
+              if (WORKFLOW_HOST_CONFIG_EFFECTS.has(tool)) {
+                const source = store.get(args.id).state.root;
+                await denyHostConfigMutation(tool, input, source, protectedConfigs);
+              }
             }, dispatch
           });
           if (outcome.result?.__mcpContent) {
