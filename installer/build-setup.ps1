@@ -88,7 +88,12 @@ if($BrowserInstaller){
   $BrowserInstaller=[IO.Path]::GetFullPath($BrowserInstaller)
   if(-not(Test-Path -LiteralPath $BrowserInstaller -PathType Leaf)){throw "Browser installer not found: $BrowserInstaller"}
   if([IO.Path]::GetExtension($BrowserInstaller) -ne '.exe'){throw 'Browser installer must be an .exe artifact.'}
-  $BrowserSha=(Get-FileHash -LiteralPath $BrowserInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+  $BrowserVerifier=Join-Path $Root 'tools\verify-browser-setup-digest.ps1'
+  $verified=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $BrowserVerifier -BrowserInstaller $BrowserInstaller -CatalogPath (Join-Path $Root 'installer\products.json'))
+  if($LASTEXITCODE -ne 0 -or $verified.Count -ne 1 -or [string]$verified[0] -cnotmatch '^[0-9a-f]{64}$'){
+    throw 'BROWSER_CATALOG_PIN_VERIFICATION_FAILED'
+  }
+  $BrowserSha=[string]$verified[0]
   $args+=('/DBrowserSetup='+$BrowserInstaller)
 }
 $SnapshotSha=$null
@@ -130,6 +135,15 @@ $args+=(Join-Path $PSScriptRoot 'RemoteCommander.iss')
 
 & $Iscc @args
 if($LASTEXITCODE -ne 0){throw "Inno Setup compile failed: $LASTEXITCODE"}
+
+# Detect BrowserSetup drift during compilation; the prior check binds bytes to
+# installer/products.json, not merely to a caller-supplied arbitrary .exe.
+if($BrowserInstaller){
+  $verifiedAfter=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $BrowserVerifier -BrowserInstaller $BrowserInstaller -CatalogPath (Join-Path $Root 'installer\products.json'))
+  if($LASTEXITCODE -ne 0 -or $verifiedAfter.Count -ne 1 -or [string]$verifiedAfter[0] -cne $BrowserSha){
+    throw 'BROWSER_CATALOG_PIN_CHANGED_DURING_BUILD'
+  }
+}
 
 $Setup=Join-Path $Root ("dist\installer\Remote-Commander-Setup-v$Version.exe")
 if(-not(Test-Path -LiteralPath $Setup -PathType Leaf)){throw "Expected setup artifact missing: $Setup"}
