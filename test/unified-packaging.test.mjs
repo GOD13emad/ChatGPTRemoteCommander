@@ -450,8 +450,11 @@ test('hosted public native DEB path policy admits audited packaging files and re
     'packaging/unified/package.json',
     'packaging/unified/owner-dpapi-profile-recovery.ps1',
     'packaging/unified/owner-systemd-creds-profile-recovery.sh'];
-  const execute=(paths)=>{
-    const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
+  const execute=(paths,types={})=>{
+    const listing=paths.map(rel=>{
+      const kind=types[rel]??(['packaging','packaging/unified'].includes(rel)?'drwxr-xr-x':'-rw-r--r--');
+      return kind+' root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel;
+    }).join('\n');
     const code=[
       'import sys, subprocess',
       'listing=sys.argv[1]',
@@ -486,9 +489,79 @@ test('hosted public native DEB path policy admits audited packaging files and re
     assert.notEqual(missing.status,0,'must reject missing required '+required);
     assert.match(missing.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
   }
+  for(const [rel,kind] of [
+    ['packaging/unified/owner-pinned-provenance.mjs','lrwxrwxrwx'],
+    ['packaging/unified','-rw-r--r--'],
+    ['packaging/unified/owner-systemd-creds-profile-recovery.sh','lrwxrwxrwx'],
+    ['source-manifest.json','drwxr-xr-x']
+  ]){
+    const invalid=execute(base,{[rel]:kind});
+    assert.notEqual(invalid.status,0,'must reject wrong entry type: '+rel);
+    assert.match(invalid.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+  }
   const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
   assert.notEqual(missingProvenance.status,0);
   assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+});
+
+test('hosted public native DEB path policy checks actual archive entry types before installation', {
+  skip: process.platform!=='linux'
+},()=>{
+  const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+  const start="<<'PUBLIC_APP_BOUNDARY'\n", end='\nPUBLIC_APP_BOUNDARY';
+  const pos=source.indexOf(start);
+  assert.ok(pos>=0);
+  const stop=source.indexOf(end,pos+start.length);
+  assert.ok(stop>pos);
+  const policy=source.slice(pos+start.length,stop);
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-deb-types-'));
+  const files=['src/server-v0.3.mjs','config.json','package.json','source-manifest.json',
+    'packaging/unified/owner-pinned-provenance.mjs','packaging/unified/migration-preflight.mjs',
+    'packaging/unified/package.json','packaging/unified/owner-dpapi-profile-recovery.ps1',
+    'packaging/unified/owner-systemd-creds-profile-recovery.sh'];
+  const build=(name,change)=>{
+    const dir=path.join(temp,name);
+    const app=path.join(dir,'usr/lib/chatgpt-remote-commander/app');
+    fs.mkdirSync(path.join(dir,'DEBIAN'),{recursive:true});
+    fs.chmodSync(path.join(dir,'DEBIAN'),0o755);
+    fs.writeFileSync(path.join(dir,'DEBIAN/control'),
+      'Package: rc012-deb-type-fixture\nVersion: 1\nArchitecture: all\nMaintainer: QA <qa@example.invalid>\nDescription: disposable type fixture\n');
+    for(const rel of files){
+      const dest=path.join(app,rel);
+      fs.mkdirSync(path.dirname(dest),{recursive:true});
+      fs.writeFileSync(dest,'fixture\n');
+    }
+    change?.(app);
+    const deb=path.join(temp,name+'.deb');
+    const result=spawnSync('dpkg-deb',['--build','--root-owner-group',dir,deb],{
+      encoding:'utf8',timeout:12000});
+    assert.equal(result.status,0,result.stderr||String(result.error??''));
+    return deb;
+  };
+  const run=(oldDeb,newDeb)=>spawnSync('python3',['-c',policy,oldDeb,newDeb],{
+    encoding:'utf8',timeout:12000});
+  const replaceWithLink=(app,rel)=>{
+    const dest=path.join(app,rel);
+    fs.unlinkSync(dest);
+    fs.symlinkSync('package.json',dest);
+  };
+  try{
+    const valid=build('valid');
+    const positive=run(valid,valid);
+    assert.equal(positive.status,0,positive.stderr);
+    for(const [name,change] of [
+      ['provenance-link',app=>replaceWithLink(app,'packaging/unified/owner-pinned-provenance.mjs')],
+      ['recovery-link',app=>replaceWithLink(app,'packaging/unified/owner-systemd-creds-profile-recovery.sh')],
+      ['manifest-dir',app=>{const dest=path.join(app,'source-manifest.json');fs.unlinkSync(dest);fs.mkdirSync(dest);}],
+      ['parent-file',app=>{const dest=path.join(app,'packaging/unified');fs.rmSync(dest,{recursive:true});fs.writeFileSync(dest,'fixture\n');}]
+    ]){
+      const bad=run(valid,build(name,change));
+      assert.notEqual(bad.status,0,'must reject actual archive: '+name);
+      assert.match(bad.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+    }
+  }finally{
+    fs.rmSync(temp,{recursive:true,force:true});
+  }
 });
 
 test('native DEB merger pins identical canonical Core and GUI candidate versions',()=>{

@@ -42,7 +42,13 @@ async function fixture(enabled,{forceNoCessation=false}={}){
  const stop=async()=>{if(child&&child.exitCode===null){const closed=once(child,'close');child.kill();await closed;}};
  const rpc=async(name,args={})=>{const r=await fetch(`http://127.0.0.1:${p}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),signal:AbortSignal.timeout(30000)});return r.json();};
  const invoke=async(name,args)=>{const r=await rpc(name,args);assert.ok(!r.error,JSON.stringify(r));assert.equal(r.result.isError,false,JSON.stringify(r));return r.result.structuredContent;};
- return {root,project,p,config,invoke,rpc,start,stop,async dispose(){await stop();fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});}};
+ return {root,project,p,config,invoke,rpc,start,stop,async dispose(){
+  await stop();
+  // On Windows, native process close and ephemeral filesystem handles can
+  // settle at different instants. Keep bounded cleanup and fail on EBUSY
+  // after the deadline; never skip cleanup or conceal a persistent process.
+  await fs.promises.rm(root,{recursive:true,force:true,maxRetries:60,retryDelay:100});
+ }};
 }
 // Hosted elevated Windows cannot access legacy unauthenticated MCP.
 // Never disable quarantine just to permit a positive test.
