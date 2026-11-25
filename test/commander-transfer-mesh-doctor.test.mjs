@@ -5,7 +5,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
-import {evaluatePeerConnectivity,assessDaemonIdentity} from '../tools/commander-transfer-mesh/doctor.mjs';
+import {evaluatePeerConnectivity,assessDaemonIdentity,isExpectedPeerFolder} from '../tools/commander-transfer-mesh/doctor.mjs';
 
 const peers={
  PC:'EFE6R4U-O3B6JVV-N4OKZFL-7X4U24W-A5GFD4G-TM4OPRK-AXBDALA-OCJUBQ6',
@@ -87,6 +87,18 @@ test('the doctor never launches the untrusted daemon binary in an environment-se
     assert.equal(fs.existsSync(marker),false,'diagnostic must not run an executable supplied by pilot root');
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+test('peer folder membership binds both verified local and expected peer IDs to the exact pair root',()=>{
+ const root=path.join(os.tmpdir(),'ctmesh-pair-audit');
+ const options={localDeviceId:peers.PC,peerId:peers.MMZ,root,peerName:'MMZ'};
+ const folder={paused:false,devices:[{deviceID:peers.PC},{deviceID:peers.MMZ}],path:path.join(root,'pairs','MMZ')};
+ assert.equal(isExpectedPeerFolder(folder,options),true);
+ assert.equal(isExpectedPeerFolder({...folder,devices:[{deviceID:peers.Amirreza},{deviceID:peers.MMZ}]},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,devices:[{deviceID:peers.PC},{deviceID:peers.PC}]},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,paused:true},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,path:path.join(root,'private')},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,devices:[null,{deviceID:peers.MMZ}]},options),false);
+});
+
 test('authenticated Syncthing REST status and version preserve doctor identity and version semantics',()=>{
   assert.equal(assessDaemonIdentity({status:{myID:peers.PC},version:{version:'v1.29.6'},alias:'PC'}),'syncthing v1.29.6');
   assert.equal(assessDaemonIdentity({status:{myID:peers.MMZ},version:{version:'v2.0.0-rc.1'},alias:'MMZ'}),'syncthing v2.0.0-rc.1');
