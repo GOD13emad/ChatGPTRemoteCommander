@@ -52,14 +52,15 @@ function uncertain(result){
  * never derive a root from caller-supplied target IDs or arguments.
  */
 export function createV012SharedPhysicalRootFence({
-  nativeHostLease,hostId,allowedRoots,resolveTrustedRouteRoot
+  nativeHostLease,hostId,allowedRoots,resolveTrustedRouteRoot,readDeferredCompletion=null
 }={}){
   if(typeof hostId!=='string'||!ID.test(hostId)
     ||hostId==='.'||hostId==='..'
     ||nativeHostLease?.hostId!==hostId
     ||typeof nativeHostLease.withLease!=='function'
     ||!Array.isArray(allowedRoots)||allowedRoots.length===0
-    ||typeof resolveTrustedRouteRoot!=='function')
+    ||typeof resolveTrustedRouteRoot!=='function'
+    ||(readDeferredCompletion!==null&&typeof readDeferredCompletion!=='function'))
     fail('V012_SHARED_ROOT_BOOTSTRAP_REQUIRED');
   const roots=Object.freeze(allowedRoots.map(absoluteRoot));
   const scope=new AsyncLocalStorage();
@@ -100,8 +101,13 @@ export function createV012SharedPhysicalRootFence({
       }finally{active.inFlight--;}
     }
     let completedValue;
+    if(readDeferredCompletion!==null){
+      if(typeof nativeHostLease.reconcileDeferred!=='function')
+        fail('V012_SHARED_ROOT_RECONCILIATION_REQUIRED');
+      await nativeHostLease.reconcileDeferred(key,readDeferredCompletion);
+    }
     const state={key,logicalScope,leaseContext:null,uncertain:false,active:false,inFlight:0,
-      nestedEntered:false,effectStarted:false};
+      nestedEntered:false,effectStarted:false,deferredOperationId:null};
     try{
       await nativeHostLease.withLease(key, async leaseContext=>{
         if(typeof leaseContext?.markEffectStarted!=='function'
@@ -111,6 +117,15 @@ export function createV012SharedPhysicalRootFence({
         // effect has entered this same native lease. A trusted validator can
         // launch asynchronous descendants before rejecting an operation.
         const guardedContext=Object.freeze({
+          bindDeferredOperation(meta){
+            if(!state.active||state.deferredOperationId
+              ||typeof leaseContext.bindDeferredOperation!=='function')
+              fail('V012_SHARED_ROOT_DEFERRED_CONTEXT_REQUIRED');
+            const binding=leaseContext.bindDeferredOperation(meta);
+            state.deferredOperationId=binding.operationId;
+            state.effectStarted=true;
+            return binding;
+          },
           markEffectStarted(){
             state.effectStarted=true;
             return leaseContext.markEffectStarted();
@@ -133,6 +148,9 @@ export function createV012SharedPhysicalRootFence({
             fail('V012_SHARED_ROOT_DETACHED_EFFECT_QUARANTINED');
           }
           if(uncertain(completedValue)||state.uncertain){
+            if(!state.uncertain&&state.deferredOperationId===completedValue?.operationId
+              &&typeof leaseContext.commitDeferredHandoff==='function')
+              leaseContext.commitDeferredHandoff({operationId:state.deferredOperationId});
             // A successful JavaScript return must NOT release an uncertain
             // native effect. Throw only after retaining its trusted receipt.
             leaseContext.markEffectStarted();
@@ -150,6 +168,11 @@ export function createV012SharedPhysicalRootFence({
     return completedValue;
   }
   return Object.freeze({
+    bindDeferredOperation(meta){
+      const active=scope.getStore();
+      if(!active?.active)fail('V012_SHARED_ROOT_DEFERRED_CONTEXT_REQUIRED');
+      return active.leaseContext.bindDeferredOperation(meta);
+    },
     async withWorkflowRootLease(root,work){
       return withResource(rootKey(root),work,'workflow-root');
     },

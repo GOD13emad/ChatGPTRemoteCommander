@@ -14,6 +14,14 @@ test('catalog is explicit about platform availability and experimental product s
   assert.equal(catalog.schema,1);
   assert.deepEqual(catalog.products.map(p=>p.id),['core','control-center','browser','work-plugin','companion']);
   assert.equal(catalog.products.find(p=>p.id==='browser').platforms.linux.status,'conditional');
+  const browser=catalog.products.find(p=>p.id==='browser');
+  assert.equal(browser.platforms.windows.version,'0.8.1');
+  assert.equal(browser.platforms.windows.sha256,'dcf4c5bc5d0ca8788f803e469246512af3745c81f578411dbabf6ce2a97feca2');
+  for(const platform of ['windows','linux']){
+    const unpinned=structuredClone(catalog);
+    delete unpinned.products.find(p=>p.id==='browser').platforms[platform].sha256;
+    assert.throws(()=>validateCatalog(unpinned),/BROWSER_ARTIFACT_DIGEST_REQUIRED/);
+  }
   assert.equal(catalog.products.find(p=>p.id==='control-center').platforms.linux.status,'unavailable');
   assert.equal(catalog.products.find(p=>p.id==='companion').platforms.windows.status,'unavailable');
 });

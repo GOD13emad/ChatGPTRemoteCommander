@@ -13,10 +13,11 @@ TEMPBASE="$(realpath "$RUNNER_TEMP")"
 TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
 EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
-# Preserve the legacy migration test; rollback must target a schema-compatible
-# accepted dev.23 predecessor, not the pre-Workspace immutable 0.10.20 tag.
-ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'
-ROLLBACK_VERSION='0.11.0-dev.23'
+# The migration upgrades the already-installed v0.12 Core dev12 package.
+# dev23 is a separate active legacy route and predates workspace_window_type;
+# it is not a schema-compatible rollback target for this v0.12 package update.
+ROLLBACK_BASELINE='46a8256186e09f3355b10f796717aefee29ed309'
+ROLLBACK_VERSION='0.12.0-dev.12'
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
 node "$WORKSPACE/tools/isolated-qa-policy.mjs" || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
@@ -129,7 +130,7 @@ assert s['active']['commit']==sys.argv[2], 'legacy refusal altered promoted rout
 print('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY')
 PY_CHECK
 
-# Verify an actual rollback to a previously qualified, schema-compatible dev.23
+# Verify an actual rollback to the installed, schema-compatible v0.12.0-dev.12
 # predecessor without disabling the schema continuity gate.
 set +e
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
@@ -155,6 +156,8 @@ if [[ "$ROLLBACK_CODE" != 0 ]]; then
 fi
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$ROLLBACK_BASELINE" ]] || { echo R170_ROLLBACK_CONTROL_SHA_FAIL >&2; exit 75; }
 grep -q "AUTO_UPDATE_PASS version=$ROLLBACK_VERSION" "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_NOT_ACCEPTED >&2; exit 76; }
+grep -Fq 'SCHEMA_CONTINUITY_GATE_PASS profile=default' "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_SCHEMA_CONTINUITY_NOT_ACCEPTED >&2; exit 76; }
+echo R170_ROLLBACK_SCHEMA_CONTINUITY_PASS
 node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_ROLLBACK.json"
 python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$ROLLBACK_BASELINE" "$ROLLBACK_VERSION" <<'PY'
 import json,sys

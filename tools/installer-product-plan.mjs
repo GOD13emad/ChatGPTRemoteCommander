@@ -18,6 +18,12 @@ export function validateCatalog(input=catalog){
       const state=p.platforms?.[plat];
       if(!state||!knownStatuses.has(state.status)||typeof state.method!=='string'&&state.status!=='unavailable')throw Error('INVALID_PLATFORM_STATE');
       if(state.status==='unavailable'&&!state.reason)throw Error('MISSING_UNAVAILABLE_REASON');
+      // The conditional Browser component needs a pinned upstream digest for
+      // each platform. Catalog identity alone does not mean it was bundled.
+      if(p.id==='browser'&&state.status==='conditional'&&
+        (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(state.version??'')||
+         !/^[a-f0-9]{64}$/.test(state.sha256??'')))
+        throw Error('BROWSER_ARTIFACT_DIGEST_REQUIRED');
     }
   }
   for(const p of input.products){

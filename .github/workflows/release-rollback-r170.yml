@@ -57,7 +57,7 @@ jobs:
           node tools/isolated-qa-policy.mjs
           test ! -e "$RUNNER_TEMP/remote-commander-rollback-r170"
           echo R170_STATIC_PASS
-      - name: Real version promotion then rollback in fresh isolated runner
+      - name: Real version promotion then rollback to installed v0.12.0-dev.12 in fresh isolated runner
         timeout-minutes: 38
         shell: bash
         run: |

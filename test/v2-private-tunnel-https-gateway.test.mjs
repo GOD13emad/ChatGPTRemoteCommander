@@ -753,7 +753,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     target:{kind:'workflow-root',id:'root-1'}
   });
   const liveRoute=conversationId=>({...route(conversationId),operationId:'read-1'});
-  const state={consents:0,effects:0,allow:true,worker:null};
+  const state={consents:0,effects:0,controlEffects:0,allow:true,worker:null};
   const receiptStore=new MutationIdempotencyStore({
     directory:path.join(root,'receipts'),scope:'private-composition'
   });
@@ -845,15 +845,16 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
           assert.equal(identity.expectedTunnelIdHash,tunnelHash);
           // Trust only the same native owner and bootstrap-provided grants.
           return {
-            resolveTrustedToolRoute:async({nativeRoute})=>({
-              ...nativeRoute,operationId:'read-1'
-            }),
+            resolveTrustedToolRoute:async({nativeRoute,tool})=>{
+              state.operationId=tool==='read_text'?'read-1':tool+'-1';
+              return {...nativeRoute,operationId:state.operationId};
+            },
             resolveCurrentOwnerRoute:async owner=>{
               // The same native J01 state established by HTTPS owner binding.
               const current=await ownerStack.nativeSessionBindings
                 .resolveNativeRoute(owner.conversationId);
               assert.equal(current.conversationId,owner.conversationId);
-              return liveRoute(current.conversationId);
+              return {...liveRoute(current.conversationId),operationId:state.operationId??'read-1'};
             },
             resolveCurrentWorkerId:async owner=>{
               if(state.worker?.claims?.bindingId!==owner.bindingId){
@@ -879,8 +880,9 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
             },
             workerRegistry:{get:async()=>state.worker,isRevoked:async()=>false},
             workerAuthority:{authorizeWorker:async({workerId:id,invocation})=>{
-              if(!state.allow||id!==workerId||invocation.tool!=='read_text'
-                ||invocation.arguments.path!==approved)return null;
+              if(!state.allow||id!==workerId)return null;
+              if(invocation.tool==='read_text' ? invocation.arguments.path!==approved
+                : !['operation_status','operation_cancel'].includes(invocation.tool))return null;
               const claims=state.worker.claims;
               return {authorized:true,workerId,keyId,bindingId:claims.bindingId,
                 capabilityPolicyDigest:policy,grantRevision:1,
@@ -896,8 +898,17 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       core:{
         catalog:[{name:'read_text',description:'Real Core readText',
           inputSchema:{type:'object',additionalProperties:false,
-            required:['path'],properties:{path:{type:'string',minLength:1}}}}],
-        dispatch:async(name,args)=>{
+            required:['path'],properties:{path:{type:'string',minLength:1}}}},
+          {name:'operation_status',description:'Fixture control-plane observation',inputSchema:{type:'object',additionalProperties:false},
+            annotations:{readOnlyHint:true}},
+          {name:'operation_cancel',description:'Fixture control-plane cancellation',inputSchema:{type:'object',additionalProperties:false},
+            annotations:{idempotentHint:true}}
+        ],
+        dispatch:async(name,args,_route,nativeAuthorization)=>{
+          assert.equal(await nativeAuthorization.authorizeNativeLaunch(),true);
+          if(name==='operation_status'||name==='operation_cancel'){
+            state.controlEffects++;return {observed:true};
+          }
           assert.equal(name,'read_text');
           state.effects++;
           return readText(context,args);
@@ -947,6 +958,12 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
         const blocked=await send(31,'read_text',{path:approved});
         assert.equal(blocked.status,503);
         assert.equal(state.effects,0,'no Core dispatch while independent process holds lease');
+        const observed=await send(32,'operation_status',{});
+        assert.equal(observed.status,200,'signed control-plane observation remains available while a writer holds the root');
+        assert.equal(observed.body.result.isError,false);
+        const cancelled=await send(33,'operation_cancel',{});
+        assert.equal(cancelled.status,200,'signed cancellation does not require the project effect lock');
+        assert.equal(state.controlEffects,2);
       }finally{
         if(child.exitCode===null&&!child.killed){
           child.stdin.on('error',()=>{});
@@ -966,6 +983,9 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     assert.equal(replay.status,200);
     assert.equal(state.effects,1,'same operation must be at-most-once');
     state.allow=false;
+    const deniedObservation=await send(6,'operation_status',{});
+    assert.equal(deniedObservation.status,503,'observation still requires a current native owner and Worker grant');
+    assert.equal(state.controlEffects,2);
     const revoked=await send(5,'read_text',{path:approved});
     assert.equal(revoked.status,503);
     assert.equal(state.effects,1);

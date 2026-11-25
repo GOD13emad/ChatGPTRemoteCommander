@@ -1283,8 +1283,8 @@ test('R170 isolated rollback qualification is version-scoped, not a release auth
   assert.ok(workflow.includes('isolated-qa-policy.mjs'));
   assert.ok(!workflow.includes("'0.10.27'"),'future candidate requires explicit review');
   assert.ok(linux.includes('R170_GITHUB_HOSTED_LINUX_ONLY'),'CI-only, not owner host');
-  assert.ok(linux.includes("ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'rollback must target the last fleet-accepted dev23 baseline');
-  assert.ok(linux.includes("ROLLBACK_VERSION='0.11.0-dev.23'"),'rollback version and exact commit must agree');
+  assert.ok(linux.includes("ROLLBACK_BASELINE='46a8256186e09f3355b10f796717aefee29ed309'"),'rollback must target the installed schema-compatible dev12 baseline');
+  assert.ok(linux.includes("ROLLBACK_VERSION='0.12.0-dev.12'"),'rollback version and exact commit must agree');
   assert.ok(!linux.includes('af18cbdce3cc106842adebde912fea079094deb1'),'obsolete incompatible dev18 rollback is not accepted');
 });
 
@@ -1303,8 +1303,8 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(qa.includes('R173_JOB_RUNNER_SHA_MISMATCH'),'R173 must verify exact job runner hash');
   assert.ok(qa.includes("'-WindowsJobRunnerPath',$JobRunner"),'updater must receive the verified runner explicitly');
   const windowsUpdater=read('auto-update-windows.ps1');
-  assert.ok(qa.includes("if($Name -eq 'ROLLBACK'){$args+= '-PinnedLegacyRunnerOverlay'}"),'only rollback may enable historical runner compatibility');
-  assert.ok(qa.includes('R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'),'rollback must prove the verified compatibility receipt');
+  assert.ok(!qa.includes('PinnedLegacyRunnerOverlay') && !qa.includes('R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'),'dev12 rollback must use its native runner manifest without the historical dev23 overlay');
+  assert.ok(qa.includes('SCHEMA_CONTINUITY_GATE_PASS profile=default'),'R173 must attest the schema-continuity gate');
   assert.ok(windowsUpdater.includes('if(-not $PinnedLegacyRunnerOverlay){throw \'WINDOWS_JOB_RUNNER_MANIFEST_MISSING\'}'),'default updater must fail closed on missing native manifest');
   assert.ok(windowsUpdater.includes("8ccf0fd16355a4ab79844feec6c295366763df0d"),'compatibility overlay is exact dev23 predecessor only');
   assert.ok(windowsUpdater.includes("RUNNER_ENVIRONMENT -ne 'github-hosted'") && windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_SCOPE_REJECTED'),'historical exception is hosted-only and explicit');
@@ -1314,8 +1314,8 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
 
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
   const helper=read('tools/run-r157-standard-user.ps1');
-  assert.ok(qa.includes("$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'R173 must roll back to schema-compatible fleet baseline');
-  assert.ok(qa.includes("$RollbackVersion='0.11.0-dev.23'"),'R173 rollback version must match exact baseline');
+  assert.ok(qa.includes("$RollbackBaseline='46a8256186e09f3355b10f796717aefee29ed309'"),'R173 must roll back to installed schema-compatible dev12 baseline');
+  assert.ok(qa.includes("$RollbackVersion='0.12.0-dev.12'"),'R173 rollback version must match exact baseline');
   assert.ok(qa.includes('R173_STANDARD_USER_SANDBOX_MARKER_REQUIRED'),'R173 sandbox must be helper-created and fresh');
   assert.ok(workflow.includes('run-r157-standard-user.ps1 -RunR173Rollback'),'R173 updater must run under a verified standard token');
   assert.ok(workflow.includes('R173_STANDARD_USER_CLEANUP_NOT_ACCEPTED'),'R173 requires account removal and zero owned processes');
@@ -1445,7 +1445,9 @@ test('R170 isolated rollback retries only an explicit router-bootstrap receipt o
   assert.ok(r170.includes("grep -q \"AUTO_UPDATE_PASS version=$ROLLBACK_VERSION\""),'full compatible rollback acceptance cannot be bypassed');
   assert.ok(r170.includes("grep -q '^SCHEMA_CONTINUITY_GATE_FAIL profile=default$'"),'legacy incompatible rollback must fail closed');
   assert.ok(r170.includes('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY'),'legacy refusal must retain promoted route');
-  assert.ok(r170.includes('ROLLBACK_BASELINE=\'8ccf0fd16355a4ab79844feec6c295366763df0d\''),'compatible rollback commit must be exact and pinned');
+  assert.ok(r170.includes('ROLLBACK_BASELINE=\'46a8256186e09f3355b10f796717aefee29ed309\''),'compatible rollback commit must be exact and pinned');
+  assert.ok(r170.includes('ROLLBACK_VERSION=\'0.12.0-dev.12\''),'compatible rollback version must match exact baseline');
+  assert.ok(r170.includes("grep -Fq 'SCHEMA_CONTINUITY_GATE_PASS profile=default'"),'successful rollback must attest schema continuity');
   assert.ok(r170.includes('R170_LINUX_ROLLBACK_ROUTE_PASS'),'route readback must remain mandatory');
   assert.ok(r170.includes('git -C "$WORKSPACE" diff --cached --quiet --'),'staged changes remain prohibited before byte-exact normalized EOL comparison');
   assert.ok(r170.includes('R170_SOURCE_CHANGED'),'any semantic source change must block');
