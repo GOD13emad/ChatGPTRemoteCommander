@@ -52,6 +52,9 @@ Name: "core"; Description: "Remote Commander Core and profile management"; Types
 Name: "controlmonitor"; Description: "Control && Monitoring panel"; Types: complete
 Name: "workplugin"; Description: "ChatGPT Work Plugin setup (requires registered App ID after install)"; Types: complete
 #ifdef BrowserSetup
+  #ifndef BrowserSetupSHA256
+    #error BROWSER_SETUP_EXACT_DIGEST_REQUIRED
+  #endif
   #define BrowserSetupName ExtractFileName(BrowserSetup)
 Name: "browser"; Description: "Remote Commander Browser"; Types: complete
 #endif
@@ -104,13 +107,24 @@ var
 #ifdef BrowserSetup
 function ShouldInstallBundledBrowser(): Boolean;
 var
-  InstalledVersion: String;
+  InstalledVersion, BrowserPath, ActualSha: String;
 begin
   { Never silently replace any existing owner Browser with the bundled version. }
   Result := not RegQueryStringValue(HKCU,
     'Software\Microsoft\Windows\CurrentVersion\Uninstall\RemoteCommanderBrowser',
     'DisplayVersion', InstalledVersion) and
     not FileExists(ExpandConstant('{localappdata}\Programs\Remote Commander Browser\current\product-install.json'));
+  if not Result then Exit;
+
+  { [Files] dontcopy does not populate {tmp}; the [Run] entry must extract }
+  { the exact embedded artifact before execution, then verify its bytes. }
+  ExtractTemporaryFile('{#BrowserSetupName}');
+  BrowserPath := ExpandConstant('{tmp}\{#BrowserSetupName}');
+  if not FileExists(BrowserPath) then
+    RaiseException('BROWSER_PAYLOAD_EXTRACTION_MISSING');
+  ActualSha := GetSHA256OfFile(BrowserPath);
+  if CompareText(ActualSha, '{#BrowserSetupSHA256}') <> 0 then
+    RaiseException('BROWSER_PAYLOAD_EXTRACTED_SHA256_MISMATCH');
 end;
 #endif
 function JsonBool(Value: Boolean): String;
