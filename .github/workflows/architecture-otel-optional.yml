@@ -1,0 +1,28 @@
+name: Optional architecture OTel observer QA
+on:
+  pull_request:
+    paths:
+      - "src/optional-observability-otel.mjs"
+      - "test/optional-observability-otel.test.mjs"
+      - ".github/workflows/architecture-otel-optional.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  no-export-regressions:
+    name: No-export regression (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22', '26']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify syntax
+        run: node --check src/optional-observability-otel.mjs
+      - name: Verify optional observer and owner-grant negative regression
+        run: node --test test/optional-observability-otel.test.mjs
