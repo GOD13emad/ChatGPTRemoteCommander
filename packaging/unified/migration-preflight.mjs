@@ -62,6 +62,23 @@ export function isLinuxOwnerGraphicalRebindUnit({unit,execStart,fragmentPath,hom
   return !!command&&command[1]==='/usr/bin/systemctl'
     &&command[2].trim()==='/usr/bin/systemctl --user try-restart '+m[1]+'.service';
 }
+// Native inventory accepts a single exact package-owned service command, not
+// arbitrary arguments containing a known executable path.
+export function classifyLinuxNativeExecStart({unit,execStart,fragmentPath}={}){
+  if(typeof unit!=='string'||typeof execStart!=='string'||typeof fragmentPath!=='string')return null;
+  const command=/^\{ path=([^ ;]+) ; argv\[\]=([^;]+) ; ignore_errors=(?:yes|no) ; [^{}]*\}$/.exec(execStart);
+  if(!command)return null;
+  const root='/usr/lib/chatgpt-remote-commander';
+  const core=/^chatgpt-remote-commander@([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.service$/.exec(unit);
+  const tunnel=/^chatgpt-remote-commander-tunnel@([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.service$/.exec(unit);
+  if(core&&fragmentPath==='/usr/lib/systemd/user/chatgpt-remote-commander@.service'
+    &&command[1]===root+'/runtime/node'
+    &&command[2].trim()===root+'/runtime/node '+root+'/app/src/server-v0.3.mjs')return 'core';
+  if(tunnel&&fragmentPath==='/usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service'
+    &&command[1]===root+'/tunnel/native-tunnel-launch.sh'
+    &&command[2].trim()===root+'/tunnel/native-tunnel-launch.sh '+tunnel[1])return 'tunnel';
+  return null;
+}
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
 // The owner-selected tunnel profile is input, not a ChatGPT identity proof.
 // Never print/retain the YAML: it may contain the runtime API key.
@@ -642,8 +659,9 @@ function linuxFacts({profileName=null}={}){
       });
       if(!oldUnit&&!legacyTunnel)continue;
       const active=result.stdout.includes('ActiveState=active');
-      const nativeTunnel=execStart.includes('/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh');
-      const nativeCore=execStart.includes('/usr/lib/chatgpt-remote-commander/runtime/node');
+      const nativeKind=classifyLinuxNativeExecStart({unit:name,execStart,fragmentPath});
+      const nativeTunnel=nativeKind==='tunnel';
+      const nativeCore=nativeKind==='core';
       const auxiliary=isLinuxOwnerGraphicalRebindUnit({unit:name,execStart,fragmentPath,home:process.env.HOME});
       units.push({id:sha(name),kind:auxiliary?'auxiliary':legacyTunnel||name.includes('-tunnel')?'tunnel':'core',
         active,enabled:enabled.has(name),

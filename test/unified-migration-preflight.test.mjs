@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,isLinuxOwnerGraphicalRebindUnit,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
+import {classifyLinuxNativeExecStart,assessMigration,isLinuxOwnerGraphicalRebindUnit,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -924,4 +924,31 @@ test('graphical rebind inventory rejects multiple ExecStart entries and truncate
  assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start+' '+other}),false);
  assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.split('ignore_errors')[0]}),false);
  assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.replace(' ; }',' ; pid=0 ; status=0/0 }')}),true);
+});
+
+test('native Linux executable inventory rejects path mentions and noncanonical service commands',()=>{
+ const root='/usr/lib/chatgpt-remote-commander';
+ const node=root+'/runtime/node',launch=root+'/tunnel/native-tunnel-launch.sh';
+ const record=(exe,argv)=>'{ path='+exe+' ; argv[]='+argv+' ; ignore_errors=no ; }';
+ const core={unit:'chatgpt-remote-commander@MMZ-v012.service',
+   fragmentPath:'/usr/lib/systemd/user/chatgpt-remote-commander@.service',
+   execStart:record(node,node+' '+root+'/app/src/server-v0.3.mjs')};
+ const tunnel={unit:'chatgpt-remote-commander-tunnel@mmz-linux.service',
+   fragmentPath:'/usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service',
+   execStart:record(launch,launch+' mmz-linux')};
+ assert.equal(classifyLinuxNativeExecStart(core),'core');
+ assert.equal(classifyLinuxNativeExecStart(tunnel),'tunnel');
+ for(const bad of [
+   {...core,execStart:record('/bin/bash','/bin/bash '+node)},
+   {...core,execStart:record(node+'-fake',node+'-fake '+root+'/app/src/server-v0.3.mjs')},
+   {...core,execStart:record(node,node+' /tmp/fixture.mjs')},
+   {...core,execStart:core.execStart+' '+record('/usr/bin/true','/usr/bin/true')},
+   {...core,execStart:core.execStart.slice(0,-1)},
+   {...core,fragmentPath:'/home/fixture/.config/systemd/user/chatgpt-remote-commander@.service'},
+   {...core,unit:'chatgpt-remote-commander-other.service'},
+   {...tunnel,execStart:record(launch,launch+' other-profile')},
+   {...tunnel,execStart:record('/bin/bash','/bin/bash '+launch+' mmz-linux')}
+ ])assert.equal(classifyLinuxNativeExecStart(bad),null);
+ // systemctl includes live process metadata in the same brace-delimited record.
+ assert.equal(classifyLinuxNativeExecStart({...core,execStart:core.execStart.replace(' ; }',' ; start_time=[Wed] ; pid=123 ; code=(null) ; status=0/0 }')}),'core');
 });
