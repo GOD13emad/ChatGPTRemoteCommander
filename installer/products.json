@@ -51,7 +51,9 @@
         "windows": {
           "status": "conditional",
           "method": "inno-browser",
-          "reason": "Selected only if BrowserSetup was verified and embedded at setup build time"
+          "reason": "Selected only if BrowserSetup was verified and embedded at setup build time",
+          "version": "0.8.1",
+          "sha256": "dcf4c5bc5d0ca8788f803e469246512af3745c81f578411dbabf6ce2a97feca2"
         },
         "linux": {
           "status": "conditional",
