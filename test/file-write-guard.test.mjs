@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {guardFileWrite} from '../src/file-write-guard.mjs';
+import {guardFileWrite,readBoundHostConfiguration} from '../src/file-write-guard.mjs';
 import {writeText} from '../src/tools-v0.3.mjs';
 
 function fixture(t) {
@@ -55,4 +55,47 @@ test('replacement of an existing parent or leaf invalidates a write snapshot',as
   const replacement=path.join(parent,'replacement.txt');fs.writeFileSync(replacement,'replacement');
   fs.unlinkSync(target);fs.renameSync(replacement,target);
   await assert.rejects(guardFileWrite(target,existing),{code:'FILE_WRITE_TARGET_CHANGED'});
+});
+
+test('Host config selection reads exact local or explicit bytes, and falls back only on absence',async t=>{
+  const root=fixture(t),localConfigPath=path.join(root,'config.local.json'),
+    defaultConfigPath=path.join(root,'config.json');
+  const options={localConfigPath,defaultConfigPath};
+  fs.writeFileSync(defaultConfigPath,'{"source":"default"}');
+  assert.deepEqual(await readBoundHostConfiguration(options),
+    {configPath:defaultConfigPath,configRaw:'{"source":"default"}'});
+  fs.writeFileSync(localConfigPath,'{"source":"local"}');
+  assert.deepEqual(await readBoundHostConfiguration(options),
+    {configPath:localConfigPath,configRaw:'{"source":"local"}'});
+  assert.deepEqual(await readBoundHostConfiguration({...options,explicitConfigPath:defaultConfigPath}),
+    {configPath:defaultConfigPath,configRaw:'{"source":"default"}'});
+  await assert.rejects(readBoundHostConfiguration({...options,explicitConfigPath:path.join(root,'absent.json')}),
+    {code:'HOST_CONFIG_NOT_FOUND'});
+});
+test('an existing nonregular, hardlinked, or aliased local Host config must not fall back',async t=>{
+  const root=fixture(t),localConfigPath=path.join(root,'config.local.json'),
+    defaultConfigPath=path.join(root,'config.json');
+  const options={localConfigPath,defaultConfigPath};
+  fs.writeFileSync(defaultConfigPath,'{"source":"default"}');
+  fs.mkdirSync(localConfigPath);
+  await assert.rejects(readBoundHostConfiguration(options),{code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  fs.rmdirSync(localConfigPath);
+  fs.linkSync(defaultConfigPath,localConfigPath);
+  await assert.rejects(readBoundHostConfiguration(options),{code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  fs.unlinkSync(localConfigPath);
+  const dir=path.join(root,'actual'),alias=path.join(root,'alias');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir,'config.json'),'{"source":"alias"}');
+  fs.symlinkSync(dir,alias,process.platform==='win32'?'junction':'dir');
+  await assert.rejects(readBoundHostConfiguration({...options,explicitConfigPath:path.join(alias,'config.json')}),
+    {code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  assert.equal(fs.readFileSync(defaultConfigPath,'utf8'),'{"source":"default"}');
+});
+test('Host config reads are bounded before allocating bytes, without fallback',async t=>{
+  const root=fixture(t),localConfigPath=path.join(root,'config.local.json'),
+    defaultConfigPath=path.join(root,'config.json');
+  fs.writeFileSync(defaultConfigPath,'{}');
+  fs.writeFileSync(localConfigPath,'{}');
+  fs.truncateSync(localConfigPath,8*1024*1024+1);
+  await assert.rejects(readBoundHostConfiguration({localConfigPath,defaultConfigPath}),{code:'HOST_CONFIG_TOO_LARGE'});
 });

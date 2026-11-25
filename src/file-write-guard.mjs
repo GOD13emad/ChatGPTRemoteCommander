@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { lstat, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, realpath, open } from 'node:fs/promises';
 
 const key = value => process.platform === 'win32' ? path.resolve(value).toLowerCase() : path.resolve(value);
 const sameIdentity = (a, b) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode;
@@ -50,4 +51,58 @@ export async function guardFileWrite(target, expected) {
     }
   }
   return { target, leaf: missing ? null : leaf, ancestors };
+}
+
+// Host config is control-plane input, including the owner-selected executable.
+// Bind the bytes to one regular, single-link file and its inspected ancestry.
+// This is an identity/size precondition, not proof of OS owner/ACL custody.
+const MAX_HOST_CONFIG_BYTES = 8 * 1024 * 1024;
+async function readHostConfigPath(value, { optional = false } = {}) {
+  const configPath = path.resolve(value);
+  const inspect = async expected => {
+    try { return await guardFileWrite(configPath, expected); }
+    catch { fail('HOST_CONFIG_PATH_UNTRUSTED'); }
+  };
+  const snapshot = await inspect();
+  if (!snapshot.leaf) {
+    if (optional) return null;
+    fail('HOST_CONFIG_NOT_FOUND');
+  }
+  if (snapshot.leaf.size > BigInt(MAX_HOST_CONFIG_BYTES)) fail('HOST_CONFIG_TOO_LARGE');
+  let handle;
+  try {
+    // NONBLOCK prevents a raced FIFO from blocking open on platforms that
+    // support it. NOFOLLOW and the identity checks reject leaf/ancestor drift.
+    handle = await open(configPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0)
+      | (constants.O_NONBLOCK ?? 0));
+    const opened = await handle.stat({ bigint: true });
+    if (!opened.isFile() || opened.nlink !== 1n || !sameFile(snapshot.leaf, opened)) {
+      fail('HOST_CONFIG_CHANGED');
+    }
+    await inspect(snapshot);
+    const bytes = Buffer.alloc(Number(opened.size) + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+      if (!bytesRead) break;
+      offset += bytesRead;
+    }
+    const after = await handle.stat({ bigint: true });
+    if (!after.isFile() || after.nlink !== 1n || !sameFile(opened, after)
+        || BigInt(offset) !== opened.size) fail('HOST_CONFIG_CHANGED');
+    await inspect(snapshot);
+    return { configPath, configRaw: bytes.subarray(0, offset).toString('utf8') };
+  } catch (error) {
+    if (typeof error?.code === 'string' && error.code.startsWith('HOST_CONFIG_')) throw error;
+    // A file observed and then lost or denied is not an absent optional file.
+    fail('HOST_CONFIG_READ_FAILED');
+  } finally { if (handle) await handle.close(); }
+}
+
+export async function readBoundHostConfiguration({ explicitConfigPath, defaultConfigPath, localConfigPath }) {
+  if (explicitConfigPath) return readHostConfigPath(explicitConfigPath);
+  // Only a missing optional local file permits fallback, never an alias,
+  // read failure, nonregular target, or replacement after initial inspection.
+  return await readHostConfigPath(localConfigPath, { optional: true })
+    ?? await readHostConfigPath(defaultConfigPath);
 }
