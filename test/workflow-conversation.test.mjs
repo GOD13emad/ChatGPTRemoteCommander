@@ -107,11 +107,25 @@ test('resume fails closed while same-conversation handoff is actively claimed',a
 
     releaseSend();
     await controller.drain();
-    const sent=await controller.status('proj');
-    assert.equal(sent.store.counts.SENT,1);
-    assert.equal(sent.pending.some(x=>x.eventKey==='wf:proj:claimed'),false);
+    const observed=await controller.status('proj');
+    assert.equal(observed.store.counts.SENT??0,0);
+    const uncertain=observed.pending.find(x=>x.eventKey==='wf:proj:claimed');
+    assert.equal(uncertain.state,'UNCERTAIN');
+    assert.equal(uncertain.lastCode,'UI_OBSERVED_NO_AUTHENTICATED_RECEIPT');
+    await assert.rejects(tools.execute('workflow_control',{
+      id:'proj',expectedRevision:still.state.revision,action:'resume',reason:'UI-only signal is not delivery'
+    }),/CONVERSATION_OUTCOME_UNCERTAIN/);
+    const blocked=await tools.execute('workflow_get',{id:'proj'});
+    assert.equal(blocked.state.lifecycleState,'WAITING');
+    assert.equal(blocked.state.pendingChatHandoff.eventKey,'wf:proj:claimed');
+
+    // This simulates an independent owner-confirmed delivery decision.
+    const confirmed=await controller.execute('conversation_resolve',{
+      handoffId:uncertain.handoffId,action:'confirm_sent'
+    });
+    assert.equal(confirmed.state,'SENT');
     const resumed=await tools.execute('workflow_control',{
-      id:'proj',expectedRevision:still.state.revision,action:'resume',reason:'handoff already delivered'
+      id:'proj',expectedRevision:blocked.state.revision,action:'resume',reason:'independently confirmed handoff'
     });
     assert.equal(resumed.state.lifecycleState,'RESUMING');
   }finally{releaseSend?.();await tools.close();await controller.close();f.dispose();}

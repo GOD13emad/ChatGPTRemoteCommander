@@ -204,6 +204,13 @@ export function createConversationController({
         schedule();
         return deferred;
       }
+      // An observed UI submission is not an authenticated chat receipt.
+      // Suspend subsequent sends until this binding is explicitly reconciled.
+      if(binding.state==='UNCERTAIN'&&item.lastCode!=='EXPLICIT_RETRY'){
+        const deferred=store.defer(item.handoffId,item.attemptId,'BINDING_UNCERTAIN',60000);
+        schedule();
+        return deferred;
+      }
       const result=await invokeUia({
         action:'send',
         browser:binding.browser,
@@ -216,10 +223,13 @@ export function createConversationController({
         ackTimeoutMs:4500
       },{timeoutMs:15000});
       if(result.state==='SENT'){
-        store.markBinding(item.projectId,'BOUND',{seen:true});
-        const sent=store.sent(item.handoffId,item.attemptId,result.code);
+        // Composer-empty/Stop-button is only a UI observation, not a
+        // verified authenticated chat message; never auto-finalize as SENT.
+        store.markBinding(item.projectId,'UNCERTAIN');
+        const uncertain=store.uncertain(
+          item.handoffId,item.attemptId,'UI_OBSERVED_NO_AUTHENTICATED_RECEIPT');
         schedule();
-        return sent;
+        return uncertain;
       }
       if(result.state==='UNCERTAIN'){
         store.markBinding(item.projectId,'UNCERTAIN');
