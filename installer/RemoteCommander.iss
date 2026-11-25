@@ -118,8 +118,9 @@ begin
 
   { [Files] dontcopy does not populate {tmp}; the [Run] entry must extract }
   { the exact embedded artifact before execution, then verify its bytes. }
-  ExtractTemporaryFile('{#BrowserSetupName}');
   BrowserPath := ExpandConstant('{tmp}\{#BrowserSetupName}');
+  if not FileExists(BrowserPath) then
+    ExtractTemporaryFile('{#BrowserSetupName}');
   if not FileExists(BrowserPath) then
     RaiseException('BROWSER_PAYLOAD_EXTRACTION_MISSING');
   ActualSha := GetSHA256OfFile(BrowserPath);
@@ -267,6 +268,11 @@ begin
     // a previously owner-authorized FULL_POWER profile to Standard.
     ExistingCoreGit := ExpandConstant('{localappdata}\ChatGPTRemoteCommander\app\.git');
     ExistingCore := DirExists(ExistingCoreGit) or FileExists(ExistingCoreGit);
+#ifdef BrowserSetup
+    { Fail a corrupt embedded Browser payload before any Core/prerequisite effect. }
+    if WizardIsComponentSelected('browser') and ShouldInstallBundledBrowser() then
+      Log('BROWSER_PAYLOAD_PRECHECK_PASS');
+#endif
     EnsurePowerShell7;
 
     ExtractTemporaryFile('CommanderWindowsJobRunner.exe');
