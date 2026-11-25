@@ -478,14 +478,14 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   async function nativeCompletionProjection(state) {
     if (!state || !TERMINAL.has(state.status)) return state;
     const reservation = await reservationForOperation(state.operationId);
-    if (!reservation?.nativeRootRequired) return state;
-    const completed = reservation.nativeRootBinding && await api.readNativeRootCompletion({
+    if (!reservation?.nativeRootRequired && state.nativeRootRequired!==true) return state;
+    const completed = reservation?.nativeRootBinding && await api.readNativeRootCompletion({
       operationId:state.operationId,inputHash:reservation.inputHash,binding:reservation.nativeRootBinding
     });
     if (completed) return state;
     // A worker receipt describes only its direct child. Public completion and
     // delivery must wait for the native provider to attest the whole tree.
-    const controllerAlive = Number.isSafeInteger(reservation.nativeSupervisorPid)
+    const controllerAlive = Number.isSafeInteger(reservation?.nativeSupervisorPid)
       && reservation.nativeSupervisorPid > 0 && alive(reservation.nativeSupervisorPid);
     return {...state,status:controllerAlive ? 'RUNNING' : 'UNCERTAIN',finishedAt:null,
       nativeCessationPending:true,workerOutcomeStatus:state.status,
@@ -1172,6 +1172,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       workerPid: null,
       childPid: null,
       continuation,
+      ...(nativeRequired ? {nativeRootRequired:true} : {}),
       ...(originAdmissionId ? {originAdmissionId} : {})
     };
     await atomicJson(p.state, baseState);
@@ -1391,7 +1392,13 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
         ||!path.isAbsolute(storage.stateRoot)||storage.stateRoot.length>4096
         ||storage.stateRoot.includes('\0')||!/^[a-f0-9]{64}$/.test(storage.requestKey??'')
         ||Object.keys(storage).length!==2))return null;
-      const stateRoot=storage?.stateRoot??root;
+      let locator=storage;
+      if(locator===null){
+        const cached=await reservationForOperation(operationId);
+        if(!validReservation(cached))return null;
+        locator={stateRoot:root,requestKey:hashJson(cached.requestId)};
+      }
+      const stateRoot=locator.stateRoot;
       const dir=path.join(stateRoot,'operations',operationId);
       const p={dir,result:path.join(dir,'result.json')},proofFile=path.join(dir,'native-completion.json');
       const readPrivate=async file=>{
@@ -1406,11 +1413,11 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       };
       try{
         await nativePrivateDirectories([stateRoot,path.join(stateRoot,'operations'),path.join(stateRoot,'requests'),p.dir],false);
-        const reservation=storage===null?await reservationForOperation(operationId)
-          :JSON.parse((await readPrivate(path.join(stateRoot,'requests',storage.requestKey+'.json'))).toString('utf8'));
+        const reservation=JSON.parse((await readPrivate(path.join(stateRoot,'requests',locator.requestKey+'.json'))).toString('utf8'));
         if(!validReservation(reservation)||reservation.operationId!==operationId
           ||reservation.inputHash!==inputHash||reservation.nativeRootRequired!==true
-          ||storage!==null&&hashJson(reservation.requestId)!==storage.requestKey)return null;
+          ||hashJson(reservation.requestId)!==locator.requestKey
+          ||hashJson(reservation.nativeRootBinding)!==hashJson(binding))return null;
         const bytes=await readPrivate(p.result),proof=JSON.parse((await readPrivate(proofFile)).toString('utf8'));
         const receipt=JSON.parse(bytes.toString('utf8'));
         const {isSerializedProcessCessationProof}=await import('./process-containment.mjs');

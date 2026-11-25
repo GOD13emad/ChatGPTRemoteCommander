@@ -66,6 +66,23 @@ test('native background worker keeps root, returns receipt, and releases only wi
      await pause(200);
    }
    assert.ok(completed,'requires durable exact-reservation native process proof');
+   const requestFile=path.join(f.observed.storage.stateRoot,'requests',f.observed.storage.requestKey+'.json');
+   const heldRequest=requestFile+'.test-held';
+   fs.renameSync(requestFile,heldRequest);
+   try{
+     const missingReservation=await f.tools.execute('operation_result',{operationId:queued.operationId});
+     assert.notEqual(missingReservation.state.status,'SUCCEEDED','cached reservation is not durable evidence when its original file is missing');
+     assert.equal(missingReservation.state.nativeCessationPending,true);
+     const restarted=createAsyncOperationTools({
+       config:{asyncOperations:{enabled:true,stateDir:path.join(f.root,'async')}},
+       prepare:async()=>{throw Error('MISSING_RESERVATION_MUST_NOT_RELAUNCH');}
+     });
+     try{
+       const unknown=await restarted.execute('operation_status',{operationId:queued.operationId});
+       assert.equal(unknown.status,'UNCERTAIN');
+       assert.equal(unknown.nativeCessationPending,true);
+     }finally{await restarted.close();}
+   }finally{fs.renameSync(heldRequest,requestFile);}
    // A direct worker's success is not native completion. After restart and a
    // corrupt state projection, the durable reservation must retain that fact.
    const opDir=path.join(f.root,'async','operations',queued.operationId);
