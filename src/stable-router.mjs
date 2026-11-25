@@ -143,9 +143,19 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
   const begin=(port,meta)=>{
     const id=++requestSequence;
     if(!inflightDetails.has(port))inflightDetails.set(port,new Map());
-    inflightDetails.get(port).set(id,{id,...meta});
+    // Diagnostic hints only: never infer completion/retirement from time
+    // elapsed, a disconnected downstream client or a socket connection.
+    inflightDetails.get(port).set(id,{
+      id,...meta,clientDisconnected:false,
+      backendConnectionObserved:false,backendResponseStarted:false,
+      lastBackendResponseByteAt:null
+    });
     bump(port,1);
     return id;
+  };
+  const mark=(port,id,patch)=>{
+    const detail=inflightDetails.get(port)?.get(id);
+    if(detail)Object.assign(detail,patch);
   };
   const finish=(port,id)=>{
     const group=inflightDetails.get(port);
@@ -206,6 +216,7 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
     let downstreamClosed=false,upstreamResponse=null;
     const drainAfterDownstreamClose=()=>{
       downstreamClosed=true;
+      mark(port,requestId,{clientDisconnected:true});
       // Never cancel a potentially mutating upstream request merely because the
       // MCP client disconnected. Continue consuming the backend response so its
       // real completion/close event can retire inflight accounting safely.
@@ -214,6 +225,12 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
     res.once('close',drainAfterDownstreamClose);
     const upstream=http.request({host:LOOPBACK,port,path:req.url||'/',method:req.method,headers},up=>{
       upstreamResponse=up;
+      mark(port,requestId,{backendResponseStarted:true});
+      // Listening to response bytes only records progress; the existing
+      // response piping/drain path remains the authority for completion.
+      up.on('data',()=>mark(port,requestId,{
+        lastBackendResponseByteAt:new Date().toISOString()
+      }));
       up.once('end',done);up.once('close',done);up.once('error',done);
       if(downstreamClosed || res.destroyed){up.resume();return;}
       if(modern && meta.rpcMethod==='server/discover'){
@@ -239,6 +256,15 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
       const h=proxyHeaders(up.headers);
       res.writeHead(up.statusCode||502,h);
       up.pipe(res);
+    });
+    upstream.once('socket',socket=>{
+      if(!socket.connecting){
+        mark(port,requestId,{backendConnectionObserved:true});
+      }else{
+        socket.once('connect',()=>mark(port,requestId,{
+          backendConnectionObserved:true
+        }));
+      }
     });
     upstream.once('error',error=>{done();if(!res.destroyed){if(!res.headersSent)res.writeHead(502,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'ROUTER_UPSTREAM_UNAVAILABLE',detail:error.code||'ERROR'}));}});
     upstream.end(body);
