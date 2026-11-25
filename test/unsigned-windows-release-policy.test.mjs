@@ -7,6 +7,12 @@ import {evaluateWindowsRelease} from '../tools/verify-windows-release-policy.mjs
 const policy=JSON.parse(readFileSync('docs/UNSIGNED_WINDOWS_RELEASE_POLICY.json','utf8'));
 const releaseNotes=readFileSync('docs/RELEASE_0.10.24.md','utf8');
 const credits=readFileSync('docs/PUBLISHER_AND_MAINTAINERS.md','utf8');
+const policy25=JSON.parse(readFileSync('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.25.json','utf8'));
+const notes25=readFileSync('docs/RELEASE_0.10.25.md','utf8');
+const policy26=JSON.parse(readFileSync('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.10.26.json','utf8'));
+const notes26=readFileSync('docs/RELEASE_0.10.26.md','utf8');
+const example26={signed:'false',version:'0.10.26',tag:'v0.10.26',policy:policy26,releaseNotes:notes26};
+const example25={signed:'false',version:'0.10.25',tag:'v0.10.25',policy:policy25,releaseNotes:notes25};
 const example={signed:'false',version:'0.10.24',tag:'v0.10.24',policy,releaseNotes};
 
 test('specific owner approves v0.10.24 unsigned public preview with provenance only',()=>{
@@ -21,6 +27,73 @@ test('specific owner approves v0.10.24 unsigned public preview with provenance o
  const status=evaluateWindowsRelease(example);
  assert.equal(status.allowed,true);
  assert.equal(status.mode,'UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE');
+});
+
+test('separate October 20 waiver admits ONLY v0.10.25 unsigned Preview',()=>{
+ assert.equal(policy25.version,'0.10.25');
+ assert.equal(policy25.tag,'v0.10.25');
+ assert.equal(policy25.scope,'only-this-version');
+ assert.equal(policy25.releaseChannel,'public-prerelease-not-stable');
+ assert.equal(policy25.stableAutoUpdateAllowed,false);
+ assert.match(policy25.riskAcknowledgement,/SmartScreen/);
+ assert.match(policy25.riskAcknowledgement,/do not replace Authenticode/);
+ assert.match(policy25.ownerApproval,/2026-10-20/);
+ for(const word of ['Windows installer: UNSIGNED','TandemVector Labs','Dr. Aliakbar Emadoddin','Unknown publisher','SmartScreen','GitHub attestation'])
+  assert.ok(notes25.includes(word),word);
+ assert.equal(evaluateWindowsRelease(example25).mode,'UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE');
+ for(const version of ['0.10.24','0.10.26'])
+  assert.throws(()=>evaluateWindowsRelease({...example25,version,tag:'v'+version}),/WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+ assert.throws(()=>evaluateWindowsRelease({...example25,policy:{...policy25,scope:'all-versions'}}),/WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+});
+test('native verifier admits exact approved v0.10.25 and v0.10.26, denies v0.10.27',()=>{
+ const env={...process.env,RELEASE_VERSION:'0.10.25',RELEASE_TAG:'v0.10.25',SETUP_SIGNED:'false'};
+ const good=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{encoding:'utf8',env});
+ assert.equal(good.status,0,good.stderr);
+ assert.match(good.stdout,/UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE/);
+ const nowApproved=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{encoding:'utf8',env:{...env,RELEASE_VERSION:'0.10.26',RELEASE_TAG:'v0.10.26'}});
+ assert.equal(nowApproved.status,0,nowApproved.stderr);
+ assert.match(nowApproved.stdout,/UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE/);
+ const future=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{encoding:'utf8',env:{...env,RELEASE_VERSION:'0.10.27',RELEASE_TAG:'v0.10.27'}});
+ assert.notEqual(future.status,0);
+});
+test('owner authorizes exact v0.10.26 UNSIGNED public Preview without Windows publisher trust',()=>{
+ assert.equal(policy26.schema,'commander-unsigned-windows-release-v1');
+ assert.equal(policy26.version,'0.10.26');
+ assert.equal(policy26.tag,'v0.10.26');
+ assert.equal(policy26.scope,'only-this-version');
+ assert.equal(policy26.allowUnsignedWithGitHubAttestation,true);
+ assert.equal(policy26.publishedInstallerSignature,'NotSigned');
+ assert.equal(policy26.releaseChannel,'public-prerelease-not-stable');
+ assert.equal(policy26.stableAutoUpdateAllowed,false);
+ assert.match(policy26.ownerApproval,/2026-10-21/);
+ assert.match(policy26.organizationBrand,/TandemVector Labs/);
+ assert.match(policy26.riskAcknowledgement,/SmartScreen/);
+ assert.match(policy26.riskAcknowledgement,/do not replace Authenticode/);
+ for(const term of ['Windows installer: UNSIGNED','Unknown publisher','SmartScreen','GitHub attestation',
+                    'TandemVector Labs','v0.10.20','v0.10.25','J01','do not replace Authenticode'])
+  assert.ok(notes26.includes(term),term);
+ assert.deepEqual(evaluateWindowsRelease(example26),{
+  mode:'UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE',allowed:true
+ });
+ assert.throws(()=>evaluateWindowsRelease({...example26,version:'0.10.27',tag:'v0.10.27'}),
+   /WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+ assert.throws(()=>evaluateWindowsRelease({...example26,policy:policy25}),
+   /WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+ assert.throws(()=>evaluateWindowsRelease({...example26,policy:{...policy26,scope:'all-versions'}}),
+   /WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+ assert.throws(()=>evaluateWindowsRelease({...example26,releaseNotes:'Windows installer: UNSIGNED'}),
+   /WINDOWS_UNSIGNED_RELEASE_RISK_NOTICE_MISSING/);
+});
+
+test('draft release title reflects branded and observed v0.10.26 signing status',()=>{
+ const workflow=readFileSync('.github/workflows/release-sync.yml','utf8');
+ for(const expected of [
+  'SETUP_SIGNED: ${{ needs.build-windows-setup.outputs.installer_signed }}',
+  'title="TandemVector Labs | Remote Commander Core $tag"',
+  'if [ "$SETUP_SIGNED" = "false" ]',
+  'title="$title | UNSIGNED Preview"',
+  '--title "$title"','--verify-tag','--draft'
+ ])assert.ok(workflow.includes(expected),expected);
 });
 
 test('a valid signed same-version installer still qualifies independently',()=>{
@@ -89,7 +162,49 @@ test('native release verifier admits this exact unsigned version and disallows a
   encoding:'utf8',env:{...base,SETUP_SIGNED:'true'}});
  assert.equal(signed.status,0,signed.stderr);
  assert.match(signed.stdout,/AUTHENTICODE_SIGNED/);
+ const approved=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{
+  encoding:'utf8',env:{...base,RELEASE_VERSION:'0.10.26',RELEASE_TAG:'v0.10.26',SETUP_SIGNED:'false'}});
+ assert.equal(approved.status,0,approved.stderr);
  const future=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{
-  encoding:'utf8',env:{...base,RELEASE_VERSION:'0.10.25',RELEASE_TAG:'v0.10.25',SETUP_SIGNED:'false'}});
+  encoding:'utf8',env:{...base,RELEASE_VERSION:'0.10.27',RELEASE_TAG:'v0.10.27',SETUP_SIGNED:'false'}});
  assert.notEqual(future.status,0);
+});
+
+test('v0.12.0 unsigned Stable distribution is approved by owner but does not waive release admission',()=>{
+ const candidate=JSON.parse(readFileSync('docs/UNSIGNED_WINDOWS_RELEASE_POLICY_0.12.0.json','utf8'));
+ const notes=readFileSync('docs/RELEASE_0.12.0.md','utf8');
+ const args={signed:'false',version:'0.12.0',tag:'v0.12.0',policy:candidate,releaseNotes:notes};
+ assert.equal(candidate.ownerApproval.includes('2026-11-10'),true);
+ assert.equal(candidate.scope,'only-this-version');
+ assert.equal(candidate.releaseChannel,'public-stable-after-independent-acceptance');
+ assert.equal(candidate.stableAutoUpdateAllowed,false);
+ assert.equal(candidate.releaseEligibility,'NO_PROMOTE_UNTIL_RELEASE_TRAIN_AND_HOSTED_CI_PASS');
+ assert.equal(candidate.publishedInstallerSignature,'NotSigned');
+ for(const required of ['Windows installer: UNSIGNED','Unknown publisher','SmartScreen','Smart App Control','GitHub attestation','do not replace Authenticode','NoPromote'])
+  assert.ok(notes.includes(required),required);
+ assert.deepEqual(evaluateWindowsRelease(args),{mode:'UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE',allowed:true});
+ for(const version of ['0.10.26','0.12.1','0.13.0'])
+  assert.throws(()=>evaluateWindowsRelease({...args,version,tag:'v'+version}),/WINDOWS_UNSIGNED_RELEASE_NOT_AUTHORIZED/);
+ for(const changes of [
+  {scope:'all-versions'},
+  {releaseChannel:'public-prerelease-not-stable'},
+  {stableAutoUpdateAllowed:true},
+  {releaseEligibility:'RELEASE_APPROVED'},
+  {publishedInstallerSignature:'Valid'},
+  {ownerApproval:'no consent'},
+  {evidenceSourceCommit:'unknown'},
+  {riskAcknowledgement:'SmartScreen only'}
+ ]) assert.throws(()=>evaluateWindowsRelease({...args,policy:{...candidate,...changes}}),/WINDOWS_UNSIGNED/);
+ assert.throws(()=>evaluateWindowsRelease({...args,releaseNotes:'Windows installer: UNSIGNED; SmartScreen; GitHub attestation'}),
+  /WINDOWS_UNSIGNED_STABLE_RELEASE_ADMISSION_NOT_READY/);
+ const env={...process.env,RELEASE_VERSION:'0.12.0',RELEASE_TAG:'v0.12.0',SETUP_SIGNED:'false'};
+ const allowed=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{encoding:'utf8',env,windowsHide:true,timeout:15000});
+ assert.equal(allowed.status,0,allowed.stderr);
+ assert.match(allowed.stdout,/UNSIGNED_WITH_REQUIRED_SIGSTORE_PROVENANCE/);
+ const wrong=spawnSync(process.execPath,['tools/verify-windows-release-policy.mjs'],{encoding:'utf8',env:{...env,RELEASE_VERSION:'0.12.1',RELEASE_TAG:'v0.12.1'},windowsHide:true,timeout:15000});
+ assert.notEqual(wrong.status,0);
+ const train=JSON.parse(readFileSync('docs/release-train-0.12.json','utf8'));
+ assert.equal(train.isStable,false);
+ assert.equal(train.publishApproved,false);
+ assert.equal(train.fleetCoverage.acceptedHostIds.length,0);
 });

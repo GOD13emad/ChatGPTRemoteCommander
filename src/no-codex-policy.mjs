@@ -207,6 +207,18 @@ export function commanderChildEnv(cwdOrSource, maybeSource, { allowCodex = false
     ? cwdOrSource
     : (maybeSource ?? process.env);
   const env = { ...source };
+  // The installed service can be launched by an absolute portable Node path
+  // while its login-independent supervisor PATH omits that same runtime.
+  // Child shells and allowlisted `node` calls must resolve the already-running
+  // trusted Node executable, not a different executable from a project PATH.
+  // Scope to Linux; do not modify the owner's process or system-wide PATH.
+  if (process.platform === 'linux' && path.basename(process.execPath) === 'node') {
+    const runtimeBin = path.dirname(process.execPath);
+    const inherited = typeof env.PATH === 'string' ? env.PATH : '';
+    if (!inherited.split(path.delimiter).includes(runtimeBin)) {
+      env.PATH = runtimeBin + (inherited ? path.delimiter + inherited : '');
+    }
+  }
   if (!allowCodex) {
     for (const key of [
       'OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_ORG_ID','OPENAI_ORGANIZATION',

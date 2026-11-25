@@ -92,6 +92,12 @@ function Update([string]$Name,[string]$Sha){
         }
       }
       Write-Output ('R252_QUAL_LOG_SHA_PASS='+$sha+' markers='+$found)
+      # The TAP-only filter above misses non-TAP script failures. Extract only
+      # bounded public test names, status counters and fixed failure codes from
+      # the exact SHA-attested CI log. Never publish the original log.
+      $summary=Join-Path $Source 'tools/qualification-failure-summary-r252.mjs'
+      & node.exe $summary $inner $sha
+      if($LASTEXITCODE -ne 0){Write-Output 'R252_SUMMARY_FAILED_FAIL_CLOSED'}
     }catch{Write-Output 'R252_QUAL_DIAG_UNAVAILABLE_FAIL_CLOSED'}
   }
   if($exitCode -ne 0 -or $status -ne 'PROMOTED'){throw ('R185_'+$Name+'_NOT_ACCEPTED')}
