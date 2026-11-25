@@ -1,0 +1,4 @@
+# Source review ownership for the personal Commander upstream.
+# Both authorized maintainers are eligible reviewers; the PR author cannot approve their own change.
+# This file routes Code Owner review; protected-branch settings enforce approval separately.
+* @GOD13emad @mohammadmohammadzadeh19960-code
