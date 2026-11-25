@@ -7,7 +7,7 @@ $ErrorActionPreference='Stop'
 
 $artifact=[IO.Path]::GetFullPath($BrowserInstaller)
 if(-not(Test-Path -LiteralPath $artifact -PathType Leaf) -or
-   [IO.Path]::GetExtension($artifact) -cne '.exe'){
+   [IO.Path]::GetExtension($artifact) -ne '.exe'){
   throw 'BROWSER_PIN_ARTIFACT_INVALID'
 }
 $leaf=Get-Item -LiteralPath $artifact -Force -ErrorAction Stop
