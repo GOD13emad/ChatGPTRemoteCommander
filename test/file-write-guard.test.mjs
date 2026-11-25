@@ -110,7 +110,7 @@ test('Windows Host config accepts identity-verified NTFS short names but writes 
   // Fixed command, fixed relative fixture name, no untrusted interpolation.
   const cmd=path.join(process.env.SystemRoot||'C:\\\\Windows','System32','cmd.exe');
   const shortDir=execFileSync(cmd,['/d','/c','for %I in ("Long Configuration Directory") do @echo %~sI'],
-    {cwd:root,encoding:'utf8'}).trim();
+    {cwd:root,encoding:'utf8',windowsVerbatimArguments:true}).trim();
   assert.equal(fs.realpathSync.native(shortDir).toLowerCase(),dir.toLowerCase());
   if(shortDir.toLowerCase()===dir.toLowerCase())return t.skip('NTFS short-name generation disabled on this test volume');
   const shortFile=path.join(shortDir,'config.json');
