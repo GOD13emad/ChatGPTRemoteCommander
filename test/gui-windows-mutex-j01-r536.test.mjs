@@ -16,10 +16,25 @@ async function withStore(run) {
   try{return await run(path.join(root,'private-input.json'));}
   finally{await fs.rm(root,{recursive:true,force:true});}
 }
+const fixtureTakeoverProvider=()=>{
+ const providerId='fixture-native-win32';
+ const session={ownerPrincipal:'fixture-owner',sessionId:'fixture-session',seatId:'fixture-seat',displayId:'fixture-display',interactive:true,ownerAuthenticated:true};
+ const grant=async({ttlSeconds=60}={})=>{
+  const nowMs=Date.now();
+  return {ok:true,takeoverEvidence:{provider:{providerId,platform:'win32',transport:'synthetic-test-provider',session,
+   activityEvidenceSource:'physical',activityEvidenceIncludesSynthetic:false,isolationAuthority:null,
+   capabilities:{observe:true,screenshot:true,activityDetection:true,physicalInputProtection:true,emergencyRelease:true,pointer:true,keyboard:true,semanticInvoke:true,isolatedDesktop:false}},
+   expectedSession:session,activityEvidence:{source:'physical',reliable:true,excludesSyntheticInput:true,observedAtMs:nowMs,idleMs:60000},explicitOwnerApproval:false},
+   inputProtectionReceipt:{active:true,kind:'NATIVE_PHYSICAL_INPUT_PROTECTION',providerId,sessionId:session.sessionId,
+    leaseId:'fixture-protection-lease',releaseOnAgentExit:true,releaseOnEmergency:true,expiresAtMs:nowMs+ttlSeconds*1000}};
+ };
+ grant.release=async()=>({ok:true,released:true});
+ return grant;
+};
 const fake=(incidentStore,mutator)=>{
   let actions=0,closes=0;
   const c=createGuiController({platform:'win32',incidentStore,now:()=>1000,
-    token:()=>String(++actions).padStart(48,'0'),isStopped:async()=>false,
+    token:()=>String(++actions).padStart(48,'0'),isStopped:async()=>false,takeoverProvider:fixtureTakeoverProvider(),
     invoke:async request=>{
       if(request.action==='status')return {ok:true,available:true};
       if(request.action==='screenshot')return image();
