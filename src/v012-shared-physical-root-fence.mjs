@@ -10,6 +10,8 @@ import {normalizeV2Route} from './v2-routing-contract.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const UNKNOWN=Symbol('UNCERTAIN_OUTCOME_QUARANTINE');
+const UNFINISHED_OPERATION_STATES=new Set(['PREPARED','QUEUED','PENDING','STARTING',
+  'RUNNING','EXECUTING','CANCEL_REQUESTED','CANCELLING','UNCERTAIN']);
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const windows=process.platform==='win32';
 function absoluteRoot(root){
@@ -35,7 +37,13 @@ function within(root,allowed){
   return rel===''||(!rel.startsWith('..'+path.sep)&&rel!=='..'&&!path.isAbsolute(rel));
 }
 function uncertain(result){
-  return result?.outcome==='UNCERTAIN'||result?.operation?.status==='UNCERTAIN';
+  // A detached operation's accepted/queued receipt is not completion of its
+  // external effect. Keep the same native quarantine until independently
+  // verified cessation/reconciliation, never release merely on JS return.
+  return result?.outcome==='UNCERTAIN'
+    ||UNFINISHED_OPERATION_STATES.has(result?.operation?.status)
+    ||(typeof result?.operationId==='string'
+      &&UNFINISHED_OPERATION_STATES.has(result?.status));
 }
 /**
  * Owner bootstrap must provide exactly the SAME host-pinned native lease

@@ -738,7 +738,7 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,37,'retain 30 previous source suites plus seven native lease, route, no-grant and Interop runner suites');
+  assert.equal(files.length,40,'retain 37 previous suites and add all three shared physical-root regression suites');
   for(const required of [
     'test/v012-host-global-operation-lease.test.mjs',
     'test/v012-windows-host-global-operation-lease.test.mjs',
@@ -746,9 +746,12 @@ test('V012 source regression retains every pinned test exactly once with bounded
     'test/v012-owner-native-host-lease-bootstrap.test.mjs',
     'test/gui-linux-session-route.test.mjs',
     'test/qa-v012-no-grant-source-coherence.test.mjs',
-    'test/v101-pinned-interop-runner.test.mjs'
+      'test/v101-pinned-interop-runner.test.mjs',
+      'test/v012-shared-physical-root-fence.test.mjs',
+      'test/v012-shared-physical-root-fence-windows-native.test.mjs',
+      'test/v012-shared-core-workflow-fence.test.mjs'
   ])assert.ok(files.includes(required),'required source QA missing: '+required);
-  assert.deepEqual(ranges.slice(16),[[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37]],
+  assert.deepEqual(ranges.slice(16),[[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40]],
     'new native suites execute separately without changing the prior batch indices');
   assert.ok(files.includes('test/windows-owner-tunnel-host-resolution.test.mjs'),'native Windows read-only exact owner host regression must run in CI');
   assert.ok(files.includes('test/v012-owner-local-canary.test.mjs'),'real owner-local canary and failed-bootstrap quarantine must run in CI');

@@ -55,7 +55,7 @@ const WORKER_CALLBACK_FIELDS=Object.freeze([
  *   lifecycle and durable worker store; no automatic grants are issued.
  */
 export function createV012PrivateCoreRuntime({
-  port,identity,tls,security,core,nativeHostLease=null,now=Date.now
+  port,identity,tls,security,core,nativeHostLease=null,physicalRootFence=null,now=Date.now
 }={}){
   if(!Number.isInteger(port)||port<0||port>65535
     ||!identity||!tls||!security||!core
@@ -79,6 +79,12 @@ export function createV012PrivateCoreRuntime({
       ||typeof nativeHostLease?.close!=='function'
       ||nativeHostLease.hostId!==identity.hostId))
     fail('V012_PRIVATE_NATIVE_HOST_LEASE_INVALID');
+  if(nativeHostLease!==null
+    &&(typeof physicalRootFence?.withDirectRouteLease!=='function'
+      ||typeof physicalRootFence?.withWorkflowRootLease!=='function'))
+    fail('V012_PRIVATE_SHARED_PHYSICAL_ROOT_FENCE_REQUIRED');
+  if(nativeHostLease===null&&physicalRootFence!==null)
+    fail('V012_PRIVATE_NATIVE_HOST_LEASE_REQUIRED');
   const factory=security.bindWorkerToNativeOwner;
   if(factory!==undefined
     ? typeof factory!=='function'
@@ -159,6 +165,8 @@ export function createV012PrivateCoreRuntime({
         ownerStack.resolveOwnerContext(route.conversationId),
       readCurrentOwnerSidHash:readOwner,verifyExactNativeGrant,
       withLease:nativeHostLease?.withLease??worker.withLease,
+      withRouteLease:physicalRootFence===null?null:
+        (route,work)=>physicalRootFence.withDirectRouteLease(route,work),
       receiptStore:worker.receiptStore,now,
       execute:async(route,args,tool)=>{
         if(!names.has(tool)

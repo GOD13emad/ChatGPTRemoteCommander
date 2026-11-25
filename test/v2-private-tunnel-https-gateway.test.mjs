@@ -22,6 +22,8 @@ import {readText} from '../src/tools-v0.3.mjs';
 import {createV012PrivateCoreRuntime} from '../src/v012-private-core-runtime.mjs';
 import {createV012OwnerNativeHostLease}
   from '../src/v012-owner-native-host-lease-bootstrap.mjs';
+import {createV012SharedPhysicalRootFence}
+  from '../src/v012-shared-physical-root-fence.mjs';
 import {ensureWindowsMonitorDirectories}
   from '../src/browser-companion-windows-private.mjs';
 import {deriveWorkerId} from '../src/worker-identity-authority.mjs';
@@ -813,6 +815,10 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     });
     runtime=createV012PrivateCoreRuntime({
       port:0,now:()=>now,nativeHostLease:nativeLease,
+      physicalRootFence:createV012SharedPhysicalRootFence({
+        nativeHostLease:nativeLease,hostId:'host-1',allowedRoots:[fs.realpathSync.native(root)],
+        resolveTrustedRouteRoot:()=>fs.realpathSync.native(root)
+      }),
       identity:{
         hostId:'host-1',profileId:'emad',principalId:'account-1',
         expectedOwnerSidHash:ownerHash,expectedTunnelIdHash:tunnelHash,
@@ -915,10 +921,14 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       const factory=linux?'createV012HostGlobalOperationLease':'createV012WindowsHostGlobalOperationLease';
       const script='import {'+factory+' as create} from '
         +JSON.stringify(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url).href)
+        +';import {createV012SharedPhysicalRootFence as fence} from '
+        +JSON.stringify(new URL('../src/v012-shared-physical-root-fence.mjs',import.meta.url).href)
         +';const l=await create({directory:process.argv[1],hostId:"host-1"});'
-        +'await l.withLease(JSON.stringify([1,"host-1","workflow-root","root-1"]),'
+        +'const f=fence({nativeHostLease:{hostId:"host-1",withLease:(k,w)=>l.withLease(k,w)},'
+        +'hostId:"host-1",allowedRoots:[process.argv[2]],resolveTrustedRouteRoot:()=>process.argv[2]});'
+        +'await f.withWorkflowRootLease(process.argv[2],'
         +'async()=>{console.log("HELD");await new Promise(resolve=>process.stdin.once("data",resolve));});l.close();';
-      const child=spawn(process.execPath,['--input-type=module','-e',script,nativeRoot],
+      const child=spawn(process.execPath,['--input-type=module','-e',script,nativeRoot,fs.realpathSync.native(root)],
         {stdio:['pipe','pipe','inherit']});
       const exited=new Promise(resolve=>{
         child.once('error',()=>resolve(null));

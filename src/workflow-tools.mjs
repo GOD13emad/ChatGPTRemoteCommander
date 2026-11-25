@@ -105,7 +105,7 @@ const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null }) {
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null, physicalRootFence = null }) {
   const settings = config.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
@@ -122,7 +122,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   const store = new WorkflowStore({
     directory: settings.directory, rootLeaseDirectory: settings.rootLeaseDirectory ?? settings.directory,
     allowedRoots: roots, device, configSha256,
-    authority, executionProfile: defaultExecutionProfile, schedulerPolicy
+    authority, executionProfile: defaultExecutionProfile, schedulerPolicy, physicalRootFence
   });
   let engine=null;
   const runtimeStatus=()=>{

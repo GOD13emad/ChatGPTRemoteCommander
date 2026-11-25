@@ -38,7 +38,10 @@ const files = [
   "test/v012-owner-native-host-lease-bootstrap.test.mjs",
   "test/gui-linux-session-route.test.mjs",
   "test/qa-v012-no-grant-source-coherence.test.mjs",
-  "test/v101-pinned-interop-runner.test.mjs"
+  "test/v101-pinned-interop-runner.test.mjs",
+  "test/v012-shared-physical-root-fence.test.mjs",
+  "test/v012-shared-physical-root-fence-windows-native.test.mjs",
+  "test/v012-shared-core-workflow-fence.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -70,7 +73,10 @@ const batches = [
   files.slice(33, 34), // Native owner bootstrap: separate aggregate budget
   files.slice(34, 35), // Linux GUI routing contract
   files.slice(35, 36), // No-grant bootstrap and J01 timeout coherence
-  files.slice(36, 37) // Pinned Interop runner negative contracts (not positive Interop)
+  files.slice(36, 37), // Pinned Interop runner negative contracts (not positive Interop)
+  files.slice(37, 38), // Shared physical-root lifetime and quarantine
+  files.slice(38, 39), // Independent native Windows holder/WorkflowStore
+  files.slice(39, 40) // Protected Core gate and WorkflowTools composition
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
