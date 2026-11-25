@@ -127,7 +127,7 @@ test('authorization and capability assumptions enforced before lease',async()=>{
 
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-test('native AT-SPI helper checks real UID, denies cross-user and missing process before GUI tree access',()=>{
+test('native AT-SPI helper checks real UID, denies cross-user and missing process before GUI tree access',{skip:process.platform!=='linux'},()=>{
  const helper=fileURLToPath(new URL('../tools/owner-atspi-semantic.py',import.meta.url));
  const program="import ast,os,sys,types\nsrc=open(sys.argv[1],encoding='utf8').read()\nmodule=ast.parse(src)\nfn=next(n for n in module.body if isinstance(n,ast.FunctionDef) and n.name=='assert_owner_pid')\nscope={'os':os,'fail':lambda code: (_ for _ in ()).throw(ValueError(code))}\nexec(compile(ast.Module(body=[fn],type_ignores=[]),sys.argv[1],'exec'),scope)\nassert scope['assert_owner_pid'](os.getpid()) is None\nscope['os']=types.SimpleNamespace(geteuid=os.geteuid,stat=lambda _:types.SimpleNamespace(st_uid=os.geteuid()+1))\ntry: scope['assert_owner_pid'](os.getpid())\nexcept ValueError as e: assert str(e)=='OWNER_UID_MISMATCH'\nelse: raise AssertionError('CROSS_USER_NOT_REFUSED')\ndef gone(_): raise FileNotFoundError()\nscope['os']=types.SimpleNamespace(geteuid=os.geteuid,stat=gone)\ntry: scope['assert_owner_pid'](99999999)\nexcept ValueError as e: assert str(e)=='OWNER_PID_UNAVAILABLE'\nelse: raise AssertionError('MISSING_PROCESS_NOT_REFUSED')\nprint('AT_SPI_OWNER_UID_VALIDATION_PASS')";
  const result=spawnSync('/usr/bin/python3',['-c',program,helper],{encoding:'utf8',timeout:5000});

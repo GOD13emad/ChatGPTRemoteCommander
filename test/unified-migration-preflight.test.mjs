@@ -458,6 +458,7 @@ test('private URL MCP binding cannot pass privileged cutover through plaintext o
  assert.ok(!protectedDirect.blocked.includes('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
  assert.ok(!protectedDirect.blocked.includes('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE'));
  assert.deepEqual(protectedDirect.blocked,[]);
+ assert.equal(protectedDirect.existingInstalled,false);
  assert.equal(protectedDirect.decision,'NO_PROMOTE',
    'only external native acceptance can promote even when all facts self-report true');
 });
@@ -480,6 +481,40 @@ test('synthetic fully positive private flags never authorize install or bypass J
    'J01_NATIVE_OWNER_CONSENT_UNVERIFIED'));
  assert.ok(assessMigration({...f,privatePrivilegedIngressReady:false}).blocked.includes(
    'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED'));
+});
+
+test('live Windows owner Router without installer key is never treated as clean install',()=>{
+ const r=assessMigration({platform:'win32',inventoryReliable:true,
+   connectionMode:'private-tunnel',legacyInnoPresent:false,
+   nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+   tunnelProfilePresent:true,tunnelProfileValid:true,
+   tunnelTargetPort:47831,tunnelTargetVersion:'0.11.0-dev.23',
+   tunnelTargetTls:false,routerDetected:true,routerMappingMatches:true,
+   routerBackendPort:48834,routerBackendVersion:'0.11.0-dev.23'});
+ assert.equal(r.existingInstalled,true);
+ assert.equal(r.ownerRegisteredInstallerFamily,'none');
+ assert.ok(r.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+ assert.ok(!r.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
+ assert.equal(r.decision,'NO_PROMOTE');
+ // Native observed MMZ and saeed-emad Windows tunnels reach a 0.11 Core
+ // directly, with NO Stable Router. Neither is a fresh install.
+ for(const targetPort of [47836,47834]){
+   const direct=assessMigration({platform:'win32',inventoryReliable:true,
+     connectionMode:'private-tunnel',legacyInnoPresent:false,
+     nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+     tunnelProfilePresent:true,tunnelProfileValid:true,
+     tunnelTargetPort:targetPort,tunnelTargetVersion:'0.11.0-dev.23',
+     tunnelTargetTls:false,routerDetected:false});
+   assert.equal(direct.existingInstalled,true);
+   assert.ok(direct.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+   assert.equal(direct.decision,'NO_PROMOTE');
+ }
+ const fresh=assessMigration({platform:'win32',inventoryReliable:true,
+   connectionMode:'private-tunnel',legacyInnoPresent:false,
+   nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+   routerDetected:false});
+ assert.equal(fresh.existingInstalled,false);
+ assert.ok(!fresh.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
 });
 
 test('registered owner PowerShell uninstaller is distinct from Inno and cannot trigger blind removal',()=>{
@@ -674,6 +709,28 @@ test('Linux encrypted backup guard independently decrypts an exact owner-local r
   const save=()=>fs.writeFileSync(receiptFile,JSON.stringify(payload),{mode:0o600});
   save();
   assert.equal(verify(),true);
+  // Ambient PATH cannot select the system credential or hashing executables.
+  const fakeBin=path.join(home,'untrusted-executables');
+  fs.mkdirSync(fakeBin,{mode:0o700});
+  const marker=path.join(home,'unexpected-exec-marker');
+  for(const name of ['sha256sum','systemd-creds','cut'])
+    fs.writeFileSync(path.join(fakeBin,name),
+      '#!/bin/sh\nprintf exec >> "$RC020_PATH_MARKER"\nexit 91\n',{mode:0o700});
+  const priorPath=process.env.PATH;
+  const priorMarker=process.env.RC020_PATH_MARKER;
+  let safe;
+  try{
+    process.env.PATH=fakeBin+path.delimiter+(priorPath??'');
+    process.env.RC020_PATH_MARKER=marker;
+    safe=verify();
+  }finally{
+    if(priorPath===undefined)delete process.env.PATH;else process.env.PATH=priorPath;
+    if(priorMarker===undefined)delete process.env.RC020_PATH_MARKER;
+    else process.env.RC020_PATH_MARKER=priorMarker;
+  }
+  assert.equal(fs.existsSync(marker),false,
+    'preflight must never run attacker-selectable executables from PATH');
+  assert.equal(safe,true,'owner-scoped backup remains valid with untrusted PATH');
   assert.equal(verify({profileName:'other-owner'}),false);
   assert.equal(verify({recoveryDir:undefined}),false);
   fs.chmodSync(sourceFile,0o644);
@@ -723,23 +780,23 @@ test('one native DEB derives its version from the exact same source and GUI trai
   ]) assert.equal(candidateNativeDebianVersion(source,gui),null,
     String(source)+' / '+String(gui));
 });
-test('Debian dev.9 candidate is strictly ahead of dev.6 without implying installed admission',{skip:process.platform!=='linux'},()=>{
+test('Debian dev.13 candidate advances installed dev.12 without implying owner admission',{skip:process.platform!=='linux'},()=>{
  const app=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
  const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
- assert.equal(app.version,'0.12.0-dev.9');
+ assert.equal(app.version,'0.12.0-dev.13');
  assert.equal(app.version,gui.version);
  assert.equal(train.sourceVersion,app.version);
  assert.equal(train.installedPromotionApproved,false);
  assert.equal(train.publishApproved,false);
  const cand=candidateNativeDebianVersion(app.version,gui.version);
- assert.equal(cand,'0.12.0~dev.9');
+ assert.equal(cand,'0.12.0~dev.13');
  for(const [lower,relation,upper,expected] of [
-   ['0.12.0~dev.6','lt',cand,0],
-   [cand,'gt','0.12.0~dev.6',0],
+   ['0.12.0~dev.12','lt',cand,0],
+   [cand,'gt','0.12.0~dev.12',0],
    [cand,'eq',cand,0],
    [cand,'lt','0.12.0',0],
-   ['0.12.0~dev.6','gt',cand,1]
+   ['0.12.0~dev.12','gt',cand,1]
  ]){
    const r=spawnSync('dpkg',['--compare-versions',lower,relation,upper],{encoding:'utf8'});
    assert.equal(r.status,expected,lower+' '+relation+' '+upper+' '+r.stderr);
@@ -789,4 +846,25 @@ test('Windows owner DPAPI six-file proof is strictly bound to native success rec
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,marker+' extra'),false);
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,'RC012_WINDOWS_OWNER_DPAPI_RESTORE_SIMULATION_PASS files=6'),false);
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(null,marker),false);
+});
+test('Windows read-only DPAPI preflight pins machine PowerShell independently of ambient ProgramFiles',async()=>{
+  const {windowsOwnerDpapiPowerShellExecutable}=await import(
+    '../packaging/unified/migration-preflight.mjs');
+  assert.equal(typeof windowsOwnerDpapiPowerShellExecutable,'function',
+    'the DPAPI executable selector must be explicit and independently testable');
+  const expected=path.win32.join('C:\\Program Files','PowerShell','7','pwsh.exe');
+  const old=process.env.ProgramFiles;
+  try{
+    for(const forged of ['Z:\\untrusted\\PowerShell\\7',
+      'C:\\Users\\untrusted\\bin','..\\outside','']){
+      process.env.ProgramFiles=forged;
+      assert.equal(windowsOwnerDpapiPowerShellExecutable(),expected);
+    }
+  }finally{
+    if(old===undefined)delete process.env.ProgramFiles;
+    else process.env.ProgramFiles=old;
+  }
+  const actual=fs.readFileSync(modulePath,'utf8');
+  assert.doesNotMatch(actual,/const exe=path\.win32\.join\(programFiles,/,
+    'never derive the executable from user-controllable ProgramFiles');
 });

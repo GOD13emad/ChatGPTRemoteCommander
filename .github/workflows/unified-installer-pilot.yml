@@ -3,9 +3,11 @@ on:
   pull_request:
     paths:
       - "packaging/unified/**"
+      - "tools/universal-install/**"
+      - "installer/universal-install-contract.json"
+      - "test/universal-native-*.test.mjs"
+      - "test/universal-native-coordinator-hosted.mjs"
       - "test/unified-*"
-      - "test/verify-compiled-core.test.mjs"
-      - "test/native-compiled-core-verifier.mjs"
       # PRIVATE pair ingress and the installed Core tool surface are part of
       # the shipped package, even when packaging scripts are unchanged.
       - "src/server-v0.3.mjs"
@@ -53,6 +55,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
+      - name: Verify identical native transaction and OS adapter contracts
+        run: node --test test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs
+      - name: Verify native owner/Worker denial and DPAPI custody on both OSes
+        run: npm run test:v012-owner-worker-admission
       - name: Reject mutated native Core manifests and extraction paths (synthetic negatives)
         run: node --test test/verify-compiled-core.test.mjs
       - name: Preserve exact native Core inventory for cross-OS byte comparison
@@ -68,6 +74,8 @@ jobs:
       - name: Install pinned packaging tools
         working-directory: packaging/unified
         run: npm ci --no-audit --no-fund
+      - name: Verify legacy build-tool matcher APIs after npm ci
+        run: node --test test/unified-build-tool-compat.test.mjs
       - name: Prefetch signed Ubuntu GUI dependencies before long packaging build
         if: runner.os == 'Linux'
         shell: bash
@@ -102,10 +110,6 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: bash packaging/unified/merge-native-deb.sh
-      - name: Upgrade same-name native package, test GUI, then rollback on disposable Ubuntu
-        if: runner.os == 'Linux'
-        shell: bash
-        run: bash test/unified-native-upgrade-smoke.sh
       - name: Build package (Windows)
         if: runner.os == 'Windows'
         working-directory: packaging/unified
@@ -114,10 +118,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./test/unified-nsis-migration-guard.ps1
-      - name: Transactionally migrate legacy GUI to single Windows NSIS and restore original
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./test/unified-windows-owner-migration.ps1
+      - name: Actual native first install and exact uninstall via ONE coordinator on disposable OS (NoPromote)
+        shell: bash
+        run: node test/universal-native-coordinator-hosted.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: One common native install/upgrade/rollback lifecycle on both hosted OSes (NoPromote)
+        shell: bash
+        run: node tools/universal-install/native-smoke.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Test exact source, privilege boundaries and embedded runtime
         run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs test/unified-migration-preflight.test.mjs test/unified-profile-recovery.test.mjs
       - name: Real Windows Electron GUI and restricted Core Start/Stop

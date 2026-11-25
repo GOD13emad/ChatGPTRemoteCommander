@@ -91,7 +91,7 @@ test('R230 real updater helper execution leaves arbitrary legacy projection sent
        linuxFn,
        'ensure_project_provider'
      ].join('\n');
-     result=spawnSync('bash',['-c',command,'--',sandbox,promote?'1':'0'],{encoding:'utf8',timeout:15000});
+     result=spawnSync('bash',['-s','--',sandbox,promote?'1':'0'],{input:command,encoding:'utf8',timeout:15000});
    }else{
      return t.skip('R230 native execution is required only on Windows and Linux');
    }
@@ -1045,7 +1045,7 @@ test('R234 Linux work-plugin updater preserves arbitrary owner data and retains 
     func,
     'sync_work_plugin_projection "$3" "$4" "$5"'
   ].join('\n');
-  const invoke=()=>spawnSync('bash',['-c',bash,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+  const invoke=()=>spawnSync('bash',['-s','--',backup,data,project,version,commit],{input:bash,encoding:'utf8',timeout:15000});
   const first=invoke();
   assert.equal(first.error,undefined,first.error?.message);
   assert.equal(first.status,0,first.stderr+' '+first.stdout);
@@ -1099,7 +1099,7 @@ test('R254 Linux plugin post-verify failure preserves owner data and quarantines
  func,
  'sync_work_plugin_projection "$3" "$4" "$5"'
  ].join('\n');
- const invoke=()=>spawnSync('bash',['-c',script,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+ const invoke=()=>spawnSync('bash',['-s','--',backup,data,project,version,commit],{input:script,encoding:'utf8',timeout:15000});
  const result=invoke();
  assert.equal(result.error,undefined,result.error?.message);
  assert.notEqual(result.status,0,'fault-injected post-verify must fail closed');
@@ -1430,7 +1430,7 @@ test('preliminary schema probe nonzero must not invoke ERR trap before final con
     "if SCHEMA_PRE=\"$(bash -c 'exit 3')\"; then :; else echo EXPECTED_SCHEMA_REJECT; fi",
     'echo FINAL_GATE_REACHED'
   ].join('\n');
-  const result=offlineSpawn.spawnSync('bash',['-c',script],{encoding:'utf8'});
+  const result=offlineSpawn.spawnSync('bash',['-s'],{input:script,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/EXPECTED_SCHEMA_REJECT/);
   assert.match(result.stdout,/FINAL_GATE_REACHED/);

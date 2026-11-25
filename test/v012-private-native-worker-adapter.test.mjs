@@ -14,6 +14,8 @@ import {createV012PrivateNativeWorkerGrantAdapter}
   from '../src/v012-private-native-worker-adapter.mjs';
 import {deriveV101PrivatePairSessionHandle}
   from '../src/v101-private-pair-native-owner-stack.mjs';
+import {createV012NativeOwnerWorkerSecurityFactory}
+  from '../src/v012-native-owner-worker-security-factory.mjs';
 
 const OWNER='a'.repeat(64),TUNNEL='b'.repeat(64);
 const DEVICE='c'.repeat(64),POLICY='d'.repeat(64);
@@ -139,7 +141,7 @@ function fixture(){
     workflow.close();grants.close();
     fs.rmSync(root,{recursive:true,force:true});
   };
-  return {state,identity,adapter,grants,workflow,workerRegistry,authority,
+  return {state,identity,stack,adapter,grants,workflow,workerRegistry,authority,
     keys,workerId,workerContext,pair,route,enable,close};
 }
 
@@ -194,4 +196,92 @@ test('pair J01 owner epoch, exact tool policy, pair source and operation target 
         /WORKER_IDENTITY_|V012_NATIVE_WORKER_/);
     }finally{f.close();}
   }
+});
+
+
+test('production binding composes existing owner, signed Worker and receipt store without auto-grant',async()=>{
+  const f=fixture();
+  try{
+    const receipts={execute:async()=>{throw Error('NEVER_RUN_UNGRANTED_EFFECT');}};
+    const factory=createV012NativeOwnerWorkerSecurityFactory({
+      issuer:'commander.local',audience:'remote-commander',
+      workerRegistry:f.workerRegistry,
+      resolveDeviceIdentity:async()=>({
+        source:'native-device-attestor',provider:'native-key-store',
+        deviceIdHash:DEVICE,ownerSidHash:OWNER,verified:true,
+        attestedAtMs:f.state.now-1000,expiresAtMs:f.state.now+100000
+      }),
+      resolveCapabilityPolicyDigest:async()=>POLICY,
+      resolveTrustedToolRoute:async({nativeRoute:r})=>({
+        ...r,operationId:f.state.routeVersion===1
+          ?'qa-operation':'changed-operation',
+        target:{kind:'workflow-root',id:'qa-disposable-fixture'}
+      }),
+      authorizeExactArguments:async({tool,arguments:args})=>
+        f.state.allow&&['worker.register','worker.revoke','read_text'].includes(tool)
+        &&(tool!=='read_text'||args.path==='qa-fixture.txt'),
+      resolveCurrentOwnerRoute:async()=>f.route(),
+      resolveCurrentWorkerId:async()=>f.workerId,
+      // No real effect or machine lease is taken in this disposable fixture.
+      withLease:async()=>{throw Error('NO_SYNTHETIC_EFFECT');},
+      now:()=>f.state.now
+    });
+    const identity={...f.identity,resolveTransportIdentity:async()=>({
+      source:'native-tunnel-attestor',provider:'openai-secure-mcp-tunnel',
+      profileId:f.identity.profileId,tunnelIdHash:TUNNEL,ownerSidHash:OWNER,
+      authenticated:true,controlPlanePollOk:true,healthzStatus:200,
+      readyzStatus:200,lastPollAtMs:f.state.now-1000,
+      expiresAtMs:f.state.now+100000
+    })};
+    assert.throws(()=>factory({ownerStack:f.stack,identity}),
+      {code:'V012_NATIVE_WORKER_CURRENT_OWNER_REQUIRED'});
+    assert.throws(()=>factory({
+      ownerStack:f.stack,identity:f.identity,receiptStore:receipts
+    }),{code:'V012_NATIVE_WORKER_CURRENT_OWNER_REQUIRED'});
+    const bound=factory({ownerStack:f.stack,identity,receiptStore:receipts});
+    assert.equal(bound.receiptStore,receipts);
+    assert.equal(bound.workerRegistry,f.workerRegistry);
+    assert.equal(bound.resolveCurrentWorkerId instanceof Function,true);
+    await assert.rejects(bound.workerAuthority.registerWorker({
+      privateKey:f.keys.privateKey
+    }),/WORKER_IDENTITY_/);
+    assert.equal(f.workflow.workerIdentityJournalStatus().eventCount,0);
+    await f.enable();
+    const registered=await bound.workerAuthority.registerWorker({
+      privateKey:f.keys.privateKey
+    });
+    assert.equal(registered.claims.workerId,f.workerId);
+    const action={workerId:f.workerId,invocation:{
+      tool:'read_text',arguments:{path:'qa-fixture.txt'}
+    }};
+    assert.equal((await bound.workerAuthority.authorizeWorker(action)).authorized,true);
+    await bound.workerAuthority.revokeWorker({
+      workerId:f.workerId,reasonCode:'native-qa-owner-revocation'
+    });
+    await assert.rejects(bound.workerAuthority.authorizeWorker(action),
+      {code:'WORKER_IDENTITY_REVOKED'});
+  }finally{f.close();}
+});
+
+test('production Worker factory refuses incomplete native authority before any grant',()=>{
+  const defaults={
+    issuer:'commander.local',audience:'remote-commander',
+    workerRegistry:{get:async()=>null,register:async()=>null,
+      revoke:async()=>null,isRevoked:async()=>false},
+    resolveDeviceIdentity:async()=>null,
+    resolveCapabilityPolicyDigest:async()=>null,
+    resolveTrustedToolRoute:async()=>null,
+    authorizeExactArguments:async()=>false,
+    resolveCurrentOwnerRoute:async()=>null,
+    resolveCurrentWorkerId:async()=>null,
+    withLease:async()=>null
+  };
+  for(const bad of [
+    {workerRegistry:{get:async()=>null}},
+    {resolveDeviceIdentity:null},
+    {resolveTrustedToolRoute:null},
+    {withLease:null}
+  ])assert.throws(()=>createV012NativeOwnerWorkerSecurityFactory({
+    ...defaults,...bad
+  }),{code:'V012_NATIVE_WORKER_SECURITY_FACTORY_REQUIRED'});
 });

@@ -64,6 +64,8 @@ test('Windows snapshot pins active WTS session, OS SID digest, and no GUI prompt
   assert.equal(await p.observedNativeSession(route()),'windows-wts-2');
   assert.equal(calls.length,3);
   assert.ok(calls.every(x=>x.args.includes('Snapshot')));
+  assert.ok(calls.every(x=>x.options.windowsHide===true),
+    'read-only owner snapshots never create a visible console');
 });
 
 test('Windows owner snapshot fail-closes on service, inactive, forged, unknown or changed token',async t=>{
@@ -104,6 +106,12 @@ test('Windows consent demands fresh typed challenge and rechecks WTS/SID',async(
   assert.equal(await p.requestConsent(approveInput(before)),true);
   assert.deepEqual(calls.map(x=>x.args.at(x.args.indexOf('-Mode')+1)),
     ['Snapshot','Snapshot','Consent','Snapshot']);
+  const dialog=calls.find(x=>x.args.includes('Consent'));
+  assert.equal(dialog.options.windowsHide,false,
+    'typed owner challenge must render visibly on the native WTS desktop');
+  assert.ok(calls.filter(x=>x.args.includes('Snapshot'))
+    .every(x=>x.options.windowsHide===true),
+    'non-interactive owner snapshots must stay hidden');
   const n=calls.length;
   assert.equal(await p.requestConsent({...approveInput(before),
     expectedOwnerSidHash:'f'.repeat(64)}),false);
@@ -175,4 +183,28 @@ test('Windows native owner probe validates the real active user token (opt-in)',
   assert.match(a.ownerSidHash,/^[a-f0-9]{64}$/);
   assert.match(a.osSessionId,/^windows-wts-[1-9][0-9]*$/);
   assert.equal(await p.resolveOwnerSidHash(),a.ownerSidHash);
+});
+
+test('ambient SystemRoot cannot select the native owner PowerShell image or Windows child roots',async()=>{
+  const previous=process.env.SystemRoot;
+  let observed;
+  try{
+    process.env.SystemRoot='Z:\\untrusted-owner-image';
+    const p=createWindowsNativeOwnerSessionProvider({
+      platform:'win32',script:SCRIPT,verifyFile:()=>{},
+      execFileImpl:(file,args,options,callback)=>{
+        observed={file,options};
+        callback(null,snapshot(),'');
+      },snapshotTimeoutMs:1000,dialogTimeoutMs:5000
+    });
+    const state=await p.getOwnerSessionSnapshot();
+    assert.equal(state.osSessionId,'windows-wts-2');
+    assert.equal(observed.file,POWERSHELL);
+    assert.equal(observed.options.env.SystemRoot.toLowerCase(),'c:\\windows');
+    assert.equal(observed.options.env.WINDIR.toLowerCase(),'c:\\windows');
+    assert.doesNotMatch(observed.options.env.PATH,/untrusted-owner-image/i);
+  }finally{
+    if(previous===undefined)delete process.env.SystemRoot;
+    else process.env.SystemRoot=previous;
+  }
 });

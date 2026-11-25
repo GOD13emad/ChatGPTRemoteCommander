@@ -1,4 +1,38 @@
-# Release Train 0.12 — `0.12.0-dev.9` candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.13` source candidate (NoPromote)
+
+## Dev.13 upgrade qualification candidate
+
+Dev.13 combines independently pinned rollback provenance and exact signer
+checks with the scoped build-tool compatibility fix. Dev.12 (`46a8256`) is the
+observed Windows baseline. The same source version identifies Core, Desktop,
+NSIS, DEB, and plugin metadata. Hosted provenance for the candidate and
+native owner consent are required before owner-host installation.
+
+## Dev.12 source-only package closure candidate (23 November 2026)
+
+This monotonic source revision is stacked on the exact owner Tunnel planner
+import-closure fix in PR #558, SHA 889329f69d61e53c44ad6bb33397da67db8bee89.
+It aligns Core, unified GUI/NSIS/DEB metadata, Desktop Assembly/FileVersion,
+plugin templates, release-train manifest and exact-version tests.
+This change alone does not build, install, authorize or publish an artifact.
+Only a **newly signed** dev.12 package, accepted by an independent reviewer
+and verified at its exact SHA, can be considered for owner-local QA installation.
+The signed historic dev.11 package, running services and Tunnel remain unchanged.
+J01/Worker consent, live mTLS migration, rollback, and Stable release are OPEN.
+
+
+## Dev.11 upgrade-source proposal (23 November 2026)
+
+The shared source identity advances Core, Desktop, NSIS, DEB and plugin templates to dev.11. Owner Linux already has dev.10 and must not be reinstalled with a same-version candidate. This proposal derives from tested PR 556 source 8240784705a4e2802a4c70be43e71f4922f52ed0.
+
+Status remains INTEGRATION_CANDIDATE_NOT_FINAL, NoPromote. The new exact-source signed binaries, operator authorization, current-chat grants, service rollback and live cutover require independent validation. Historical Dev.10 evidence below is not transferred to the next SHA.
+
+## Dev.10 source preparation (22 November 2026)
+
+Candidate derived from independently approved/merged universal installer engine, merge commit `194c5e46229704273c465bd5e4d9fbc158b0c5de`. Monotonic dev.10 version aligns Core, desktop, unified NSIS/DEB, package lock and plugin template metadata. This branch remains **INTEGRATION_CANDIDATE_NOT_FINAL**: this source edit is not a built/pinned native artifact, owner-approved installation, positive J01/Signed Worker, live mTLS Cutover, package rollback, stable publication or fleet acceptance. Historical dev.9 evidence below remains scoped to its original source.
+
+## Historical dev.9 checkpoint
+
 
 ## Current candidate checkpoint — 2026-11-22
 

@@ -4,25 +4,37 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {Readable} from 'node:stream';
 import {createV2PrivatePairMcpIngress} from '../src/v2-private-pair-mcp-http-ingress.mjs';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 const require=createRequire(import.meta.url);
 const {validateCore,preparePreviewCore,previewConfig}=require('../packaging/unified/pilot-runtime.cjs');
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const resource=path.join(repo,'packaging/unified/.stage/core');
 const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
-test('the patched packager matcher preserves the callable legacy dir-compare dependency',()=>{
-  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
-  const lock=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package-lock.json'),'utf8'));
-  assert.deepEqual(gui.overrides,{'minimatch@>=7.0.0 <11.0.1':'11.0.9'});
-  assert.equal(lock.packages['node_modules/minimatch'].version,'11.0.9');
-  assert.match(lock.packages['node_modules/dir-compare/node_modules/minimatch'].version,/^3\./);
-  assert.match(lock.packages['node_modules/glob/node_modules/minimatch'].version,/^3\./);
+test('minimatch remediation preserves patched builder and callable legacy dependency graph',()=>{
+ const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
+ const lock=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package-lock.json'),'utf8'));
+ assert.deepEqual(gui.overrides,{'minimatch@>=7.0.0 <11.0.1':'11.0.9'});
+ assert.equal(lock.version,gui.version);
+ assert.equal(lock.packages[''].version,gui.version);
+ assert.equal(lock.packages['node_modules/minimatch'].version,'11.0.9');
+ for(const name of [
+   'node_modules/glob/node_modules/minimatch',
+   'node_modules/dir-compare/node_modules/minimatch'
+ ])assert.match(lock.packages[name]?.version??'',/^3\./);
+ const nested=Object.entries(lock.packages)
+   .filter(([name])=>/(?:^|\/)node_modules\/minimatch$/.test(name));
+ for(const [name,meta] of nested){
+   const [major,minor,patch]=meta.version.split('.').map(Number);
+   assert.ok([major,minor,patch].every(Number.isSafeInteger)
+     &&(major<7||major>11||(major===11&&(minor>0||patch>0))),
+     'minimatch must be outside the overridden range: '+name);
+ }
 });
 
 test('native Linux and Electron builder derive one exact prerelease version from Core, GUI, and release train',()=>{
@@ -52,6 +64,11 @@ test('native Linux and Electron builder derive one exact prerelease version from
  assert.match(merged,/RC012_GUI_MAINTAINER_SCRIPT_OMITTED/);
  assert.match(merged,/RC012_MERGE_UNEXPECTED_GUI_CONTROL/);
  assert.match(merged,/RC012_MERGE_NATIVE_CONTROL_UNEXPECTED/);
+ assert.match(merged,/RC012_MERGE_SOURCE_HEAD_MISMATCH/);
+ assert.match(merged,/RC012_MERGE_SOURCE_PIN_VERIFIED/);
+ assert.match(merged,/--source-preflight/);
+ assert.match(merged,/dpkg-deb --fsys-tarfile "\$GUI"/);
+ assert.match(merged,/git -C "\$BASE" rev-parse HEAD\^\{tree\}/);
  assert.match(merged,/RC012_MERGED_PACKAGE_UNEXPECTED_MAINTAINER/);
  assert.doesNotMatch(merged,/shutil\.copy2\(p,native\/'DEBIAN'\/p\.name\)/);
  assert.match(upgrade,/VERSION.*==.*GUI_VERSION/);
@@ -60,10 +77,23 @@ test('native Linux and Electron builder derive one exact prerelease version from
      'native build and delivery must not pin one stale candidate revision');
 });
 
-test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{
+test('Linux final DEB must match exact public Core manifest in BOTH native and GUI roots',()=>{
+ const builder=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
+ const merge=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ assert.equal(builder.includes('git -C "$ROOT" archive --format=tar "$HEAD"'),false,
+   'whole-repository native source archive reintroduces optional extensions');
+ assert.ok(builder.includes('node "$ROOT/packaging/unified/prepare.mjs"'));
+ assert.ok(builder.includes('validateCore(installed)'));
+ assert.ok(merge.includes('RC012_MERGE_UNMANIFESTED_PUBLIC_CORE_'));
+ assert.ok(merge.includes("for label,root in [('native',core),('gui',gui_core)]"));
+ assert.ok(merge.includes('observed!=allowed'));
+ assert.ok(merge.includes('RC012_MERGE_PUBLIC_CORE_EXTENSION_LEAK_'));
+});
+test('Linux native package reuses the verified public Core and hosted path allowlist',()=>{
  const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
- const shared='src tools vendor assets config.json package.json';
- assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
+  assert.ok(native.includes('node "$ROOT/packaging/unified/prepare.mjs"'));
+ assert.ok(native.includes('validateCore(installed)'));
+ assert.ok(native.includes('cp -a -- "$PUBLIC_CORE/." "$APP/"'));
  assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
  const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
  assert.ok(prepare.includes("'src','tools','vendor','assets','config.json','package.json'"));
@@ -134,6 +164,51 @@ test('PRIVATE ingress source changes trigger both native package jobs at the exa
  assert.match(y,/Build package \(Linux\)/);
  assert.match(y,/Build package \(Windows\)/);
  assert.match(y,/upload-artifact@v4/);
+});
+
+test('staged exact-head public Core manifest excludes ALL optional extension files',()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(resource,'source-manifest.json'),'utf8'));
+ assert.equal(manifest.schema,2);
+ assert.equal(manifest.count,Object.keys(manifest.files).length);
+ assert.ok(manifest.files['src/server-v0.3.mjs']);
+ const optional=Object.keys(manifest.files).filter(p=>p==='extensions'||p.startsWith('extensions/'));
+ assert.deepEqual(optional,[],'no optional extensions may ship in public Core');
+ assert.equal(fs.existsSync(path.join(resource,'extensions')),false,
+   'distributable public Core must physically exclude optional extensions');
+});
+test('public Core embeds owner cutover and recovery dependencies only under audited packaging paths',async()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(resource,'source-manifest.json'),'utf8'));
+ const required=['packaging/unified/owner-pinned-provenance.mjs',
+   'packaging/unified/migration-preflight.mjs',
+   'packaging/unified/package.json',
+   'packaging/unified/owner-dpapi-profile-recovery.ps1',
+   'packaging/unified/owner-systemd-creds-profile-recovery.sh',
+   'tools/plan-owner-private-tunnel-cutover.mjs',
+   'tools/inspect-owner-private-tunnel-cutover.mjs'];
+ for(const rel of required){
+   assert.equal(manifest.files[rel],sha(path.join(resource,rel)),
+     'embedded Core missing exact imported file: '+rel);
+ }
+ const packagedPaths=Object.keys(manifest.files).filter(x=>x.startsWith('packaging/')).sort();
+ const embeddedGui=JSON.parse(fs.readFileSync(path.join(resource,'packaging/unified/package.json'),'utf8'));
+ const embeddedCore=JSON.parse(fs.readFileSync(path.join(resource,'package.json'),'utf8'));
+ assert.equal(embeddedGui.version,embeddedCore.version,'native candidate version must be derivable from embedded files');
+ const embeddedRecovery=path.join(resource,'packaging/unified/owner-systemd-creds-profile-recovery.sh');
+ if(process.platform==='linux'){
+   const syntax=spawnSync('/bin/bash',['-n',embeddedRecovery],{encoding:'utf8',timeout:3000});
+   assert.equal(syntax.status,0,syntax.stderr);
+ }
+ assert.deepEqual(packagedPaths,[
+   'packaging/unified/owner-pinned-provenance.mjs',
+   'packaging/unified/migration-preflight.mjs',
+   'packaging/unified/package.json',
+   'packaging/unified/owner-dpapi-profile-recovery.ps1',
+   'packaging/unified/owner-systemd-creds-profile-recovery.sh'
+ ].sort(),'packaging must not widen beyond the audited public recovery dependencies');
+ const planner=await import(pathToFileURL(path.join(resource,
+   'tools/plan-owner-private-tunnel-cutover.mjs')).href);
+ assert.equal(typeof planner.planOwnerPrivateTunnelCutover,'function',
+   'owner cutover planner must load from shipped Core in isolation');
 });
 
 test('immutable packaged source and restricted preview boot',async()=>{
@@ -359,4 +434,57 @@ test('preview upgrade refuses oversized runtime data without replacing current C
     assert.equal(validateCore(first.target).head,old.head);
     assert.ok(!fs.existsSync(path.join(data,'runtime','core.rollback')));
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('hosted public native DEB path policy admits audited packaging files and rejects private paths', {
+  skip: process.platform!=='linux'
+},()=>{
+  const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+  const section=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]+?)\r?\nPUBLIC_APP_BOUNDARY/u);
+  assert.ok(section,'execute the same Python policy embedded in the actual hosted native upgrade test');
+  const base=['src/server-v0.3.mjs','config.json','package.json','source-manifest.json','packaging',
+    'packaging/unified','packaging/unified/owner-pinned-provenance.mjs',
+    'packaging/unified/migration-preflight.mjs',
+    'packaging/unified/package.json',
+    'packaging/unified/owner-dpapi-profile-recovery.ps1',
+    'packaging/unified/owner-systemd-creds-profile-recovery.sh'];
+  const execute=(paths)=>{
+    const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
+    const code=[
+      'import sys, subprocess',
+      'listing=sys.argv[1]',
+      'subprocess.check_output=lambda *args, **kwargs: listing',
+      'sys.argv=["policy-test","old.deb","merged.deb"]',
+      section[1]
+    ].join('\n');
+    return spawnSync('python3',['-c',code,listing],{
+      cwd:repo,encoding:'utf8',timeout:12000,windowsHide:true});
+  };
+  const allowed=execute(base);
+  assert.equal(allowed.status,0,allowed.stderr);
+  assert.match(allowed.stdout,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/u);
+  for(const forbidden of ['packaging/unified/private.mjs','packaging/secret.json',
+    'extensions/specialist.mjs','docs/PROJECT_BRAIN.md']){
+    const rejected=execute([...base,forbidden]);
+    assert.notEqual(rejected.status,0,'must reject '+forbidden);
+    assert.match(rejected.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+  }
+  const missingSourceManifest=execute(base.filter(p=>p!=='source-manifest.json'));
+  assert.notEqual(missingSourceManifest.status,0);
+  assert.match(missingSourceManifest.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  for(const unexpected of ['source-manifest.json.bak','source-manifest.json/secret']) {
+    const invalid=execute([...base,unexpected]);
+    assert.notEqual(invalid.status,0);
+    assert.match(invalid.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+  }
+  for(const required of ['packaging/unified/migration-preflight.mjs',
+    'packaging/unified/package.json','packaging/unified/owner-dpapi-profile-recovery.ps1',
+    'packaging/unified/owner-systemd-creds-profile-recovery.sh']){
+    const missing=execute(base.filter(p=>p!==required));
+    assert.notEqual(missing.status,0,'must reject missing required '+required);
+    assert.match(missing.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
+  }
+  const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
+  assert.notEqual(missingProvenance.status,0);
+  assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
 });

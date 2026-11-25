@@ -197,7 +197,7 @@ function verifyLinuxSixFileOwnerCapsule({home,ownerUid,profileName}){
  ];
  const config=path.join(home,'.config');
  const digest=file=>{
-  const p=spawnSync('sha256sum',[file],{encoding:'utf8',timeout:5000,
+  const p=spawnSync('/usr/bin/sha256sum',[file],{encoding:'utf8',timeout:5000,
     maxBuffer:1024,stdio:['ignore','pipe','ignore']});
   return p.status===0?/^([a-f0-9]{64})\s/.exec(p.stdout||'')?.[1]??null:null;
  };
@@ -292,15 +292,6 @@ export function verifyLinuxPrivateProfileBackup({
         &&end.size===initial.size&&end.mtimeMs===initial.mtimeMs;
     }catch{return false;}
   };
-  const digestCommand=(program,args)=>{
-    try{
-      const result=spawnSync(program,args,{
-        encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024,
-        stdio:['ignore','pipe','ignore']});
-      const v=result.stdout?.trim();
-      return result.status===0&&/^[0-9a-f]{64}$/.test(v)?v:null;
-    }catch{return null;}
-  };
   try{
     // Resolve/verify the whole parent path: symlinked recovery directories
     // cannot redirect backup inspection outside the owner home.
@@ -325,7 +316,7 @@ export function verifyLinuxPrivateProfileBackup({
       ||!/^[a-f0-9]{64}$/.test(item.sourceSha256)
       ||!/^[a-f0-9]{64}$/.test(item.ciphertextSha256))return false;
     const fileHash=(file)=>{
-      const result=spawnSync('sha256sum',[file],{
+      const result=spawnSync('/usr/bin/sha256sum',[file],{
         encoding:'utf8',windowsHide:true,timeout:5000,maxBuffer:1024,
         stdio:['ignore','pipe','ignore']});
       const digest=/^([a-f0-9]{64})\s/.exec(result.stdout||'');
@@ -333,9 +324,13 @@ export function verifyLinuxPrivateProfileBackup({
     };
     if(fileHash(source)!==item.sourceSha256
       ||fileHash(encrypted)!==item.ciphertextSha256)return false;
-    const script='set -o pipefail; systemd-creds decrypt --user --refuse-null --name="$1" "$2" - | sha256sum | cut -d " " -f1';
-    const restored=digestCommand('/bin/bash',['-c',script,
-      'verify',expectedCredentialName,encrypted]);
+    const script='set -o pipefail; /usr/bin/systemd-creds decrypt --user --refuse-null --name="$1" "$2" - | /usr/bin/sha256sum | /usr/bin/cut -d " " -f1';
+    // Root-owned executables only; script source travels on stdin, never argv.
+    const proof=spawnSync('/bin/bash',['-s','--',expectedCredentialName,encrypted],{
+      input:script,encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024,
+      stdio:['pipe','pipe','ignore']});
+    const value=proof.stdout?.trim();
+    const restored=proof.status===0&&/^[0-9a-f]{64}$/.test(value)?value:null;
     return restored===item.sourceSha256
       &&unchanged(receipt,rstat)&&unchanged(source,sstat)
       &&unchanged(encrypted,cstat);
@@ -382,10 +377,27 @@ export function assessMigration(facts){
     throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
   const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
+  // Windows owner-managed PowerShell deployments need not register either
+  // Inno or NSIS. An observed legacy Router OR an exact live tunnel-target
+  // Core health version proves an existing runtime, not its installer family.
+  // Independent account tunnels can target Core directly, without a Router.
+  // Fail closed before proposing a destructive fresh-install transaction.
+  const liveOldWindowsCore=facts.routerDetected===true
+    ||(facts.tunnelProfileValid===true
+      &&facts.tunnelTargetTls!==true
+      &&typeof facts.tunnelTargetVersion==='string'
+      &&/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(facts.tunnelTargetVersion));
+  const liveUnregisteredWindowsCore=facts.platform==='win32'
+    &&liveOldWindowsCore
+    &&facts.legacyInnoPresent!==true
+    &&facts.nativeUnifiedNsisPresent!==true;
   const oldPresent=facts.platform==='win32'
     ?facts.legacyInnoPresent===true||facts.nativeUnifiedNsisPresent===true
+      ||liveUnregisteredWindowsCore
     :facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
+  if(liveUnregisteredWindowsCore)
+    blocked.push('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED');
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
   if(facts.platform==='win32'&&facts.routerDetected===true
     &&facts.routerMappingMatches!==true)
@@ -419,7 +431,7 @@ export function assessMigration(facts){
         ||!facts.tunnelTargetVersion.startsWith('0.12.')))
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
-  if(facts.platform==='win32' && oldPresent){
+  if(facts.platform==='win32' && oldPresent&&!liveUnregisteredWindowsCore){
     if(facts.nativeUnifiedNsisPresent===true&&facts.legacyInnoPresent!==true){
       if(facts.ownerRegisteredInstallerFamily==='unified-nsis')
         blocked.push('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED');
@@ -761,14 +773,19 @@ export function windowsOwnerDpapiVerifyOutputAccepted(status,stdout){
   return status===0 && typeof stdout==='string'
     && stdout.trim()==='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
 }
+export function windowsOwnerDpapiPowerShellExecutable(){
+  // The reviewed machine-wide MSI default: never trust caller-controlled
+  // ProgramFiles, PATH or another ambient executable discovery source.
+  // Non-default installations fail closed instead of running an untrusted exe.
+  return path.win32.join('C:\\Program Files','PowerShell','7','pwsh.exe');
+}
 function verifyWindowsOwnerDpapiBackup(profileName='chatgpt-remote-commander'){
   if(process.platform!=='win32'||typeof profileName!=='string'
     ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
     ||profileName==='.'||profileName==='..')return false;
-  const programFiles=process.env.ProgramFiles,appData=process.env.APPDATA;
-  if(typeof programFiles!=='string'||!path.win32.isAbsolute(programFiles)
-    ||typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
-  const exe=path.win32.join(programFiles,'PowerShell','7','pwsh.exe');
+  const appData=process.env.APPDATA;
+  if(typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
+  const exe=windowsOwnerDpapiPowerShellExecutable();
   const script=path.join(path.dirname(fileURLToPath(import.meta.url)),
     'owner-dpapi-profile-recovery.ps1');
   try{

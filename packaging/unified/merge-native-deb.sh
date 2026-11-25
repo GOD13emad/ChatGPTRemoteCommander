@@ -4,7 +4,12 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 NATIVE="$BASE/dist/installer/Remote-Commander-Linux-amd64.deb"
-for tool in node dpkg-deb python3 sha256sum mktemp; do
+# One read-only source-attestation gate may be invoked before any merge.
+# Never infer a candidate's Git identity from the unchanged SemVer filename.
+[[ $# -eq 0 || ( $# -eq 1 && "$1" == --source-preflight ) ]] || {
+  echo RC012_MERGE_ARGS_INVALID >&2; exit 2;
+}
+for tool in node git tar dpkg-deb python3 sha256sum mktemp; do
   command -v "$tool" >/dev/null || { echo "RC012_MERGE_MISSING_TOOL $tool" >&2; exit 2; }
 done
 VERSION="$(node -p 'require(process.argv[1]).version' "$BASE/packaging/unified/package.json")"
@@ -17,6 +22,49 @@ GUI="$BASE/dist/unified/Remote-Commander-Unified-${VERSION}-Linux-amd64.deb"
 [[ -f "$NATIVE" && -f "$GUI" && ! -L "$NATIVE" && ! -L "$GUI" ]] || {
   echo RC012_MERGE_INPUT_MISSING >&2; exit 2;
 }
+# Before expensive unpacking, reject an old build reusing the SAME v0.12
+# version. Only the pinned Git HEAD+tree may be merged or source-preflighted.
+# A successful preflight checks manifest identity, not owner authorization or
+# the bytes of every embedded file; the full merge verifies all Core hashes.
+EXPECTED_HEAD="$(git -C "$BASE" rev-parse HEAD)"
+EXPECTED_TREE="$(git -C "$BASE" rev-parse HEAD^{tree})"
+[[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ && "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]] || {
+  echo RC012_MERGE_EXPECTED_GIT_IDENTITY_INVALID >&2; exit 3;
+}
+dpkg-deb --fsys-tarfile "$GUI" |
+  tar -xOf - './opt/Remote Commander/resources/core/source-manifest.json' |
+  node -e '
+    let raw="",size=0;
+    process.stdin.on("data",chunk=>{
+      size+=chunk.length;
+      if(size>1048576){
+        console.error("RC012_MERGE_MANIFEST_LIMIT");
+        process.exit(3);
+      }
+      raw+=chunk;
+    });
+    process.stdin.on("end",()=>{
+      let m;
+      try{m=JSON.parse(raw);}catch{
+        console.error("RC012_MERGE_MANIFEST_INVALID");
+        process.exitCode=3;return;
+      }
+      if(m?.schema!==2||!Number.isSafeInteger(m.count)||m.count<300
+         ||!m.files||Object.keys(m.files).length!==m.count){
+        console.error("RC012_MERGE_MANIFEST_INVALID");
+        process.exitCode=3;return;
+      }
+      if(m.head!==process.argv[1]||m.tree!==process.argv[2]){
+        console.error("RC012_MERGE_SOURCE_HEAD_MISMATCH");
+        process.exitCode=3;return;
+      }
+      console.log("RC012_MERGE_SOURCE_PIN_VERIFIED");
+    });
+  ' "$EXPECTED_HEAD" "$EXPECTED_TREE"
+if [[ $# -eq 1 ]]; then
+  echo RC012_MERGE_SOURCE_PREFLIGHT_ONLY
+  exit 0
+fi
 pkg() { dpkg-deb --field "$1" "$2"; }
 [[ "$(pkg "$NATIVE" Package)" == chatgpt-remote-commander &&
    "$(pkg "$GUI" Package)" == chatgpt-remote-commander ]] || {
@@ -55,6 +103,26 @@ for rel, digest in manifest['files'].items():
     h=lambda f:hashlib.sha256(f.read_bytes()).hexdigest()
     if h(a)!=digest or h(b)!=digest:
         raise SystemExit('RC012_MERGE_SOURCE_DRIFT '+rel)
+# A partial positive-hash check is not enough: old native app builders
+# archived the WHOLE repository, silently adding optional extensions under
+# /usr/lib/.../app even after the GUI Core allowlist had been cleaned.
+allowed=set(manifest['files'])|{'source-manifest.json'}
+for label,root in [('native',core),('gui',gui_core)]:
+    observed=set()
+    for base,dirs,files in os.walk(root,topdown=True,followlinks=False):
+        for name in list(dirs)+files:
+            p=pathlib.Path(base)/name
+            if p.is_symlink():
+                raise SystemExit('RC012_MERGE_PUBLIC_CORE_SYMLINK '+label)
+            if p.is_file():
+                observed.add(p.relative_to(root).as_posix())
+    extra=observed-allowed
+    if extra:
+        raise SystemExit('RC012_MERGE_UNMANIFESTED_PUBLIC_CORE_'+label+' '+sorted(extra)[0])
+    if observed!=allowed:
+        raise SystemExit('RC012_MERGE_PUBLIC_CORE_INCOMPLETE_'+label)
+    if any(p.startswith('extensions/') for p in observed):
+        raise SystemExit('RC012_MERGE_PUBLIC_CORE_EXTENSION_LEAK_'+label)
 required=[
     runtime/'runtime/node',
     runtime/'tunnel/native-tunnel-launch.sh',

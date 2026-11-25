@@ -6,7 +6,7 @@ param(
  [ValidateSet('Plan','Apply','Recover')][string]$Mode='Plan',
  [string]$InstallerPath='',
  [string]$InstallerSha256='',
- [string]$ExpectedVersion='0.12.0-dev.9'
+ [string]$ExpectedVersion=''
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -19,6 +19,7 @@ $receipt=Join-Path $state 'receipt.json'
 $backup=Join-Path $state 'legacy-install'
 $failed=Join-Path $state 'failed-new-install'
 function Fail([string]$code){throw $code}
+if($ExpectedVersion -notmatch '^0\.12\.0-dev\.[1-9][0-9]*$'){Fail 'RC012_EXPLICIT_EXPECTED_VERSION_REQUIRED'}
 function SamePath([string]$a,[string]$b){
  return [IO.Path]::GetFullPath($a).TrimEnd('\') -ieq [IO.Path]::GetFullPath($b).TrimEnd('\')
 }

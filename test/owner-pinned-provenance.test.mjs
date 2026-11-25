@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {mkdtemp,writeFile,rm,symlink} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {verifyOwnerPinnedNativeRelease}
+import {verifyOwnerPinnedNativeRelease,verifyOwnerPinnedFreshNativeRelease}
   from '../packaging/unified/owner-pinned-provenance.mjs';
 
 const sha=v=>createHash('sha256').update(v).digest('hex');
@@ -86,4 +86,38 @@ test('owner pin, source head and platform required before reading any artifacts'
    rollbackPath:'/tmp/none3',ownerPinnedHead:'bad',
    ownerPinnedManifestSha256:'a'.repeat(64),platform:'linux'
  }),/RC012_PROVENANCE_OWNER_PIN_REQUIRED/);
+});
+
+test('fresh one-package release is independently owner-pinned with no fake rollback artifact',async()=>{
+  const dir=await mkdtemp(path.join(os.tmpdir(),'rc012-fresh-provenance-'));
+  const artifact=path.join(dir,'single-new-package.bin');
+  const manifestPath=path.join(dir,'approved-manifest.json');
+  const head='b'.repeat(40),bytes=Buffer.from('new native candidate independent bytes');
+  const platform=process.platform==='win32'?'win32':'linux';
+  try{
+    await writeFile(artifact,bytes);
+    const data=JSON.stringify({schema:2,sourceHead:head,platform,
+      candidate:{sha256:sha(bytes),bytes:bytes.length}});
+    await writeFile(manifestPath,data);
+    const options={manifestPath,candidatePath:artifact,
+      ownerPinnedHead:head,ownerPinnedManifestSha256:sha(data),platform};
+    const result=await verifyOwnerPinnedFreshNativeRelease(options);
+    assert.equal(result.ownerPinnedNativeReleaseVerified,true);
+    assert.equal(result.ownerPinnedRollbackVerified,false);
+    assert.equal(result.rollbackTarget,'NATIVE_ABSENCE');
+    assert.equal(result.promoteAllowed,false);
+    assert.ok(!JSON.stringify(result).includes(dir));
+    await assert.rejects(verifyOwnerPinnedFreshNativeRelease({
+      ...options,ownerPinnedManifestSha256:'0'.repeat(64)
+    }),/RC012_PROVENANCE_OWNER_MANIFEST_MISMATCH/);
+    await assert.rejects(verifyOwnerPinnedFreshNativeRelease({
+      ...options,ownerPinnedHead:'a'.repeat(40)
+    }),/RC012_PROVENANCE_MANIFEST_INVALID/);
+    await assert.rejects(verifyOwnerPinnedFreshNativeRelease({
+      ...options,manifestPath:artifact
+    }),/RC012_PROVENANCE_DISTINCT_FILES_REQUIRED/);
+    await writeFile(artifact,'tampered candidate');
+    await assert.rejects(verifyOwnerPinnedFreshNativeRelease(options),
+      /RC012_PROVENANCE_CANDIDATE_MISMATCH/);
+  }finally{await rm(dir,{recursive:true,force:true});}
 });
