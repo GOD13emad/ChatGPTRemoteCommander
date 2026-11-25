@@ -116,8 +116,8 @@ begin
     not FileExists(ExpandConstant('{localappdata}\Programs\Remote Commander Browser\current\product-install.json'));
   if not Result then Exit;
 
-  { [Files] dontcopy does not populate {tmp}; the [Run] entry must extract }
-  { the exact embedded artifact before execution, then verify its bytes. }
+  // [Files] dontcopy does not populate the temporary directory.
+  // Extract this exact embedded artifact before execution, then verify its bytes.
   BrowserPath := ExpandConstant('{tmp}\{#BrowserSetupName}');
   if not FileExists(BrowserPath) then
     ExtractTemporaryFile('{#BrowserSetupName}');
