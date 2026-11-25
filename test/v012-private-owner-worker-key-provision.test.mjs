@@ -222,3 +222,13 @@ test('owner rebind refuses a Tunnel change between consent and atomic commit',{s
     }),{code:'RC012_WORKER_KEY_RECEIPT_INVALID'});
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('worker security directory is initialized only after native owner consent',()=>{
+  const source=fs.readFileSync(script,'utf8');
+  const preflight=source.indexOf("if(mode==='--preflight'||existing){");
+  const consent=source.indexOf("if(!approved)fail('RC012_WORKER_KEY_NATIVE_OWNER_CONSENT_REQUIRED');");
+  const creation=source.indexOf('fs.mkdirSync(security,{mode:0o700})');
+  assert.ok(preflight>0&&consent>preflight&&creation>consent);
+  assert.match(source,/if\(fs\.existsSync\(security\)\)privateDir\(security,uid\)/);
+  assert.match(source,/privateDir\(security,uid\);\s*lockFd=fs\.openSync/);
+});

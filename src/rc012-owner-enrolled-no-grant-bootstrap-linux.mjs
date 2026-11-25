@@ -10,7 +10,7 @@ import path from 'node:path';
 import {createHash,X509Certificate} from 'node:crypto';
 import {createLinuxNativeOwnerSessionProvider}
   from './native-owner-session-provider-linux.mjs';
-import {readLinuxOwnerTunnelPin}
+import {readLinuxOwnerTunnelPin,resolveLinuxOwnerPairDirectory}
   from './linux-private-tunnel-owner-pin.mjs';
 import {createLinuxSignedBrokerTransport}
   from './linux-native-tunnel-broker-client.mjs';
@@ -90,8 +90,10 @@ export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={
   const config=JSON.parse(raw);
   if(config.instance?.profile!==profileId||config.host!=='127.0.0.1')
     fail('RC012_OWNER_BOOTSTRAP_CORE_PROFILE_MISMATCH');
-  const pairDir=path.join(home,'.config','chatgpt-remote-commander',
-    'private-pair',selected==='chatgpt-remote-commander'?'default':selected);
+  const pairDir=resolveLinuxOwnerPairDirectory({
+    root:path.join(home,'.config','chatgpt-remote-commander','private-pair'),
+    profile:selected,ownerUid:uid
+  });
   privateDirectory(pairDir,uid);
   const enrolled=readLinuxOwnerTunnelPin({directory:pairDir});
   if(enrolled.profileId!==selected||enrolled.hostId!==config.deviceName)

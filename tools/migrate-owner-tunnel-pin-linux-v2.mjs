@@ -6,7 +6,8 @@ import path from 'node:path';
 import {createHash,X509Certificate,randomBytes} from 'node:crypto';
 import {createLinuxNativeOwnerSessionProvider}
   from '../src/native-owner-session-provider-linux.mjs';
-import {readLinuxOwnerTunnelPin,createPinnedLinuxPrivateTunnelIdentity}
+import {readLinuxOwnerTunnelPin,createPinnedLinuxPrivateTunnelIdentity,
+  resolveLinuxOwnerPairDirectory}
   from '../src/linux-private-tunnel-owner-pin.mjs';
 import {createLinuxTunnelClientObserver}
   from '../src/native-tunnel-client-observer-linux.mjs';
@@ -74,8 +75,10 @@ async function main(){
     fail('RC012_V2_OWNER_PIN_MIGRATION_ARGS_INVALID');
   const mode=process.argv[2],profile=process.argv[3],uid=process.getuid();
   const home=os.homedir();
-  const dir=path.join(home,'.config','chatgpt-remote-commander',
-    'private-pair',profile==='chatgpt-remote-commander'?'default':profile);
+  const dir=resolveLinuxOwnerPairDirectory({
+    root:path.join(home,'.config','chatgpt-remote-commander','private-pair'),
+    profile,ownerUid:uid
+  });
   privateDirectory(dir,uid);
   const pinPath=path.join(dir,'owner-tunnel-trust.json');
   const raw=readPrivate(pinPath,uid,4096);

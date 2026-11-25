@@ -6,7 +6,8 @@ import path from 'node:path';
 import {activeHealthPort} from '../tools/enroll-owner-private-tunnel-linux.mjs';
 import {
   normalizeLinuxOwnerTunnelPin,readLinuxOwnerTunnelPin,
-  enrollLinuxOwnerTunnelPin,createPinnedLinuxPrivateTunnelIdentity
+  enrollLinuxOwnerTunnelPin,createPinnedLinuxPrivateTunnelIdentity,
+  resolveLinuxOwnerPairDirectory
 } from '../src/linux-private-tunnel-owner-pin.mjs';
 
 const now=Date.now();
@@ -164,4 +165,50 @@ test('selected YAML in a multi-profile directory is never borrowed from another 
     assert.throws(()=>activeHealthPort('unknown',uid,root),
       {code:'RC012_SELECTED_OWNER_TUNNEL_PROFILE_REQUIRED'});
   }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('legacy default directory resolves ONLY its exact pinned Linux profile',{
+  skip:process.platform!=='linux'
+},async()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-pair-directory-'));
+  try{
+    fs.chmodSync(root,0o700);
+    const old=path.join(root,'default');
+    fs.mkdirSync(old,{mode:0o700});
+    await enrollLinuxOwnerTunnelPin({directory:old,record:base(),
+      authorizeOwner:async()=>true,verifyCurrent:async()=>true});
+    assert.equal(resolveLinuxOwnerPairDirectory({root,profile:'Emad'}),old);
+    assert.throws(()=>resolveLinuxOwnerPairDirectory({root,profile:'MMZ'}),
+      {code:'RC012_LINUX_OWNER_PAIR_PROFILE_MISMATCH'});
+    const personal=path.join(root,'MMZ');
+    fs.mkdirSync(personal,{mode:0o700});
+    await enrollLinuxOwnerTunnelPin({directory:personal,
+      record:{...base(),profileId:'MMZ'},
+      authorizeOwner:async()=>true,verifyCurrent:async()=>true});
+    assert.equal(resolveLinuxOwnerPairDirectory({root,profile:'MMZ'}),personal);
+    assert.throws(()=>resolveLinuxOwnerPairDirectory({root,profile:'../Emad'}),
+      {code:'RC012_LINUX_OWNER_PAIR_SELECTION_REQUIRED'});
+    const alias=path.join(root,'Emad');
+    fs.symlinkSync(old,alias,'dir');
+    assert.throws(()=>resolveLinuxOwnerPairDirectory({root,profile:'Emad'}),
+      {code:'RC012_LINUX_OWNER_TRUST_DIRECTORY_UNSAFE'});
+    fs.unlinkSync(alias);
+    const cert=path.join(old,'owner-tunnel-trust.json');
+    fs.chmodSync(cert,0o644);
+    assert.throws(()=>resolveLinuxOwnerPairDirectory({root,profile:'Emad'}),
+      {code:'RC012_LINUX_OWNER_TRUST_FILE_UNSAFE'});
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('all enrolled Linux runtime consumers use the shared owner pair resolver',()=>{
+  const files=[
+    '../tools/provision-owner-worker-key-linux.mjs',
+    '../tools/migrate-owner-tunnel-pin-linux-v2.mjs',
+    '../src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs'
+  ];
+  for(const name of files){
+    const source=fs.readFileSync(new URL(name,import.meta.url),'utf8');
+    assert.match(source,/resolveLinuxOwnerPairDirectory/,
+      'historical default owner-pair alias must resolve centrally: '+name);
+  }
 });

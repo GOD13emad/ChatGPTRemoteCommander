@@ -49,15 +49,35 @@ test('native Linux and Electron builder derive one exact prerelease version from
    assert.doesNotMatch(script,/Remote-Commander-Unified-0\.12\.0-dev\.1-Linux-amd64\.deb/);
  }
  assert.match(merged,/VERSION.*==.*CORE_VERSION/);
- assert.match(merged,/RC012_GUI_MAINTAINER_SCRIPT_OMITTED/);
+ assert.match(merged,/RC012_GUI_MAINTAINER_SCRIPT_ADOPTED/);
  assert.match(merged,/RC012_MERGE_UNEXPECTED_GUI_CONTROL/);
  assert.match(merged,/RC012_MERGE_NATIVE_CONTROL_UNEXPECTED/);
  assert.match(merged,/RC012_MERGED_PACKAGE_UNEXPECTED_MAINTAINER/);
- assert.doesNotMatch(merged,/shutil\.copy2\(p,native\/'DEBIAN'\/p\.name\)/);
+ assert.match(merged,/RC012_MERGE_GUI_MAINTAINER_REQUIRED/);
+ assert.match(merged,/shutil\.copy2\(p,native\/'DEBIAN'\/p\.name\)/);
  assert.match(upgrade,/VERSION.*==.*GUI_VERSION/);
  for(const program of [native,prepare,merged,upgrade])
    assert.doesNotMatch(program,/[\x22\x27]0\.12\.0-dev\.1[\x22\x27]/,
      'native build and delivery must not pin one stale candidate revision');
+});
+
+test('real legacy Electron GUI maintainer lifecycle regression is part of source-pinned native CI',()=>{
+ const workflow=fs.readFileSync(path.join(repo,'.github/workflows/unified-installer-pilot.yml'),'utf8');
+ const smoke=fs.readFileSync(path.join(repo,'test/unified-legacy-electron-to-native-upgrade-smoke.sh'),'utf8');
+ const merge=fs.readFileSync(path.join(repo,'packaging/unified/merge-native-deb.sh'),'utf8');
+ assert.match(workflow,/Preserve exact pinned upstream Electron GUI DEB/);
+ assert.match(workflow,/bash test\/unified-legacy-electron-to-native-upgrade-smoke\.sh/);
+ assert.match(merge,/required_gui_scripts=\{'postinst','postrm'\}/);
+ assert.match(merge,/RC012_GUI_MAINTAINER_SCRIPT_ADOPTED/);
+ assert.match(merge,/RC012_MERGE_GUI_MAINTAINER_REQUIRED/);
+ assert.match(merge,/required_gui_scripts\.issubset/);
+ assert.match(merge,/md5sums is rebuilt from the final merged payload/);
+ assert.match(smoke,/dpkg-deb --ctrl-tarfile/);
+ assert.match(smoke,/sudo dpkg --install "\$RAW"/);
+ assert.match(smoke,/sudo dpkg --install "\$OLD"/);
+ assert.match(smoke,/update-alternatives --query remote-commander-unified/);
+ assert.match(smoke,/RC012_LEGACY_GUI_TO_NATIVE_DEB_MAINTAINER_AND_ROLLBACK_PASS/);
+ assert.doesNotMatch(smoke,/pkexec|sudo (systemctl|service)/);
 });
 
 test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{

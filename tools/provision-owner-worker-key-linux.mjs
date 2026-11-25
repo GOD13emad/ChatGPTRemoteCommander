@@ -13,7 +13,7 @@ import {
 import {fileURLToPath} from 'node:url';
 import {createLinuxNativeOwnerSessionProvider}
   from '../src/native-owner-session-provider-linux.mjs';
-import {createPinnedLinuxPrivateTunnelIdentity}
+import {createPinnedLinuxPrivateTunnelIdentity,resolveLinuxOwnerPairDirectory}
   from '../src/linux-private-tunnel-owner-pin.mjs';
 import {assertTrustedLinuxMappedRootExecutable}
   from '../src/native-linux-host-owner-identity.mjs';
@@ -250,10 +250,13 @@ async function main(){
   const home=os.homedir(),base=path.join(home,'.local','state',
     'chatgpt-remote-commander');
   const security=path.join(base,'private-pair-security-'+profile);
-  privateDir(base,uid);privateDir(security,uid);
-  const pinnedDirectory=path.join(home,'.config',
-    'chatgpt-remote-commander','private-pair',
-    profile==='chatgpt-remote-commander'?'default':profile);
+  privateDir(base,uid);
+  // Read-only preflight must not create per-profile state on an unenrolled host.
+  if(fs.existsSync(security))privateDir(security,uid);
+  const pinnedDirectory=resolveLinuxOwnerPairDirectory({
+    root:path.join(home,'.config','chatgpt-remote-commander','private-pair'),
+    profile,ownerUid:uid
+  });
   const native=createLinuxNativeOwnerSessionProvider({
     ownerIdentityMode:'host-uid-v2'
   });
@@ -370,6 +373,9 @@ async function main(){
     if(!sameSeat(seat,secondSeat)||!sameTunnel(first,second)
       ||fs.existsSync(directory))
       fail('RC012_WORKER_KEY_OWNER_OR_PROFILE_CHANGED');
+    // Only the genuine native owner approval may bootstrap this private state.
+    if(!fs.existsSync(security))fs.mkdirSync(security,{mode:0o700});
+    privateDir(security,uid);
     lockFd=fs.openSync(lockFile,fs.constants.O_CREAT|fs.constants.O_EXCL
       |fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW,0o600);
     locked=true;

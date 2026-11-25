@@ -98,6 +98,15 @@ jobs:
         if: runner.os == 'Linux'
         working-directory: packaging/unified
         run: npm run build:linux
+      - name: Preserve exact pinned upstream Electron GUI DEB for legacy maintainer regression
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gui=(dist/unified/*.deb)
+          test "${#gui[@]}" -eq 1
+          test ! -e "$RUNNER_TEMP/rc012-upstream-electron-gui.deb"
+          cp -- "${gui[0]}" "$RUNNER_TEMP/rc012-upstream-electron-gui.deb"
       - name: Merge native Core, Tunnel and GUI into a single DEB
         if: runner.os == 'Linux'
         shell: bash
@@ -106,6 +115,10 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: bash test/unified-native-upgrade-smoke.sh
+      - name: Upgrade actual Electron GUI package to merged Native and verify stock maintainer lifecycle
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash test/unified-legacy-electron-to-native-upgrade-smoke.sh
       - name: Build package (Windows)
         if: runner.os == 'Windows'
         working-directory: packaging/unified
