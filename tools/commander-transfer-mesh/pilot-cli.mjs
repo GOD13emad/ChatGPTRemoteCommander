@@ -16,9 +16,26 @@ const json=(o)=>process.stdout.write(JSON.stringify(o)+'\n');
 function hash(file){let h=crypto.createHash('sha256'),b=Buffer.allocUnsafe(1048576),fd=fs.openSync(file,'r');
  try{for(;;){const n=fs.readSync(fd,b,0,b.length,null);if(!n)break;h.update(b.subarray(0,n));}}
  finally{fs.closeSync(fd);}return h.digest('hex');}
+// Validate preexisting directories beneath the app-managed transfer root.
+// Peer and transfer ID validation alone cannot prevent symlinked ancestors.
+function checkInternalTransferPaths(peer,id){
+ const locations=[
+  path.join(root,'pairs'),path.join(root,'pairs',peer),
+  path.join(root,'pairs',peer,'transfers'),
+  path.join(root,'pairs',peer,'transfers',id),
+  path.join(root,'staging'),path.join(root,'staging',peer)
+ ];
+ for(const dir of locations){
+  let stat;
+  try{stat=fs.lstatSync(dir);}
+  catch(e){if(e?.code==='ENOENT')continue;throw e;}
+  if(!stat.isDirectory()||stat.isSymbolicLink())fail('TRANSFER_DIRECTORY_UNSAFE');
+ }
+}
 function transferPaths(peer,self,id){
  if(!validAlias.test(peer)||peer===self)fail('Unknown or self peer');
  if(!validId.test(id))fail('Invalid transfer ID');
+ checkInternalTransferPaths(peer,id);
  const dir=path.join(root,'pairs',peer,'transfers',id);
  return {dir,payload:path.join(dir,'payload.bin'),manifest:path.join(dir,'manifest.json')};
 }
@@ -123,15 +140,18 @@ try{
      const file=path.resolve(filename),st=fs.lstatSync(file),name=path.basename(file);
      if(!st.isFile()||st.isSymbolicLink()||/[\\/:*?"<>|\x00-\x1f]/.test(name))fail('Unsafe source');
      const id=arg('id',crypto.randomUUID()),p=transferPaths(peer,self,id);
+     checkInternalTransferPaths(peer,id);
      fs.mkdirSync(path.dirname(p.dir),{recursive:true});
      fs.mkdirSync(p.dir); // reject duplicate transfer identifiers
      const staging=path.join(root,'staging',peer);
      fs.mkdirSync(staging,{recursive:true});
      const temp=path.join(staging,id+'.part');
+     checkInternalTransferPaths(peer,id);
      fs.copyFileSync(file,temp,fs.constants.COPYFILE_EXCL);
      const after=fs.statSync(file);
      if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)fail('Source changed while copying');
      const sha256=hash(temp);
+     checkInternalTransferPaths(peer,id);
      fs.renameSync(temp,p.payload); // copy into observed folder only once complete
      const manifest={schema:'ctmesh-v1',id,from:self,to:peer,name,bytes:st.size,sha256,createdAt:new Date().toISOString()};
      fs.writeFileSync(p.manifest,JSON.stringify(manifest)+'\n',{flag:'wx',mode:0o600});
