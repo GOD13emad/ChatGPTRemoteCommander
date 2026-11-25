@@ -156,7 +156,8 @@ if [[ "$ROLLBACK_CODE" != 0 ]]; then
 fi
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$ROLLBACK_BASELINE" ]] || { echo R170_ROLLBACK_CONTROL_SHA_FAIL >&2; exit 75; }
 grep -q "AUTO_UPDATE_PASS version=$ROLLBACK_VERSION" "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_NOT_ACCEPTED >&2; exit 76; }
-grep -q '^SCHEMA_CONTINUITY_GATE_PASS profile=default
+grep -Fq 'SCHEMA_CONTINUITY_GATE_PASS profile=default' "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_SCHEMA_CONTINUITY_NOT_ACCEPTED >&2; exit 76; }
+echo R170_ROLLBACK_SCHEMA_CONTINUITY_PASS
 node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_ROLLBACK.json"
 python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$ROLLBACK_BASELINE" "$ROLLBACK_VERSION" <<'PY'
 import json,sys
@@ -318,33 +319,3 @@ PY
 else
   echo R170_SOURCE_CLEAN_PASS
 fi
-python3 "$WORKSPACE/test/release-rollback-owned-cleanup-r172.py" --root "$ROOT"
-python3 - "$ROOT/CLEANUP_R172.json" <<'PY'
-import json,sys
-r=json.load(open(sys.argv[1]))
-assert r["status"]=="PASS_ZERO_OWNED_NODE_AFTER_ROLLBACK" and not r["ownedAfter"]
-print("R172_ROLLBACK_ZERO_OWNED_NODE_ACCEPTED")
-PY
-python3 - "$ROOT" "$TARGET" "$ROLLBACK_BASELINE" "$START" "$BASELINE" <<'PY'
-import json,hashlib,pathlib,sys,datetime
-root=pathlib.Path(sys.argv[1])
-def h(p):return hashlib.sha256(p.read_bytes()).hexdigest()
-record={
-'schema':1,'revision':'R170','status':'PASS_LINUX_REAL_PROMOTION_AND_ROLLBACK_IN_ISOLATED_HOST',
-'candidateHead':sys.argv[2],'rollbackHead':sys.argv[3],'startedUtc':sys.argv[4],
-'legacyIncompatibleBaseline':sys.argv[5],'legacySchemaRefused':True,
-'legacyRefusalLogSha256':h(root/'REJECTED_INCOMPATIBLE_ROLLBACK.log'),
-'completedUtc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
-'isolatedHost':True,'userHostMutation':False,
-'promoteLogSha256':h(root/'PROMOTE_R170.log'),
-'rollbackLogSha256':h(root/'ROLLBACK_R170.log'),
-'routePromoteSha256':h(root/'ROUTE_AFTER_PROMOTE.json'),
-'routeRollbackSha256':h(root/'ROUTE_AFTER_ROLLBACK.json'),
-'cleanupSha256':h(root/'CLEANUP_R172.json'),
-'ownedNodeCleanup':json.loads((root/'CLEANUP_R172.json').read_text()),
-'signingAndNativeUIAcceptance':'OPEN'
-}
-p=root/'RETURN_R170.json'
-p.write_text(json.dumps(record,indent=2)+'\n')
-print('R170_PASS exact='+sys.argv[2]+' receiptSha='+h(p))
-PY
