@@ -1,0 +1,30 @@
+name: Native four-host UI release gate R40 (evidence only)
+on:
+  pull_request:
+    paths:
+      - 'release/UI_R40.json'
+      - 'scripts/ui-release-gate-r40.cjs'
+      - 'test/ui-release-gate-r40.test.cjs'
+      - '.github/workflows/ui-release-r40.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-blocker-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify negative and safety contracts
+        run: node --test test/ui-release-gate-r40.test.cjs
+      - name: Verify promotion is blocked
+        run: node scripts/ui-release-gate-r40.cjs --assert-blocked
+      - name: Independent self-test
+        run: node scripts/ui-release-gate-r40.cjs --self-test
