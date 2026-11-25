@@ -9,7 +9,7 @@ import {createAsyncOperationTools} from '../src/async-operations.mjs';
 import {createV012OwnerNativeHostLease} from '../src/v012-owner-native-host-lease-bootstrap.mjs';
 import {createV012SharedPhysicalRootFence} from '../src/v012-shared-physical-root-fence.mjs';
 import {ensureWindowsMonitorDirectories} from '../src/browser-companion-windows-private.mjs';
-import {processContainmentAvailable} from '../src/process-containment.mjs';
+import {processContainmentAvailable,isSerializedProcessCessationProof} from '../src/process-containment.mjs';
 import {DeliveryStore} from '../src/delivery-store.mjs';
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),HOST='native-async-fixture';
 const route={hostId:HOST,profileId:'fixture',principalId:'fixture-owner',
@@ -97,7 +97,11 @@ test('native background worker keeps root, returns receipt, and releases only wi
      const digestPayload=Object.fromEntries(fields.map(k=>[k,forged.processCessationProof[k]]));
      forged.processCessationProof.proofDigest=createHash('sha256')
        .update(JSON.stringify(digestPayload)).digest('hex');
-     fs.writeFileSync(certificateFile,JSON.stringify(forged)+'\\n',{mode:0o600});
+     assert.equal(isSerializedProcessCessationProof(forged.processCessationProof,f.observed.binding),true,
+       'tampered proof must satisfy the public SHA256 and original binding validation');
+     fs.writeFileSync(certificateFile,JSON.stringify(forged)+'\n',{mode:0o600});
+     assert.deepEqual(JSON.parse(fs.readFileSync(certificateFile,'utf8')),forged,
+       'tamper fixture must contain valid JSON rather than malformed content');
      assert.equal(await f.tools.readNativeRootCompletion(f.observed),null,
        'untrusted file modification cannot forge owner IPC certificate');
    }finally{fs.writeFileSync(certificateFile,originalCertificate,{mode:0o600});}
