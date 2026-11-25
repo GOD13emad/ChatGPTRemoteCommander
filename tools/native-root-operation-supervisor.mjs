@@ -44,6 +44,15 @@ try{
    processCessationProof:proof};
  const target=path.join(path.dirname(spec.resultPath),'native-completion.json');
  await fs.writeFile(target,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx'});
+ // Only the owner-spawned native controller can send through this anonymous
+ // IPC endpoint; its contained operation-worker never inherits that handle.
+ // A persisted file alone is NEVER acceptable cessation provenance.
+ if(typeof process.send!=='function')throw Error('NATIVE_OPERATION_OWNER_IPC_REQUIRED');
+ await new Promise((resolve,reject)=>process.send({
+   schema:1,type:'V012_NATIVE_CESSATION',operationId:spec.operationId,
+   inputHash:spec.inputHash,receiptSha256:value.receiptSha256,
+   proofDigest:proof.proofDigest
+ },error=>error?reject(error):resolve()));
 }catch(error){
  raw.fill(0);
  // No synthetic proof, retry, deletion, or native lease release on failure.

@@ -14,6 +14,11 @@ const WORKER_SCHEDULING_HARD_GRACE_MS = 60000;
 const REQUEST_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const OP_RE = /^[a-f0-9-]{36}$/;
 
+// Trust in an anonymous owner-supervisor IPC channel is process-local, but
+// survives logical manager re-creation and profile changes in the SAME Core
+// process. A real OS process restart has no certificate and stays UNCERTAIN.
+const liveNativeSupervisors = new Map();
+
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
@@ -1245,10 +1250,30 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       const worker = spawn(process.execPath, [actualWorker], {
         detached: true,
         windowsHide: true,
-        stdio: ['pipe', 'ignore', 'ignore']
+        // The IPC endpoint is inherited only by the trusted supervisor,
+        // not by its contained effect worker or the user's command.
+        stdio: nativeRequired
+          ? ['pipe', 'ignore', 'ignore', 'ipc']
+          : ['pipe', 'ignore', 'ignore']
       });
       if(nativeRequired){
         nativeWorker=worker;
+        const observer={pid:worker.pid,closed:false,exitCode:null,signal:null,certificate:null};
+        liveNativeSupervisors.set(execution.nativeRootBinding.leaseId,observer);
+        worker.on('message',message=>{
+          if(observer.certificate!==null
+            ||message?.schema!==1||message?.type!=='V012_NATIVE_CESSATION'
+            ||message.operationId!==operationId||message.inputHash!==inputHash
+            ||!/^[a-f0-9]{64}$/.test(message.receiptSha256??'')
+            ||!/^[a-f0-9]{64}$/.test(message.proofDigest??''))
+            return;
+          observer.certificate=Object.freeze({
+            receiptSha256:message.receiptSha256,proofDigest:message.proofDigest
+          });
+        });
+        worker.once('close',(code,signal)=>{
+          observer.closed=true;observer.exitCode=code;observer.signal=signal;
+        });
         // A failed controller/closed stdin cannot produce a native completion
         // proof. Keep the operation uncertain without crashing the Core on
         // an asynchronous spawn/EPIPE event.
@@ -1418,6 +1443,17 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
           ||reservation.inputHash!==inputHash||reservation.nativeRootRequired!==true
           ||hashJson(reservation.requestId)!==locator.requestKey
           ||hashJson(reservation.nativeRootBinding)!==hashJson(binding))return null;
+        // A stored SHA256 digest only validates integrity, not provenance.
+        // Require the owner-spawned controller's anonymous IPC certificate
+        // and actual child close, keyed by the original native DB binding.
+        // Other profiles inside this Core can use the same trusted event.
+        // A true OS process restart loses the evidence and stays UNCERTAIN
+        // until an independent native broker is implemented.
+        const observed=liveNativeSupervisors.get(binding?.leaseId);
+        if(!observed||observed.pid!==reservation.nativeSupervisorPid
+          ||observed.closed!==true||observed.exitCode!==0||observed.signal!==null
+          ||!observed.certificate)
+          return null;
         const bytes=await readPrivate(p.result),proof=JSON.parse((await readPrivate(proofFile)).toString('utf8'));
         const receipt=JSON.parse(bytes.toString('utf8'));
         const {isSerializedProcessCessationProof}=await import('./process-containment.mjs');
@@ -1425,6 +1461,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
           ||receipt.operationId!==operationId||receipt.inputHash!==inputHash
           ||proof.schema!==1||proof.operationId!==operationId||proof.inputHash!==inputHash
           ||proof.receiptSha256!==createHash('sha256').update(bytes).digest('hex')
+          ||proof.receiptSha256!==observed.certificate.receiptSha256
+          ||proof.processCessationProof?.proofDigest!==observed.certificate.proofDigest
           ||!isSerializedProcessCessationProof(proof.processCessationProof,binding))return null;
         return Object.freeze({inputHash,processCessationProof:proof.processCessationProof});
       }catch{return null;}
