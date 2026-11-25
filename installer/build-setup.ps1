@@ -88,7 +88,83 @@ if($BrowserInstaller){
   $BrowserInstaller=[IO.Path]::GetFullPath($BrowserInstaller)
   if(-not(Test-Path -LiteralPath $BrowserInstaller -PathType Leaf)){throw "Browser installer not found: $BrowserInstaller"}
   if([IO.Path]::GetExtension($BrowserInstaller) -ne '.exe'){throw 'Browser installer must be an .exe artifact.'}
-  $BrowserSha=(Get-FileHash -LiteralPath $BrowserInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+  $BrowserVerifier=Join-Path $Root 'tools\verify-browser-setup-digest.ps1'
+  $verified=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $BrowserVerifier -BrowserInstaller $BrowserInstaller -CatalogPath (Join-Path $Root 'installer\products.json'))
+  if($LASTEXITCODE -ne 0 -or $verified.Count -ne 1 -or [string]$verified[0] -cnotmatch '^[0-9a-f]{64}
+  $args+=('/DBrowserSetup='+$BrowserInstaller)
+}
+$SnapshotSha=$null
+if($SourceBundle){
+  if($SourceSnapshot){throw 'CORE_SHALLOW_SNAPSHOT_AND_LEGACY_BUNDLE_CONFLICT'}
+  if($env:GITHUB_ACTIONS -ne 'true' -or -not $env:RUNNER_TEMP){
+    throw 'CORE_LEGACY_BUNDLE_DIRECT_USE_FORBIDDEN'
+  }
+  # Legacy CI still creates a historical .bundle but it must NEVER enter
+  # a release payload. Recreate the exact pinned source as a one-commit
+  # shallow bare Git snapshot from the trusted checkout instead.
+  $SourceSnapshot=Join-Path $env:RUNNER_TEMP 'remote-commander-core-shallow.zip'
+  if(Test-Path -LiteralPath $SourceSnapshot){throw 'CORE_SHALLOW_SNAPSHOT_OUTPUT_PREEXISTS'}
+  $helper=Join-Path $Root 'tools\offline-shallow-source.ps1'
+  $created=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $helper -Mode Create -SourceRoot $Root -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot)
+  if($LASTEXITCODE -ne 0){throw 'CORE_SHALLOW_SNAPSHOT_BUILD_FAILED'}
+  $createdRecord=($created|Select-Object -Last 1|ConvertFrom-Json)
+  if($createdRecord.status -ne 'SHALLOW_SOURCE_SNAPSHOT_CREATED'){throw 'CORE_SHALLOW_SNAPSHOT_BUILD_RECEIPT_INVALID'}
+  Write-Output 'LEGACY_GIT_BUNDLE_NEVER_EMBEDDED'
+}
+if($SourceSnapshot){
+  $SourceSnapshot=[IO.Path]::GetFullPath($SourceSnapshot)
+  if(-not(Test-Path -LiteralPath $SourceSnapshot -PathType Leaf) -or
+     [IO.Path]::GetExtension($SourceSnapshot) -ne '.zip'){throw 'CORE_SHALLOW_SNAPSHOT_REQUIRED'}
+  # An on-runner native regression proves the actual offline exact-commit
+  # import and historical-object denial before compiling the Setup EXE.
+  & node.exe --test (Join-Path $Root 'test/offline-shallow-source.test.mjs') | Out-Host
+  if($LASTEXITCODE -ne 0){throw 'CORE_SHALLOW_SOURCE_NATIVE_REGRESSION_FAILED'}
+  $helper=Join-Path $Root 'tools\offline-shallow-source.ps1'
+  $receipt=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $helper -Mode Verify -SourceRef $SourceRef -ExpectedCommit $ExpectedCommit -Archive $SourceSnapshot)
+  if($LASTEXITCODE -ne 0){throw 'CORE_SHALLOW_SNAPSHOT_VERIFICATION_FAILED'}
+  $parsed=($receipt|Select-Object -Last 1|ConvertFrom-Json)
+  if($parsed.status -ne 'SHALLOW_SOURCE_SNAPSHOT_VERIFIED'){throw 'CORE_SHALLOW_SNAPSHOT_NOT_VERIFIED'}
+  $SnapshotSha=(Get-FileHash -LiteralPath $SourceSnapshot -Algorithm SHA256).Hash.ToLowerInvariant()
+  $args+=('/DCoreSourceSnapshot='+$SourceSnapshot)
+  $args+=('/DCoreSourceSnapshotSHA256='+$SnapshotSha)
+}
+$args+=(Join-Path $PSScriptRoot 'RemoteCommander.iss')
+
+& $Iscc @args
+if($LASTEXITCODE -ne 0){throw "Inno Setup compile failed: $LASTEXITCODE"}
+
+# Detect BrowserSetup drift during compilation; the prior check binds bytes to
+# installer/products.json, not merely to a caller-supplied arbitrary .exe.
+if($BrowserInstaller){
+  $verifiedAfter=@(& pwsh.exe -NoLogo -NoProfile -NonInteractive -File $BrowserVerifier -BrowserInstaller $BrowserInstaller -CatalogPath (Join-Path $Root 'installer\products.json'))
+  if($LASTEXITCODE -ne 0 -or $verifiedAfter.Count -ne 1 -or [string]$verifiedAfter[0] -cne $BrowserSha){
+    throw 'BROWSER_CATALOG_PIN_CHANGED_DURING_BUILD'
+  }
+}
+
+$Setup=Join-Path $Root ("dist\installer\Remote-Commander-Setup-v$Version.exe")
+if(-not(Test-Path -LiteralPath $Setup -PathType Leaf)){throw "Expected setup artifact missing: $Setup"}
+$Sha=(Get-FileHash -LiteralPath $Setup -Algorithm SHA256).Hash.ToLowerInvariant()
+$Signature=Get-AuthenticodeSignature -LiteralPath $Setup
+$result=[ordered]@{
+  status='REMOTE_COMMANDER_SETUP_BUILD_PASS'
+  version=$Version
+  sourceRef=$SourceRef
+  commit=$ExpectedCommit
+  setup=$Setup
+  sha256=$Sha
+  signatureStatus=[string]$Signature.Status
+  browserBundled=[bool]$BrowserInstaller
+  browserSha256=$BrowserSha
+  windowsJobRunnerSha256=$RunnerSha
+  coreBundled=[bool]$SourceSnapshot
+  coreSourceSnapshotSha256=$SnapshotSha
+}
+$result|ConvertTo-Json -Depth 5
+){
+    throw 'BROWSER_CATALOG_PIN_VERIFICATION_FAILED'
+  }
+  $BrowserSha=[string]$verified[0]
   $args+=('/DBrowserSetup='+$BrowserInstaller)
 }
 $SnapshotSha=$null
