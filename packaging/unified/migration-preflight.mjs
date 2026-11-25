@@ -50,6 +50,18 @@ export function isLinuxOwnerCommanderLegacyTunnelUnit({
   const name=unit.slice(0,-'-tunnel.service'.length);
   return command[2].trim()===executable+' run --profile '+name;
 }
+// A graphical rebind is an auxiliary service only when its exact observed
+// command and owner-local fragment match the corresponding Core service.
+// This distinction is inventory only; it never clears an unmapped blocker.
+export function isLinuxOwnerGraphicalRebindUnit({unit,execStart,fragmentPath,home}={}){
+  if(typeof unit!=='string'||typeof home!=='string'||!path.posix.isAbsolute(home)
+    ||typeof execStart!=='string'||typeof fragmentPath!=='string')return false;
+  const m=/^(chatgpt-remote-commander-[a-z0-9][a-z0-9._-]{0,63})-graphical-rebind\.service$/.exec(unit);
+  if(!m||fragmentPath!==path.posix.join(home,'.config','systemd','user',unit))return false;
+  const command=/^\{ path=([^ ;]+) ; argv\[\]=([^;]+) ;/.exec(execStart);
+  return !!command&&command[1]==='/usr/bin/systemctl'
+    &&command[2].trim()==='/usr/bin/systemctl --user try-restart '+m[1]+'.service';
+}
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
 // The owner-selected tunnel profile is input, not a ChatGPT identity proof.
 // Never print/retain the YAML: it may contain the runtime API key.
@@ -536,6 +548,8 @@ export function assessMigration(facts){
     activeTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.active).length,
     enabledCoreUnits:units.filter(u=>u.kind==='core'&&u.enabled).length,
     enabledTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.enabled).length,
+    activeAuxiliaryUnits:units.filter(u=>u.kind==='auxiliary'&&u.active).length,
+    enabledAuxiliaryUnits:units.filter(u=>u.kind==='auxiliary'&&u.enabled).length,
     unmappedUnits:units.filter(u=>(u.active||u.enabled)&&!u.knownExecutable).length,
     blocked:[...new Set(blocked)],promotionAuthority:'EXTERNAL_REQUIRED'});
 }
@@ -630,7 +644,8 @@ function linuxFacts({profileName=null}={}){
       const active=result.stdout.includes('ActiveState=active');
       const nativeTunnel=execStart.includes('/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh');
       const nativeCore=execStart.includes('/usr/lib/chatgpt-remote-commander/runtime/node');
-      units.push({id:sha(name),kind:legacyTunnel||name.includes('-tunnel')?'tunnel':'core',
+      const auxiliary=isLinuxOwnerGraphicalRebindUnit({unit:name,execStart,fragmentPath,home:process.env.HOME});
+      units.push({id:sha(name),kind:auxiliary?'auxiliary':legacyTunnel||name.includes('-tunnel')?'tunnel':'core',
         active,enabled:enabled.has(name),
         knownExecutable:(nativeTunnel||nativeCore)&&!legacyTunnel,
         nativeTunnelCompatible:nativeTunnel&&!legacyTunnel});

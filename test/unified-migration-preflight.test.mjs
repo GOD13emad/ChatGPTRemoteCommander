@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
+import {assessMigration,isLinuxOwnerGraphicalRebindUnit,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -883,4 +883,32 @@ test('Windows read-only DPAPI preflight pins machine PowerShell independently of
   const actual=fs.readFileSync(modulePath,'utf8');
   assert.doesNotMatch(actual,/const exe=path\.win32\.join\(programFiles,/,
     'never derive the executable from user-controllable ProgramFiles');
+});
+
+test('read-only inventory counts graphical rebind auxiliary separately while retaining every blocker',()=>{
+ const r=assessMigration({platform:'linux',inventoryReliable:true,nativePackageInstalled:true,
+   units:[{kind:'core',active:true,enabled:true,knownExecutable:false},
+     {kind:'auxiliary',active:false,enabled:true,knownExecutable:false}]});
+ assert.equal(r.activeCoreUnits,1);
+ assert.equal(r.enabledCoreUnits,1);
+ assert.equal(r.enabledAuxiliaryUnits,1);
+ assert.equal(r.unmappedUnits,2);
+ assert.ok(r.blocked.includes('ENABLED_AUTOSTART_EXECUTABLE_UNMAPPED'));
+ assert.ok(r.blocked.includes('ACTIVE_SERVICE_EXECUTABLE_UNMAPPED'));
+ assert.equal(r.decision,'NO_PROMOTE');
+});
+
+ test('graphical rebind classification requires the exact corresponding owner-local service command',()=>{
+ const home='/home/owner';const unit='chatgpt-remote-commander-emad-mmz-graphical-rebind.service';
+ const fixture={unit,home,fragmentPath:home+'/.config/systemd/user/'+unit,
+   execStart:'{ path=/usr/bin/systemctl ; argv[]=/usr/bin/systemctl --user try-restart chatgpt-remote-commander-emad-mmz.service ; ignore_errors=no ; }'};
+ assert.equal(isLinuxOwnerGraphicalRebindUnit(fixture),true);
+ for(const bad of [{unit:'chatgpt-remote-commander-other-graphical-rebind.service'},
+   {fragmentPath:'/etc/systemd/user/'+unit},{home:'relative'},
+   {execStart:fixture.execStart.replace('try-restart','restart')},
+   {execStart:fixture.execStart.replace('emad-mmz.service','other.service')},
+   {execStart:fixture.execStart.replace('path=/usr/bin/systemctl','path=/bin/sh')},
+   {execStart:fixture.execStart.replace('.service ;','.service other.service ;')}]){
+  assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,...bad}),false);
+ }
 });
