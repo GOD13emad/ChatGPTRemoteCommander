@@ -41,7 +41,9 @@ const files = [
   "test/v101-pinned-interop-runner.test.mjs",
   "test/v012-shared-physical-root-fence.test.mjs",
   "test/v012-shared-physical-root-fence-windows-native.test.mjs",
-  "test/v012-shared-core-workflow-fence.test.mjs"
+  "test/v012-shared-core-workflow-fence.test.mjs",
+  "test/v012-native-deferred-lease.test.mjs",
+  "test/v012-native-async-root-lifetime.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -76,7 +78,9 @@ const batches = [
   files.slice(36, 37), // Pinned Interop runner negative contracts (not positive Interop)
   files.slice(37, 38), // Shared physical-root lifetime and quarantine
   files.slice(38, 39), // Independent native Windows holder/WorkflowStore
-  files.slice(39, 40) // Protected Core gate and WorkflowTools composition
+  files.slice(39, 40), // Protected Core gate and WorkflowTools composition
+  files.slice(40, 41), // Exact native cessation, restart and stale-proof denial
+  files.slice(41, 42) // Native async tree, durable public completion and revoke
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
@@ -157,6 +161,8 @@ for (let index = range.first-1; index < range.last; index++) {
         : index === 16 ? 60000
         : index === 17 ? 240000
         : index === 19 ? 270000
+        : index === 26 ? 125000
+        : index === 27 ? 125000
         : 30000
     });
     if (result.error) {

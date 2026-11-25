@@ -108,6 +108,7 @@ function captureProcess(file, args, {
   env,
   timeoutMs = 30000,
   outputLimit = 32768,
+  input = null,
   onTimeout = null
 } = {}) {
   return new Promise(resolve => {
@@ -119,13 +120,17 @@ function captureProcess(file, args, {
         windowsHide: true,
         shell: false,
         detached: false,
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: [input === null ? 'ignore' : 'pipe', 'pipe', 'pipe']
       });
     } catch (error) {
       resolve({ code: null, signal: null, stdout: '', stderr: '', truncated: false, timedOut: false, spawnError: error });
       return;
     }
     let stdout = '';
+    if(input!==null){
+      child.stdin.on('error',()=>{});
+      child.stdin.end(input);
+    }
     let stderr = '';
     let truncated = false;
     let timedOut = false;
@@ -193,7 +198,7 @@ function commandError(code, message = code) {
   return Object.assign(new Error(message), { workflowCode: code });
 }
 
-async function runLinuxContained({ program, args, cwd, timeoutMs, outputLimit, env, binding }) {
+async function runLinuxContained({ program, args, cwd, timeoutMs, outputLimit, env, binding, input }) {
   const runtimeDir = process.env.XDG_RUNTIME_DIR;
   if (!runtimeDir || !path.isAbsolute(runtimeDir)) throw commandError('PROCESS_CONTAINMENT_UNAVAILABLE');
   let runtimeInfo;
@@ -227,6 +232,7 @@ async function runLinuxContained({ program, args, cwd, timeoutMs, outputLimit, e
       env: process.env,
       timeoutMs: timeoutMs + 12000,
       outputLimit,
+      input,
       onTimeout: async child => {
         await captureProcess('systemctl', ['--user', 'stop', unitName], {
           cwd, env: process.env, timeoutMs: 5000, outputLimit: 4096
@@ -305,7 +311,7 @@ function parseWindowsReport(raw, runId) {
   return { report, output: lines.join('\n') };
 }
 
-async function runWindowsContained({ program, args, cwd, timeoutMs, outputLimit, env, binding }) {
+async function runWindowsContained({ program, args, cwd, timeoutMs, outputLimit, env, binding, input }) {
   const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
   const scriptPath = path.resolve(moduleDirectory, '..', 'tools', 'run-owned-process-tree-windows.ps1');
   try { await stat(scriptPath); } catch { throw commandError('PROCESS_CONTAINMENT_UNAVAILABLE', 'Windows Job Object runner missing'); }
@@ -324,7 +330,7 @@ async function runWindowsContained({ program, args, cwd, timeoutMs, outputLimit,
       '-ReportPath', reportPath
     ];
     const run = await captureProcess('pwsh.exe', helperArgs, {
-      cwd, env, timeoutMs: timeoutMs + 12000, outputLimit,
+      cwd, env, timeoutMs: timeoutMs + 12000, outputLimit, input,
       onTimeout: child => { if (child.pid) terminateProcessTree(child.pid, { signal: 'SIGKILL' }); }
     });
     if (run.spawnError) throw commandError('PROCESS_CONTAINMENT_UNAVAILABLE', 'PowerShell 7 Job Object runner unavailable: ' + run.spawnError.message);
@@ -400,14 +406,16 @@ export async function processContainmentAvailable() {
   return false;
 }
 
-export async function runContainedProjectCommand({ program, args, cwd, timeoutMs, outputLimit, env, binding }) {
+export async function runContainedProjectCommand({ program, args, cwd, timeoutMs, outputLimit, env, binding, input = null }) {
   if (!validBinding(binding)) throw commandError('PROCESS_CONTAINMENT_BINDING_REQUIRED');
+  if(input!==null&&((typeof input!=='string'&&!Buffer.isBuffer(input))
+    ||Buffer.byteLength(input)>1024*1024))throw commandError('PROCESS_CONTAINMENT_INPUT_INVALID');
   if (!(await processContainmentAvailable())) throw commandError('PROCESS_CONTAINMENT_UNAVAILABLE');
   if (process.platform === 'linux') {
-    return runLinuxContained({ program, args, cwd, timeoutMs, outputLimit, env, binding });
+    return runLinuxContained({ program, args, cwd, timeoutMs, outputLimit, env, binding, input });
   }
   if (process.platform === 'win32') {
-    return runWindowsContained({ program, args, cwd, timeoutMs, outputLimit, env, binding });
+    return runWindowsContained({ program, args, cwd, timeoutMs, outputLimit, env, binding, input });
   }
   throw commandError('PROCESS_CONTAINMENT_UNAVAILABLE');
 }

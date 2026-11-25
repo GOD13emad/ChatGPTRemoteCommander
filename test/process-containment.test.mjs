@@ -13,6 +13,21 @@ import {
   processContainmentAvailable
 } from '../src/process-containment.mjs';
 
+test('contained child receives exact bounded stdin without command-line payload transport', {timeout:30000}, async t=>{
+  if(!(await processContainmentAvailable()))return t.skip('native containment provider unavailable');
+  const f=fixture();
+  try{
+    const input=Buffer.from([0,255,10,13,92,34,195,169,0,127]);
+    const code="const c=[];process.stdin.on('data',b=>c.push(b));process.stdin.on('end',()=>process.stdout.write(require('node:crypto').createHash('sha256').update(Buffer.concat(c)).digest('hex')+'\\n'));";
+    const result=await runContainedProjectCommand({
+      program:process.execPath,args:['-e',code],cwd:f.root,
+      timeoutMs:10000,outputLimit:4096,env:process.env,binding:f.binding,input
+    });
+    assert.equal(result.stdout.trim(),createHash('sha256').update(input).digest('hex'));
+    assert.equal(isTrustedProcessCessationProof(result.processCessationProof,f.binding),true);
+  }finally{fs.rmSync(f.root,{recursive:true,force:true});}
+});
+
 function fixture(){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-contained-command-'));
   const operationId=randomUUID();

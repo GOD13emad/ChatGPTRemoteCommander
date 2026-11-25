@@ -162,14 +162,21 @@ export function createV2PrivatePairOperationGate({
         // physical-root coordinator must not reconstruct identity from a
         // caller-selected resource key or a mutable current-operation slot.
         withLease:withRouteLease===null?withLease:
-          (_resource,work)=>withRouteLease(r,work),receiptStore,
+          (_resource,work)=>withRouteLease(r,work,tool),receiptStore,
         // At-most-once must detect changed arguments for the SAME operationId.
         // Existing MutationIdempotencyStore retains only its input digest.
         receiptInput:Object.freeze({route:r,arguments:frozenArgs}),
         // The exact verified tool identity must reach the real Core effect
         // after admission; a mutable shared "currentTool" is never authority.
         // Third argument preserves existing (route,args) callbacks.
-        execute:r=>execute(r,frozenArgs,tool)
+        execute:r=>execute(r,frozenArgs,tool,Object.freeze({
+          authorizeNativeLaunch:async()=>{
+            const c=await verify(request,r);
+            return await verifyExactNativeGrant(Object.freeze({
+              route:r,tool,arguments:frozenArgs,ownerContext:c
+            }))===true;
+          }
+        }))
       },tool);
     }
   });

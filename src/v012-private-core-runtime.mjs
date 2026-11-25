@@ -166,15 +166,27 @@ export function createV012PrivateCoreRuntime({
       readCurrentOwnerSidHash:readOwner,verifyExactNativeGrant,
       withLease:nativeHostLease?.withLease??worker.withLease,
       withRouteLease:physicalRootFence===null?null:
-        (route,work)=>physicalRootFence.withDirectRouteLease(route,work),
+        (route,work,tool)=>{
+          // Control-plane observation/cancellation cannot enter the project
+          // sink. Exact Native Worker grants still apply; a running writer
+          // must remain observable and cancellable without taking its lock.
+          const control=['system_status','operation_status','operation_result','operation_cancel'].includes(tool);
+          const definition=names.get(tool);
+          if(control&&(definition?.annotations?.readOnlyHint===true
+            ||tool==='operation_cancel'&&definition?.annotations?.idempotentHint===true)){
+            const key=JSON.stringify([1,route.hostId,route.target.kind,route.target.id]);
+            return nativeHostLease.withLease(key,work);
+          }
+          return physicalRootFence.withDirectRouteLease(route,work);
+        },
       receiptStore:worker.receiptStore,now,
-      execute:async(route,args,tool)=>{
+      execute:async(route,args,tool,nativeAuthorization)=>{
         if(!names.has(tool)
           ||validateJsonSchema(args,names.get(tool).inputSchema).length!==0)
           fail('V012_PRIVATE_CORE_TOOL_DENIED');
         // This IS the installed Core dispatcher, not a mock, legacy HTTP
         // proxy, second plugin or separate process with weaker access checks.
-        return core.dispatch(tool,args,route);
+        return core.dispatch(tool,args,route,nativeAuthorization);
       }
     });
     return createV101G1PrivatePairRuntime({

@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { watch as fsWatch } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { mkdir, open, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, realpath, rename, stat, lstat, unlink, writeFile } from 'node:fs/promises';
 import { expandPathValue } from './platform.mjs';
 
 const TERMINAL = new Set(['SUCCEEDED', 'FAILED', 'TIMED_OUT', 'CANCELLED', 'UNCERTAIN']);
@@ -147,7 +147,9 @@ export const asyncOperationDefinitions = [
   }
 ];
 
-export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null, onTerminal = null, validateContinuation = null, protectedDeliveryOrigin = null }) {
+export function createAsyncOperationTools({ config, prepare, workerPath, deliveryStore = null, onTerminal = null, validateContinuation = null, protectedDeliveryOrigin = null, nativeRootExecution = null }) {
+  if(nativeRootExecution!==null&&(typeof nativeRootExecution.required!=='function'
+    ||typeof nativeRootExecution.bind!=='function'))throw Error('ASYNC_NATIVE_ROOT_HOST_REQUIRED');
   // Only trusted Host bootstrap may supply these callbacks; operation_start
   // inputs are never allowed to select an owner/chat/grant or signed receipt.
   const declaredOriginRequirement=config.asyncOperations?.requireHostSignedOrigin;
@@ -181,6 +183,22 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   const resolvedWorker = workerPath ?? fileURLToPath(new URL('../tools/operation-worker.mjs', import.meta.url));
   const operationsDir = path.join(root, 'operations');
   const requestsDir = path.join(root, 'requests');
+  async function nativePrivateDirectories(directories,create=true){
+    if(process.platform==='win32'){
+      const {ensureWindowsMonitorDirectories}=await import('./browser-companion-windows-private.mjs');
+      // The native ACL verifier deliberately bounds each call to 3 paths.
+      for(let i=0;i<directories.length;i+=3)
+        await ensureWindowsMonitorDirectories(directories.slice(i,i+3),{create});
+      return;
+    }
+    for(const dir of directories){
+      if(create)await mkdir(dir,{recursive:true,mode:0o700});
+      const info=await lstat(dir);
+      if(!info.isDirectory()||info.isSymbolicLink()||info.uid!==process.getuid()
+        ||(info.mode&0o077)!==0||await realpath(dir)!==dir)
+        throw Error('ASYNC_NATIVE_ROOT_STORAGE_UNTRUSTED');
+    }
+  }
   const deliveryIntervalMs = boundedInt(policy.deliveryReconcileMs, 5000, 1000, 60000);
   const deliveryBatchSize = boundedInt(policy.deliveryReconcileBatch, 100, 1, 500);
   // A lost native enqueue receipt is retryable, but never forever. Limit
@@ -439,6 +457,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       tool: receipt.tool,
       continuation: reservation.continuation ?? null,
       ...(reservation.originAdmissionId ? {originAdmissionId:reservation.originAdmissionId} : {}),
+      ...(reservation.nativeRootRequired ? {nativeRootRequired:true} : {}),
       status: receipt.status,
       createdAt: reservation.createdAt ?? receipt.startedAt ?? finishedAt,
       updatedAt: finishedAt,
@@ -456,7 +475,24 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     await atomicJson(p.state, recovered);
     return recovered;
   }
+  async function nativeCompletionProjection(state) {
+    if (!state || !TERMINAL.has(state.status)) return state;
+    const reservation = await reservationForOperation(state.operationId);
+    if (!reservation?.nativeRootRequired && state.nativeRootRequired!==true) return state;
+    const completed = reservation?.nativeRootBinding && await api.readNativeRootCompletion({
+      operationId:state.operationId,inputHash:reservation.inputHash,binding:reservation.nativeRootBinding
+    });
+    if (completed) return state;
+    // A worker receipt describes only its direct child. Public completion and
+    // delivery must wait for the native provider to attest the whole tree.
+    const controllerAlive = Number.isSafeInteger(reservation?.nativeSupervisorPid)
+      && reservation.nativeSupervisorPid > 0 && alive(reservation.nativeSupervisorPid);
+    return {...state,status:controllerAlive ? 'RUNNING' : 'UNCERTAIN',finishedAt:null,
+      nativeCessationPending:true,workerOutcomeStatus:state.status,
+      failureCode:controllerAlive ? null : 'NATIVE_OPERATION_CESSATION_UNVERIFIED'};
+  }
   async function publishTerminal(state) {
+    state = await nativeCompletionProjection(state);
     if (!deliveryStore || !state || !TERMINAL.has(state.status)) return null;
     if (state.deliveryMode === 'transport-retry-only') {
       deliveryTracked.delete(state.operationId);
@@ -467,7 +503,11 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     const p = opPaths(state.operationId);
     let receipt = null;
     try { receipt = await readJson(p.result); } catch (error) { if (error?.code !== 'ENOENT') throw error; }
-    const payload = compactReceipt(receipt) ?? {
+    const payload = state.nativeCessationPending ? {
+      operationId:state.operationId,tool:state.tool,inputHash:state.inputHash,
+      status:state.status,failureCode:state.failureCode,nativeCessationPending:true,
+      workerOutcomeStatus:state.workerOutcomeStatus,finishedAt:null
+    } : compactReceipt(receipt) ?? {
       operationId: state.operationId,
       tool: state.tool,
       inputHash: state.inputHash,
@@ -681,6 +721,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
   }
 
   async function attachDelivery(state) {
+    state = await nativeCompletionProjection(state);
     if (!TERMINAL.has(state?.status)) return state;
     let result = state;
     if (deliveryStore) {
@@ -966,7 +1007,13 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     });
   }
 
-  async function start(input) {
+  async function start(input,{authorizeNativeLaunch=null}={}) {
+    const nativeRequired=nativeRootExecution===null?false:nativeRootExecution.required();
+    if(typeof nativeRequired!=='boolean')throw Error('ASYNC_NATIVE_ROOT_POLICY_INVALID');
+    if(nativeRequired&&(workerPath!==undefined||typeof authorizeNativeLaunch!=='function'
+      ||!(await (await import('./process-containment.mjs')).processContainmentAvailable())))
+      throw Error('ASYNC_NATIVE_ROOT_CONTAINMENT_REQUIRED');
+    if(nativeRequired)await nativePrivateDirectories([root,operationsDir,requestsDir]);
     if (!enabled) throw new Error('async operations are disabled');
     if (!REQUEST_RE.test(input.requestId)) throw new Error('invalid requestId');
     const correlationId = input.correlationId ?? input.requestId;
@@ -1075,7 +1122,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     try {
       const handle = await open(requestPath, 'wx', 0o600);
       try {
-        await handle.writeFile(JSON.stringify({ requestId: input.requestId, correlationId, operationId, inputHash, continuationHash, continuation, deliveryMode, ...(originAdmissionId ? {originAdmissionId} : {}), createdAt: new Date().toISOString() }) + '\n');
+        await handle.writeFile(JSON.stringify({ requestId: input.requestId, correlationId, operationId, inputHash, continuationHash, continuation, deliveryMode, ...(nativeRequired ? {nativeRootRequired:true} : {}), ...(originAdmissionId ? {originAdmissionId} : {}), createdAt: new Date().toISOString() }) + '\n');
       } finally {
         await handle.close();
       }
@@ -1104,7 +1151,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     }
 
     const p = opPaths(operationId);
-    await mkdir(p.dir, { recursive: true, mode: 0o700 });
+    if(nativeRequired)await nativePrivateDirectories([p.dir]);
+    else await mkdir(p.dir, { recursive: true, mode: 0o700 });
     const operationTimeoutMs = boundedInt(prepared.timeoutMs, 300000, 1000, 24 * 60 * 60 * 1000);
     const outputLimit = Math.min(boundedInt(prepared.outputLimit, maxOutputBytes, 4096, maxOutputBytes), maxOutputBytes);
     const now = new Date().toISOString();
@@ -1124,6 +1172,7 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       workerPid: null,
       childPid: null,
       continuation,
+      ...(nativeRequired ? {nativeRootRequired:true} : {}),
       ...(originAdmissionId ? {originAdmissionId} : {})
     };
     await atomicJson(p.state, baseState);
@@ -1174,19 +1223,53 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
         throw new Error('ASYNC_DELIVERY_SIGNED_ORIGIN_ADMISSION_REVOKED');
       }
     }
+    let nativeWorker = null;
     try {
-      const worker = spawn(process.execPath, [resolvedWorker], {
+      if(nativeRequired&&await authorizeNativeLaunch()!==true)
+        throw Error('ASYNC_NATIVE_ROOT_AUTHORIZATION_REVOKED');
+      // Binding and spawn are synchronous after the final awaited grant check.
+      // No caller input can select the supervisor, binding or proof path.
+      if(nativeRequired){
+        execution.nativeRootBinding=nativeRootExecution.bind({operationId,inputHash,
+          storage:Object.freeze({stateRoot:root,requestKey:hashJson(input.requestId)})});
+        const reservation={...await readJson(requestPath),nativeRootBinding:execution.nativeRootBinding};
+        await atomicJson(requestPath,reservation);
+        reservationByOperation.set(operationId,reservation);
+        // Persisting the binding awaited I/O. Recheck the actual grant again;
+        // the following spawn has no intervening await.
+        if(await authorizeNativeLaunch()!==true)throw Error('ASYNC_NATIVE_ROOT_AUTHORIZATION_REVOKED');
+      }
+      const actualWorker=nativeRequired
+        ?fileURLToPath(new URL('../tools/native-root-operation-supervisor.mjs',import.meta.url))
+        :resolvedWorker;
+      const worker = spawn(process.execPath, [actualWorker], {
         detached: true,
         windowsHide: true,
         stdio: ['pipe', 'ignore', 'ignore']
       });
+      if(nativeRequired){
+        nativeWorker=worker;
+        // A failed controller/closed stdin cannot produce a native completion
+        // proof. Keep the operation uncertain without crashing the Core on
+        // an asynchronous spawn/EPIPE event.
+        worker.once('error',()=>{});
+        worker.stdin.on('error',()=>{});
+        const reservation={...await readJson(requestPath),nativeSupervisorPid:worker.pid};
+        await atomicJson(requestPath,reservation);
+        reservationByOperation.set(operationId,reservation);
+      }
       const queued = { ...baseState, workerPid: worker.pid, updatedAt: new Date().toISOString() };
       await atomicJson(p.state, queued);
+      if(nativeRequired&&await authorizeNativeLaunch()!==true)
+        throw Error('ASYNC_NATIVE_ROOT_AUTHORIZATION_REVOKED');
       worker.stdin.end(JSON.stringify(execution));
       if (continuation) observeWorkerExit(worker, operationId);
       worker.unref();
       return { operationId, requestId: input.requestId, correlationId, duplicate: false, status: 'QUEUED', continuationAttached: !!continuation };
     } catch (error) {
+      // No stdin spec was delivered on this path, so the controller cannot
+      // have launched an operation. Do not leave it waiting on an open pipe.
+      if(nativeWorker){nativeWorker.stdin.destroy();nativeWorker.kill();nativeWorker.unref();}
       await atomicJson(p.state, {
         ...baseState,
         status: 'FAILED',
@@ -1204,7 +1287,10 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
     const tailBytes = boundedInt(input.tailBytes, 8192, 0, 32768);
     return {
       state,
-      result: receipt,
+      result: state.nativeCessationPending && receipt ? {
+        ...receipt,status:state.status,finishedAt:null,nativeCessationPending:true,
+        workerOutcomeStatus:receipt.status,failureCode:state.failureCode
+      } : receipt,
       stdoutTail: await tailText(p.stdout, tailBytes),
       stderrTail: await tailText(p.stderr, tailBytes)
     };
@@ -1296,7 +1382,53 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       throw new Error('ASYNC_DELIVERY_SIGNED_ORIGIN_ACCESS_DENIED');
   };
 
-  return {
+  const api = {
+    async readNativeRootCompletion({operationId,inputHash,binding,storage=null}={}){
+      if(!OP_RE.test(operationId??'')||!/^[a-f0-9]{64}$/.test(inputHash??''))return null;
+      // The host-global native DB pins this locator at initial admission.
+      // It is never an MCP input. A different profile may reconcile the exact
+      // original receipt after restart, without borrowing that profile's grant.
+      if(storage!==null&&(typeof storage?.stateRoot!=='string'
+        ||!path.isAbsolute(storage.stateRoot)||storage.stateRoot.length>4096
+        ||storage.stateRoot.includes('\0')||!/^[a-f0-9]{64}$/.test(storage.requestKey??'')
+        ||Object.keys(storage).length!==2))return null;
+      let locator=storage;
+      if(locator===null){
+        const cached=await reservationForOperation(operationId);
+        if(!validReservation(cached))return null;
+        locator={stateRoot:root,requestKey:hashJson(cached.requestId)};
+      }
+      const stateRoot=locator.stateRoot;
+      const dir=path.join(stateRoot,'operations',operationId);
+      const p={dir,result:path.join(dir,'result.json')},proofFile=path.join(dir,'native-completion.json');
+      const readPrivate=async file=>{
+        const before=await lstat(file);
+        if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.size>1024*1024
+          ||process.platform==='linux'&&(before.uid!==process.getuid()||(before.mode&0o077)!==0)
+          ||await realpath(file)!==file)throw Error('ASYNC_NATIVE_PROOF_FILE_UNTRUSTED');
+        const bytes=await readFile(file),after=await lstat(file);
+        if(before.ino!==after.ino||before.dev!==after.dev||before.size!==bytes.length
+          ||before.mtimeMs!==after.mtimeMs)throw Error('ASYNC_NATIVE_PROOF_FILE_CHANGED');
+        return bytes;
+      };
+      try{
+        await nativePrivateDirectories([stateRoot,path.join(stateRoot,'operations'),path.join(stateRoot,'requests'),p.dir],false);
+        const reservation=JSON.parse((await readPrivate(path.join(stateRoot,'requests',locator.requestKey+'.json'))).toString('utf8'));
+        if(!validReservation(reservation)||reservation.operationId!==operationId
+          ||reservation.inputHash!==inputHash||reservation.nativeRootRequired!==true
+          ||hashJson(reservation.requestId)!==locator.requestKey
+          ||hashJson(reservation.nativeRootBinding)!==hashJson(binding))return null;
+        const bytes=await readPrivate(p.result),proof=JSON.parse((await readPrivate(proofFile)).toString('utf8'));
+        const receipt=JSON.parse(bytes.toString('utf8'));
+        const {isSerializedProcessCessationProof}=await import('./process-containment.mjs');
+        if(!['SUCCEEDED','FAILED','TIMED_OUT','CANCELLED'].includes(receipt.status)
+          ||receipt.operationId!==operationId||receipt.inputHash!==inputHash
+          ||proof.schema!==1||proof.operationId!==operationId||proof.inputHash!==inputHash
+          ||proof.receiptSha256!==createHash('sha256').update(bytes).digest('hex')
+          ||!isSerializedProcessCessationProof(proof.processCessationProof,binding))return null;
+        return Object.freeze({inputHash,processCessationProof:proof.processCessationProof});
+      }catch{return null;}
+    },
     definitions: asyncOperationDefinitions,
     status: () => ({
       enabled,
@@ -1338,8 +1470,8 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       deliveryTimer = null;
       try { await deliveryReconcilePromise; } catch {}
     },
-    execute: async (name, input) => {
-      if (name === 'operation_start') return start(input);
+    execute: async (name, input, nativeOptions = {}) => {
+      if (name === 'operation_start') return start(input,nativeOptions);
       if (name === 'operation_status') {
         await authorizedOperationAccess(name,input.operationId);
         const data=await statusWithWait(input.operationId,input.waitMs ?? 0);
@@ -1359,4 +1491,5 @@ export function createAsyncOperationTools({ config, prepare, workerPath, deliver
       throw new Error('unknown async operation tool');
     }
   };
+  return api;
 }

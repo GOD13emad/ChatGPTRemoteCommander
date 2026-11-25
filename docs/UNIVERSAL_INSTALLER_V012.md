@@ -395,3 +395,21 @@ no exact action grant and no OS elevation. Production activation requires a
 real owner consent, durable signed-worker registry, native exact grants,
 machine-global lease and genuine protected Core tool admission.
 The new source paths are pinned into the single native installer QA.
+
+### Deferred native operations and root reconciliation
+
+Protected background operations retain the shared native project claim after
+returning QUEUED. The existing Job Object/systemd cgroup provider supervises
+the entire operation worker tree. A private completion receipt binds its
+native cessation proof to the original operation, input digest and unique
+lease owner. Public success and COMPLETED delivery wait for this proof.
+Another profile of the same OS owner can reconcile the exact original
+private receipt using the locator pinned in the host-global lease database;
+the locator is never a remote tool argument or an execution grant.
+
+Observation and cancellation still require the exact native owner/Worker
+grant but do not wait for the project writer's lock. Missing proof, invalid
+storage, unknown legacy effects and failed supervisor startup retain their
+quarantine. No timeout, PID check or caller-supplied finished flag releases
+the claim. This source mechanism neither enrolls a production root/Worker
+nor elevates OS access or authorizes a live installation/cutover.
