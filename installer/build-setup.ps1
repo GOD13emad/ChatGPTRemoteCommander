@@ -94,6 +94,7 @@ if($BrowserInstaller){
     throw 'BROWSER_CATALOG_PIN_VERIFICATION_FAILED'
   }
   $BrowserSha=[string]$verified[0]
+  $args+=('/DBrowserSetupSHA256='+$BrowserSha)
   $args+=('/DBrowserSetup='+$BrowserInstaller)
 }
 $SnapshotSha=$null
