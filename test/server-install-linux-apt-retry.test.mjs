@@ -12,6 +12,11 @@ const bash=process.platform==='win32'
   ? join(process.env.ProgramFiles??'C:\\Program Files','Git','bin','bash.exe')
   : 'bash';
 const bashAvailable=process.platform==='win32'?existsSync(bash):true;
+ // The script is assembled from source-controlled installer functions.
+ // Send Bash source on stdin, not as a child-process command-line argument.
+ const runBashFixture=script=>spawnSync(bash,['-s','--'],{
+   input:script+'\n',encoding:'utf8',timeout:10000
+ });
 test('Linux apt bootstrap refreshes package indexes and retries transient package mirror 404', {skip:!bashAvailable},()=>{
   assert.ok(functionBody,'bootstrap package function must be extractable');
   const harness=[
@@ -33,7 +38,7 @@ test('Linux apt bootstrap refreshes package indexes and retries transient packag
     'test "$installs" -eq 2',
     'echo APT_BOOTSTRAP_TRANSIENT_404_RETRY_PASS'
   ].join('\n');
-  const result=spawnSync(bash,['-c',harness],{encoding:'utf8',timeout:10000});
+  const result=runBashFixture(harness);
   assert.equal(result.status,0,result.stderr||result.stdout);
   assert.match(result.stdout,/APT_BOOTSTRAP_TRANSIENT_404_RETRY_PASS/);
 });
@@ -53,7 +58,7 @@ test('Linux apt bootstrap fails closed after exactly three unavailable attempts'
     'test "$installs" -eq 3',
     'echo APT_BOOTSTRAP_BOUNDED_FAILURE_PASS'
   ].join('\n');
-  const result=spawnSync(bash,['-c',harness],{encoding:'utf8',timeout:10000});
+  const result=runBashFixture(harness);
   assert.equal(result.status,0,result.stderr||result.stdout);
   assert.match(result.stderr,/APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS/);
   assert.match(result.stdout,/APT_BOOTSTRAP_BOUNDED_FAILURE_PASS/);
@@ -73,7 +78,7 @@ test('Linux normal user install retries apt mirror 404 and succeeds after fresh 
     'test "$updates" -eq 2 && test "$installs" -eq 2',
     'echo USER_INSTALL_APT_RETRY_PASS'
   ].join('\n');
-  const result=spawnSync(bash,['-c',harness],{encoding:'utf8',timeout:10000});
+  const result=runBashFixture(harness);
   assert.equal(result.status,0,result.stderr||result.stdout);
   assert.match(result.stdout,/USER_INSTALL_APT_RETRY_PASS/);
 });
@@ -92,7 +97,7 @@ test('Linux normal user install remains fail-closed after three apt failures', {
     'test "$updates" -eq 3 && test "$installs" -eq 3',
     'echo USER_INSTALL_APT_BOUNDED_FAILURE_PASS'
   ].join('\n');
-  const result=spawnSync(bash,['-c',harness],{encoding:'utf8',timeout:10000});
+  const result=runBashFixture(harness);
   assert.equal(result.status,0,result.stderr||result.stdout);
   assert.match(result.stderr,/APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS/);
   assert.match(result.stdout,/USER_INSTALL_APT_BOUNDED_FAILURE_PASS/);
