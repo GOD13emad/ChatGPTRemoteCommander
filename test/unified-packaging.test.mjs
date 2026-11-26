@@ -146,18 +146,23 @@ test('hosted Ubuntu prefetches signed dependencies before expensive packaging; n
  assert.doesNotMatch(script,/apt-get update/);
 });
 
-test('PRIVATE ingress source changes trigger both native package jobs at the exact PR head',()=>{
+test('all staged Core, Companion, packaging and qualification inputs trigger both native package jobs at the exact PR head',()=>{
  const y=fs.readFileSync(path.join(repo,'.github/workflows/unified-installer-pilot.yml'),'utf8');
+ const pr=y.match(/^  pull_request:\s*\n([\s\S]*?)(?=^  workflow_dispatch:)/m)?.[1];
+ const prPaths=pr?.match(/^    paths:\s*\n([\s\S]*)/m)?.[1];
+ assert.ok(prPaths,'missing actual pull_request paths filter');
+ const patterns=[...prPaths.matchAll(/^      - "([^"\n]+)"\s*$/gm)].map(m=>m[1]);
  for(const target of [
-   'src/server-v0.3.mjs','src/v2-private-*.mjs',
-   'src/v101-private-*.mjs','src/v101-g1-loopback-runtime.mjs',
-   'src/v012-private-core-runtime.mjs',
-   'src/v012-private-*.mjs','test/v012-private-*.test.mjs',
-   'tools/provision-owner-worker-key-linux.mjs',
-   'src/v2-native-owner-session-bindings.mjs',
-   'src/worker-identity-authority.mjs',
-   'test/v2-private-*.test.mjs'
- ])assert.ok(y.includes('"'+target+'"'),'missing source-triggered installer QA: '+target);
+   'src/**','tools/**','vendor/**','assets/**','config.json','package.json','package-lock.json',
+   'extensions/chatgpt-companion/**','packaging/unified/**','installer/universal-install-contract.json',
+   'docs/release-train-0.12.json','test/**','.github/workflows/unified-installer-pilot.yml'
+ ])assert.ok(patterns.includes(target),'missing source-triggered installer QA: '+target);
+ assert.ok(patterns.every(pattern=>!pattern.startsWith('!')),'no negation may exclude a shipped input');
+ // These four paths changed in the native cessation fix without matching the old filter.
+ for(const file of ['src/async-operations.mjs','tools/native-root-operation-supervisor.mjs',
+   'test/v012-native-async-root-lifetime.test.mjs','test/v012-native-deferred-proof-authenticity.test.mjs']){
+   assert.ok(patterns.some(pattern=>pattern===file||(pattern.endsWith('/**')&&file.startsWith(pattern.slice(0,-2)))),'native fix missed: '+file);
+ }
  assert.ok(y.includes('ref: ${{ github.event.pull_request.head.sha || github.sha }}'),
    'packaging must build the exact proposed source SHA, not the synthetic PR merge');
  assert.ok(y.includes('test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"'));

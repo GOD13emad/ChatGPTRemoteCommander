@@ -1,29 +1,22 @@
 name: Unified Installer Pilot (NoPromote)
 on:
   pull_request:
+    # Match the entire committed Core archive, optional Companion, installer
+    # inputs and acceptance tests. A selective list of private ingress files
+    # missed packaged native worker/lease changes and other transitive inputs.
     paths:
+      - "src/**"
+      - "tools/**"
+      - "vendor/**"
+      - "assets/**"
+      - "config.json"
+      - "package.json"
+      - "package-lock.json"
+      - "extensions/chatgpt-companion/**"
       - "packaging/unified/**"
-      - "tools/universal-install/**"
       - "installer/universal-install-contract.json"
-      - "test/universal-native-*.test.mjs"
-      - "test/universal-native-coordinator-hosted.mjs"
-      - "test/unified-*"
-      # PRIVATE pair ingress and the installed Core tool surface are part of
-      # the shipped package, even when packaging scripts are unchanged.
-      - "src/server-v0.3.mjs"
-      - "src/v2-private-*.mjs"
-      - "src/v101-private-*.mjs"
-      - "src/v101-g1-loopback-runtime.mjs"
-      - "src/v012-private-core-runtime.mjs"
-      - "src/v012-private-*.mjs"
-      - "test/v012-private-*.test.mjs"
-      - "tools/provision-owner-worker-key-linux.mjs"
-      - "src/v2-native-owner-session-bindings.mjs"
-      - "src/v2-authorized-operation.mjs"
-      - "src/worker-identity-authority.mjs"
-      - "src/full-access-http-quarantine.mjs"
-      - "test/v2-private-*.test.mjs"
-      - "test/v101-private-*.test.mjs"
+      - "docs/release-train-0.12.json"
+      - "test/**"
       - ".github/workflows/unified-installer-pilot.yml"
   workflow_dispatch:
 permissions:

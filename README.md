@@ -2,11 +2,15 @@
 
 > **Current development identity (2026-11-22):** `0.12.0-dev.9` is the next dev23-based integration candidate (NoPromote), not an accepted release or Stable. Commander 2 / `dev19` remains a separate source lineage until its capabilities are reconciled and accepted into the unified tree. The suite has **no currently accepted Stable**. Prior GitHub releases remain historical artifacts; a GitHub `Latest` badge is not full-product acceptance. `1.0.0` remains reserved for the first fully verified Stable. See [0.12 release train](docs/RELEASE_TRAIN_0.12.md).
 
-> **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
+> **Official project brand:** **[TandemVector Labs](https://github.com/TandemVector-Labs)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
 
 > **Current published Core is [v0.10.20](docs/RELEASE_0.10.20.md).** [Release authority and open gates](docs/RELEASE_AUTHORITY.md) distinguish stable Core, separate Browser stable, and unaccepted UI/Updater drafts. `main` is not itself a release.
 
 ![ChatGPT Remote Commander icon](assets/plugin-icon.png)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/GOD13emad/GOD13emad/main/assets/projects/ChatGPTRemoteCommander-hero-20261030.png" alt="ChatGPT Remote Commander — original approved 1774×887 conceptual illustration of controlled remote workflows, not an application screenshot" width="720">
+</p>
 
 Cross-platform Windows + Linux MCP server for controlled remote project and machine access from ChatGPT through OpenAI Secure MCP Tunnel.
 
