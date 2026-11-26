@@ -437,7 +437,7 @@ test('preview upgrade refuses oversized runtime data without replacing current C
 });
 
 test('hosted public native DEB path policy admits audited packaging files and rejects private paths', {
-  skip: process.platform!=='linux'
+  skip: spawnSync(process.platform==='win32'?'python':'python3',['--version'],{windowsHide:true}).status!==0
 },()=>{
   const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
   const section=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]+?)\r?\nPUBLIC_APP_BOUNDARY/u);
@@ -448,8 +448,11 @@ test('hosted public native DEB path policy admits audited packaging files and re
     'packaging/unified/package.json',
     'packaging/unified/owner-dpapi-profile-recovery.ps1',
     'packaging/unified/owner-systemd-creds-profile-recovery.sh'];
-  const execute=(paths)=>{
-    const listing=paths.map(rel=>' -rw-r--r-- root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel).join('\n');
+  const execute=(paths,types={})=>{
+    const listing=paths.map(rel=>{
+      const mode=types[rel]??(['packaging','packaging/unified'].includes(rel)?'drwxr-xr-x':'-rw-r--r--');
+      return mode+' root/root 10 2026-11-23 ./usr/lib/chatgpt-remote-commander/app/'+rel;
+    }).join('\n');
     const code=[
       'import sys, subprocess',
       'listing=sys.argv[1]',
@@ -457,7 +460,7 @@ test('hosted public native DEB path policy admits audited packaging files and re
       'sys.argv=["policy-test","old.deb","merged.deb"]',
       section[1]
     ].join('\n');
-    return spawnSync('python3',['-c',code,listing],{
+    return spawnSync(process.platform==='win32'?'python':'python3',['-c',code,listing],{
       cwd:repo,encoding:'utf8',timeout:12000,windowsHide:true});
   };
   const allowed=execute(base);
@@ -469,6 +472,20 @@ test('hosted public native DEB path policy admits audited packaging files and re
     assert.notEqual(rejected.status,0,'must reject '+forbidden);
     assert.match(rejected.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   }
+  for(const [rel,mode] of [
+    ['packaging/unified/owner-pinned-provenance.mjs','lrwxrwxrwx'],
+    ['packaging/unified/migration-preflight.mjs','crw-rw-rw-'],
+    ['src/server-v0.3.mjs','lrwxrwxrwx'],
+    ['packaging/unified','-rw-r--r--'],
+    ['packaging','lrwxrwxrwx']
+  ]){
+    const rejected=execute(base,{[rel]:mode});
+    assert.notEqual(rejected.status,0,'reject unsafe payload type for '+rel);
+    assert.match(rejected.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
+  }
+  const duplicate=execute([...base,'package.json']);
+  assert.notEqual(duplicate.status,0,'duplicate payload entries are denied');
+  assert.match(duplicate.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   const missingSourceManifest=execute(base.filter(p=>p!=='source-manifest.json'));
   assert.notEqual(missingSourceManifest.status,0);
   assert.match(missingSourceManifest.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
