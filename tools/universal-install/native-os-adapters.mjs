@@ -138,17 +138,35 @@ export function createNativeOsAdapter({
         fail('UNIVERSAL_NATIVE_FRESH_ACTIVE_LEGACY_CORE');
       return shaOfRuntime(inactive?'NO_ACTIVE_COMMANDER_CORE':r.stdout);
     }
+    // Protect the owner-bound Commander Core/Router/Tunnel identity, not
+    // unrelated OS listeners. A positive identity mismatch fails closed.
     const script=[
       "$ErrorActionPreference='Stop'",
-      "$l=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | "+
-        "Select-Object LocalAddress,LocalPort,OwningProcess | "+
-        "Sort-Object LocalAddress,LocalPort,OwningProcess)",
-      "$canonical=($l|ConvertTo-Json -Depth 3 -Compress)",
-      "$sha=[Security.Cryptography.SHA256]::Create()",
+      "$ownerSid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+      "$roles=@('server-v0.3.mjs','stable-router.mjs','tunnel-log-runner.mjs','v2-owner-seat-agent.mjs','workspace-owner-broker.mjs')",
+      "$processes=@(Get-CimInstance -ClassName Win32_Process -Filter \"Name='node.exe' OR Name='cloudflared.exe'\" -ErrorAction Stop)",
+      "$targets=@()",
+      "$hashAlg=[Security.Cryptography.SHA256]::Create()",
       "try {",
-      " $hash=$sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))",
-      " [Console]::Out.Write([BitConverter]::ToString($hash).Replace('-','').ToLowerInvariant())",
-      "} finally { $sha.Dispose() }"
+      " foreach($process in $processes) {",
+      "  $cmd=[string]$process.CommandLine",
+      "  if($cmd -notmatch '(?i)ChatGPTRemoteCommander|chatgpt-remote-commander|remote-commander-unified'){continue}",
+      "  $role=$null",
+      "  foreach($candidate in $roles) {",
+      "   if($cmd.IndexOf($candidate,[StringComparison]::OrdinalIgnoreCase) -ge 0){$role=$candidate;break}",
+      "  }",
+      "  if($null -eq $role){continue}",
+      "  $owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction Stop",
+      "  if($owner.ReturnValue -ne 0 -or $owner.Sid -ne $ownerSid){throw 'UNIVERSAL_NATIVE_PROTECTED_PROCESS_OWNER_INVALID'}",
+      "  $cmdHash=[BitConverter]::ToString($hashAlg.ComputeHash([Text.Encoding]::UTF8.GetBytes($cmd))).Replace('-','').ToLowerInvariant()",
+      "  $targets += [pscustomobject]@{Pid=[int]$process.ProcessId;Started=[string]$process.CreationDate;Role=$role;Image=[string]$process.ExecutablePath;CommandSha256=$cmdHash}",
+      " }",
+      " $targetPids=@($targets|ForEach-Object {$_.Pid})",
+      " $listeners=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object {$targetPids -contains [int]$_.OwningProcess} | Select-Object LocalAddress,LocalPort,OwningProcess | Sort-Object LocalAddress,LocalPort,OwningProcess)",
+      " $canonical=([ordered]@{schema=2;OwnerSid=$ownerSid;Processes=@($targets|Sort-Object Pid);Listeners=$listeners}|ConvertTo-Json -Depth 6 -Compress)",
+      " $digest=[BitConverter]::ToString($hashAlg.ComputeHash([Text.Encoding]::UTF8.GetBytes($canonical))).Replace('-','').ToLowerInvariant()",
+      " [Console]::Out.Write($digest)",
+      "} finally { $hashAlg.Dispose() }"
     ].join('\n');
     const digest=ps(script,run);
     check(HASH.test(digest),'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE');

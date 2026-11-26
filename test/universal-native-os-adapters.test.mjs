@@ -135,6 +135,52 @@ test('native Windows adapter needs only built-in PowerShell 5.1 and standard .NE
     assert.match(registry,/\$hits=@\(\)\s+if\(Test-Path -LiteralPath \$root -ErrorAction Stop\)/);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('Windows native fingerprint scopes listeners to owner-bound protected Commander roles',async()=>{
+  const calls=[];
+  const native=createNativeOsAdapter({platform:'windows',architecture:'x64',
+    run:(binary,args)=>{
+      assert.match(binary,/powershell\.exe$/i);
+      const script=Buffer.from(args.at(-1),'base64').toString('utf16le');
+      calls.push(script);
+      if(script.includes('Get-NetTCPConnection'))return {
+        code:0,stdout:'a'.repeat(64),stderr:''
+      };
+      if(script.includes('Get-ChildItem -LiteralPath $root'))return {
+        code:0,stdout:'ABSENT',stderr:''
+      };
+      throw Error('UNEXPECTED_WINDOWS_TEST_SCRIPT');
+    }
+  });
+  const result=await native.snapshot();
+  assert.equal(result.version,null);
+  assert.equal(result.runtime.liveCoreCutover,false);
+  const source=calls.find(s=>s.includes('Get-NetTCPConnection'));
+  assert.ok(source,'expected protected native Runtime probe');
+  assert.match(source,/Get-CimInstance -ClassName Win32_Process/);
+  assert.match(source,/GetOwnerSid/);
+  assert.match(source,/owner\.Sid -ne \$ownerSid/);
+  assert.match(source,/stable-router\.mjs/);
+  assert.match(source,/server-v0\.3\.mjs/);
+  assert.match(source,/tunnel-log-runner\.mjs/);
+  assert.match(source,/Where-Object \{\$targetPids -contains \[int\]\$_.OwningProcess\}/);
+  assert.match(source,/CommandSha256/);
+  assert.doesNotMatch(source,/\$canonical=\(\$l\|ConvertTo-Json/);
+  assert.match(source,/BitConverter\]::ToString/);
+  assert.doesNotMatch(source,/Convert\]::ToHexString|HashData/);
+});
+test('Windows protected runtime probe fails closed on a rejected native owner inspection',async()=>{
+  const adapter=createNativeOsAdapter({platform:'windows',architecture:'x64',
+    run:(binary,args)=>{
+      const script=Buffer.from(args.at(-1),'base64').toString('utf16le');
+      if(script.includes('Get-ChildItem -LiteralPath $root'))
+        return {code:0,stdout:'ABSENT',stderr:''};
+      if(script.includes('Get-NetTCPConnection'))
+        return {code:1,stdout:'',stderr:'OWNER_MISMATCH'};
+      throw Error('UNEXPECTED_WINDOWS_TEST_SCRIPT');
+    }
+  });
+  await assert.rejects(adapter.snapshot(),{code:'UNIVERSAL_NATIVE_RUNTIME_UNAVAILABLE'});
+});
 test('both native adapters reject changed package hashes before invoking OS package manager',async()=>{
   const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-adapter-qa-'));
   try{
