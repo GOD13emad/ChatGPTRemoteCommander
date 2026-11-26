@@ -15,6 +15,13 @@ on:
     tags:
       - 'v1.0.0'
   workflow_dispatch:
+    inputs:
+      qualification:
+        description: 'Historical downgrade or explicit same-schema RC012 recovery diagnostic'
+        type: choice
+        options: [historical-dev12, same-schema-rc012]
+        default: historical-dev12
+        required: true
 
 permissions:
   contents: read
@@ -51,6 +58,8 @@ jobs:
           $sha='${{ github.event.pull_request.head.sha || github.sha }}'
           if((git rev-parse HEAD).Trim() -ne $sha){throw 'R173_WRONG_CHECKOUT_SHA'}
           $candidateVersion=[string]((Get-Content package.json -Raw|ConvertFrom-Json).version)
+          & node.exe --test test/rc012-same-schema-recovery-plan.test.mjs
+          if($LASTEXITCODE){throw 'R173_RECOVERY_PLAN_TEST_FAILED'}
           & node.exe tools/isolated-qa-policy.mjs
           if($LASTEXITCODE -ne 0){throw 'R173_UNSUPPORTED_VERSION'}
           $tokens=$null;$errs=$null
@@ -69,23 +78,36 @@ jobs:
           $runner=Join-Path $env:GITHUB_WORKSPACE 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
           if(-not(Test-Path -LiteralPath $runner -PathType Leaf)){throw 'R173_PINNED_JOB_RUNNER_MISSING'}
           Write-Output 'R173_STATIC_EXACT_HEAD_PRESTATE_PASS'
-      - name: Real candidate promotion and compatible v0.12.0-dev.12 rollback under standard token
+      - name: Real candidate promotion and selected rollback qualification under standard token
         shell: pwsh
         timeout-minutes: 53
+        env:
+          RC012_ROLLBACK_QUALIFICATION: ${{ inputs.qualification || 'historical-dev12' }}
         run: |
           $ErrorActionPreference='Stop'
           $sha='${{ github.event.pull_request.head.sha || github.sha }}'
           $root=Join-Path $env:RUNNER_TEMP 'remote-commander-rollback-r173'
           $runner=Join-Path $env:GITHUB_WORKSPACE 'tools\windows-job-runner\dist\win-x64\CommanderWindowsJobRunner.exe'
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File tools/run-r157-standard-user.ps1 -RunR173Rollback -Root $root -Workspace $env:GITHUB_WORKSPACE -ExpectedCommit $sha -InstallDir (Join-Path $root 'INSTALL') -WindowsJobRunnerPath $runner
+          $recoveryArgs=@()
+          if($env:RC012_ROLLBACK_QUALIFICATION -eq 'same-schema-rc012'){$recoveryArgs+= '-SameSchemaRecoveryQA'}
+          elseif($env:RC012_ROLLBACK_QUALIFICATION -ne 'historical-dev12'){throw 'R173_UNKNOWN_QUALIFICATION'}
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File tools/run-r157-standard-user.ps1 -RunR173Rollback -Root $root -Workspace $env:GITHUB_WORKSPACE -ExpectedCommit $sha -InstallDir (Join-Path $root 'INSTALL') -WindowsJobRunnerPath $runner @recoveryArgs
           if($LASTEXITCODE -ne 0){throw ('R173_STANDARD_USER_NONZERO_'+$LASTEXITCODE)}
           $cleanupPath=Join-Path $root 'R173_STANDARD_USER_CLEANUP.json'
           if(-not(Test-Path -LiteralPath $cleanupPath -PathType Leaf)){throw 'R173_STANDARD_USER_CLEANUP_RECEIPT_MISSING'}
           $cleanup=Get-Content -LiteralPath $cleanupPath -Raw|ConvertFrom-Json
           if($cleanup.revision -ne 'R173_STANDARD_USER_CLEANUP' -or $cleanup.status -ne 'PASS' -or $cleanup.accountCreated -ne $true -or $cleanup.userRemoved -ne $true -or $cleanup.ownedProcesses -ne 0){throw 'R173_STANDARD_USER_CLEANUP_NOT_ACCEPTED'}
           $receipt=Get-Content -LiteralPath (Join-Path $root 'RETURN_R173.json') -Raw|ConvertFrom-Json
-          if($receipt.status -ne 'PASS_WINDOWS_REAL_PROMOTION_ROLLBACK_ZERO_OWNED' -or $receipt.candidateHead -ne $sha -or $receipt.rollbackHead -ne '46a8256186e09f3355b10f796717aefee29ed309'){throw 'R173_FINAL_RECEIPT_NOT_ACCEPTED'}
-          Write-Output 'R173_STANDARD_USER_AND_COMPATIBLE_ROLLBACK_PASS'
+          if($env:RC012_ROLLBACK_QUALIFICATION -eq 'same-schema-rc012'){
+            $planRaw=& node.exe test/rc012-same-schema-recovery-qa.mjs plan (Get-Content package.json -Raw|ConvertFrom-Json).version $sha
+            if($LASTEXITCODE){throw 'R173_RECOVERY_PLAN_DENIED'}
+            $plan=$planRaw|ConvertFrom-Json
+            if($receipt.status -ne 'PASS_WINDOWS_SAME_SCHEMA_RECOVERY_QA' -or $receipt.candidateHead -ne $sha -or $receipt.rollbackHead -ne $plan.recoveryHead -or $receipt.dev12SchemaRefused -ne $true -or $receipt.releaseAuthorization -ne $false -or -not $receipt.catalogBefore -or $receipt.catalogBefore -cne $receipt.catalogAfter){throw 'R173_RECOVERY_RECEIPT_NOT_ACCEPTED'}
+            Write-Output 'R173_STANDARD_USER_AND_SAME_SCHEMA_RECOVERY_QA_PASS'
+          }else{
+            if($receipt.status -ne 'PASS_WINDOWS_REAL_PROMOTION_ROLLBACK_ZERO_OWNED' -or $receipt.candidateHead -ne $sha -or $receipt.rollbackHead -ne '46a8256186e09f3355b10f796717aefee29ed309'){throw 'R173_FINAL_RECEIPT_NOT_ACCEPTED'}
+            Write-Output 'R173_STANDARD_USER_AND_COMPATIBLE_ROLLBACK_PASS'
+          }
       - name: Upload scoped CI-only evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -98,6 +120,10 @@ jobs:
             ${{ runner.temp }}/remote-commander-rollback-r173/R173_STANDARD_USER_CLEANUP.json
             ${{ runner.temp }}/remote-commander-rollback-r173/PROMOTE.stdout.log
             ${{ runner.temp }}/remote-commander-rollback-r173/PROMOTE.stderr.log
+            ${{ runner.temp }}/remote-commander-rollback-r173/REJECT_DEV12.stdout.log
+            ${{ runner.temp }}/remote-commander-rollback-r173/REJECT_DEV12.stderr.log
+            ${{ runner.temp }}/remote-commander-rollback-r173/CATALOG_*.json
+            ${{ runner.temp }}/remote-commander-rollback-r173/ROUTE_AFTER_DEV12_REFUSAL.json
             ${{ runner.temp }}/remote-commander-rollback-r173/ROLLBACK.stdout.log
             ${{ runner.temp }}/remote-commander-rollback-r173/ROLLBACK.stderr.log
             ${{ runner.temp }}/remote-commander-rollback-r173/ROUTE_PROMOTE.json

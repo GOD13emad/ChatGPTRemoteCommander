@@ -13,6 +13,13 @@ on:
     tags:
       - 'v1.0.0'
   workflow_dispatch:
+    inputs:
+      qualification:
+        description: 'Historical downgrade or explicit same-schema RC012 recovery diagnostic'
+        type: choice
+        options: [historical-dev12, same-schema-rc012]
+        default: historical-dev12
+        required: true
 
 permissions:
   contents: read
@@ -54,15 +61,21 @@ jobs:
           bash -n auto-update-linux.sh
           node --check src/server-v0.3.mjs
           # Only explicit versions may run isolated QA; no release/signing authority.
+          node --test test/rc012-same-schema-recovery-plan.test.mjs
           node tools/isolated-qa-policy.mjs
           test ! -e "$RUNNER_TEMP/remote-commander-rollback-r170"
           echo R170_STATIC_PASS
-      - name: Real version promotion then rollback to installed v0.12.0-dev.12 in fresh isolated runner
+      - name: Real promotion and selected rollback qualification in fresh isolated runner
         timeout-minutes: 38
+        env:
+          RC012_ROLLBACK_QUALIFICATION: ${{ inputs.qualification || 'historical-dev12' }}
         shell: bash
         run: |
           set -euo pipefail
-          bash test/release-rollback-linux-r170.sh "${{ github.event.pull_request.head.sha || github.sha }}"
+          bash test/release-rollback-linux-r170.sh "${{ github.event.pull_request.head.sha || github.sha }}" "$RC012_ROLLBACK_QUALIFICATION"
+          if [[ "$RC012_ROLLBACK_QUALIFICATION" == same-schema-rc012 ]]; then
+            node -e 'const r=require(process.argv[1]),p=JSON.parse(process.argv[2]);if(r.status!=="PASS_LINUX_SAME_SCHEMA_RECOVERY_QA"||r.candidateHead!==p.candidateHead||r.rollbackHead!==p.recoveryHead||r.dev12SchemaRefused!==true||r.releaseAuthorization!==false||r.catalogPromoted.schemaSha256!==r.catalogRecovered.schemaSha256)process.exit(1)' "$RUNNER_TEMP/remote-commander-rollback-r170/RETURN_R170.json" "$(node test/rc012-same-schema-recovery-qa.mjs plan "$(node -p 'require("./package.json").version')" "${{ github.event.pull_request.head.sha || github.sha }}")"
+          fi
       - name: Preserve sandbox test logs only (never owner machine)
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -73,6 +86,9 @@ jobs:
             ${{ runner.temp }}/remote-commander-rollback-r170/PROMOTE_R170.log
             ${{ runner.temp }}/remote-commander-rollback-r170/REJECTED_INCOMPATIBLE_ROLLBACK.log
             ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_REJECTED_ROLLBACK.json
+            ${{ runner.temp }}/remote-commander-rollback-r170/REJECTED_DEV12_ROLLBACK.log
+            ${{ runner.temp }}/remote-commander-rollback-r170/CATALOG_*.json
+            ${{ runner.temp }}/remote-commander-rollback-r170/HEALTH_AFTER_DEV12_REFUSAL.json
             ${{ runner.temp }}/remote-commander-rollback-r170/ROLLBACK_R170.log
             ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_PROMOTE.json
             ${{ runner.temp }}/remote-commander-rollback-r170/ROUTE_AFTER_ROLLBACK.json

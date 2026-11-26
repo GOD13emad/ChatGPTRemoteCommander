@@ -6,11 +6,13 @@ param(
   [Parameter(Mandatory)][string]$InstallDir,
   [Parameter(Mandatory)][string]$WindowsJobRunnerPath,
   [switch]$Child,
-  [switch]$RunR173Rollback
+  [switch]$RunR173Rollback,
+  [switch]$SameSchemaRecoveryQA
 )
 
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+if($SameSchemaRecoveryQA -and -not $RunR173Rollback){throw 'R173_RECOVERY_MODE_REQUIRES_ROLLBACK'}
 
 function Get-CurrentTokenClass {
   $probe='C:\Program Files\PowerShell\7\pwsh.exe'
@@ -112,6 +114,7 @@ function Invoke-R173RollbackScript {
   $env:TMP=$env:TEMP
   Set-Location -LiteralPath $Workspace
   $arguments=@('-NoLogo','-NoProfile','-NonInteractive','-File',$script,'-ExpectedCommit',$ExpectedCommit,'-WindowsJobRunnerPath',$WindowsJobRunnerPath)
+  if($SameSchemaRecoveryQA){$arguments+= '-SameSchemaRecoveryQA'}
   $childOutput=& pwsh.exe @arguments
   $childExit=[int]$LASTEXITCODE
   if($childOutput){[Console]::Out.WriteLine(($childOutput -join [Environment]::NewLine))}
@@ -249,6 +252,7 @@ try{
   $credential=[PSCredential]::new($account,$securePassword)
   $arguments=@('-NoLogo','-NoProfile','-NonInteractive','-File',$PSCommandPath,'-Child','-Root',$Root,'-Workspace',$Workspace,'-ExpectedCommit',$ExpectedCommit,'-InstallDir',$InstallDir,'-WindowsJobRunnerPath',$WindowsJobRunnerPath)
   if($RunR173Rollback){$arguments+= '-RunR173Rollback'}
+  if($SameSchemaRecoveryQA){$arguments+= '-SameSchemaRecoveryQA'}
   $childProcess=Start-Process -FilePath $pwsh -ArgumentList $arguments -Credential $credential -LoadUserProfile -WorkingDirectory $Workspace -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru -WindowStyle Hidden
   if(Test-Path -LiteralPath $stdout -PathType Leaf){
     $outText=Get-Content -LiteralPath $stdout -Raw -ErrorAction Stop
