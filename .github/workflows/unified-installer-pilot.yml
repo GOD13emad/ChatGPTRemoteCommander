@@ -49,6 +49,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
+      - name: Verify packaged profile reconfiguration rejects stale or missing identity records
+        env:
+          RC_PROFILE_RECONFIGURE_TEST_CORE: packaging/unified/.stage/core
+        run: node --test test/profile-reconfigure.test.mjs
       - name: Verify optional Companion manifest path, hash and permission fail-closed guards
         run: node --test test/verify-compiled-companion.test.mjs test/browser-companion-targets.test.mjs
       - name: Verify identical native transaction and OS adapter contracts
