@@ -64,7 +64,13 @@ for pkg in sys.argv[1:]:
         relative=row[at+len(prefix):].split(" -> ",1)[0].strip().rstrip("/")
         if not relative: continue
         head=relative.split("/",1)[0]
-        if relative in allowed_files or relative in allowed_scaffolding or head in allowed_dirs:
+        kind=row.lstrip()[:1]
+        if relative in allowed_files and kind=="-":
+            seen.add(relative)
+            continue
+        if relative in allowed_scaffolding and kind=="d":
+            continue
+        if head in allowed_dirs:
             seen.add(relative)
             continue
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)

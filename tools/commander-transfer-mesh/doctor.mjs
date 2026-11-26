@@ -44,6 +44,20 @@ export function assessDaemonIdentity({status,version,alias}){
    throw new Error('Invalid Syncthing version');
  return 'syncthing '+current;
 }
+// The local node identity has already been matched to IDS and the live REST
+// status.myID has been checked. Bind each pair to both identities and exact root.
+export function isExpectedPeerFolder(folder,{localDeviceId,peerId,root,peerName}={}){
+ if(!folder||typeof folder!=='object'||folder.paused)return false;
+ const devices=folder.devices;
+ if(!Array.isArray(devices)||devices.length!==2)return false;
+ const ids=devices.map(d=>d&&typeof d.deviceID==='string'?d.deviceID:null);
+ if(ids.some(id=>!id)||new Set(ids).size!==2)return false;
+ if(typeof localDeviceId!=='string'||typeof peerId!=='string'||localDeviceId===peerId
+  ||!ids.includes(localDeviceId)||!ids.includes(peerId))return false;
+ if(typeof folder.path!=='string'||typeof root!=='string'||typeof peerName!=='string')return false;
+ try{return path.resolve(folder.path)===path.resolve(root,'pairs',peerName);}catch{return false;}
+}
+
 async function main(){
 try {
  const node=JSON.parse(fs.readFileSync(path.join(root,'node.json'),'utf8'));
@@ -80,9 +94,8 @@ try {
  const scoped=folders.filter(f=>f.id?.startsWith('ctmesh-v1-'));
  for(const exp of expected){
   const f=scoped.find(x=>x.id===exp.id);
-  if(!f||f.paused||f.devices?.length!==2||new Set(f.devices.map(d=>d.deviceID)).size!==2
-   ||!f.devices.some(x=>x.deviceID===id)||!f.devices.some(x=>x.deviceID===exp.peerId)
-   ||path.resolve(f.path)!==path.resolve(root,'pairs',exp.peerName)){err(new Error('Invalid pair '+exp.id));}
+  if(!isExpectedPeerFolder(f,{localDeviceId:node.deviceID,peerId:exp.peerId,root,peerName:exp.peerName}))
+   err(new Error('Invalid pair '+exp.id));
   else output.activePairCount++;
  }
  output.staleMisconfiguredActive=scoped.filter(f=>!expected.some(x=>x.id===f.id)&&!f.paused).length;

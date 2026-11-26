@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
+import {classifyLinuxNativeExecStart,assessMigration,isLinuxOwnerGraphicalRebindUnit,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -883,4 +883,72 @@ test('Windows read-only DPAPI preflight pins machine PowerShell independently of
   const actual=fs.readFileSync(modulePath,'utf8');
   assert.doesNotMatch(actual,/const exe=path\.win32\.join\(programFiles,/,
     'never derive the executable from user-controllable ProgramFiles');
+});
+
+test('read-only inventory counts graphical rebind auxiliary separately while retaining every blocker',()=>{
+ const r=assessMigration({platform:'linux',inventoryReliable:true,nativePackageInstalled:true,
+   units:[{kind:'core',active:true,enabled:true,knownExecutable:false},
+     {kind:'auxiliary',active:false,enabled:true,knownExecutable:false}]});
+ assert.equal(r.activeCoreUnits,1);
+ assert.equal(r.enabledCoreUnits,1);
+ assert.equal(r.enabledAuxiliaryUnits,1);
+ assert.equal(r.unmappedUnits,2);
+ assert.ok(r.blocked.includes('ENABLED_AUTOSTART_EXECUTABLE_UNMAPPED'));
+ assert.ok(r.blocked.includes('ACTIVE_SERVICE_EXECUTABLE_UNMAPPED'));
+ assert.equal(r.decision,'NO_PROMOTE');
+});
+
+ test('graphical rebind classification requires the exact corresponding owner-local service command',()=>{
+ const home='/home/owner';const unit='chatgpt-remote-commander-emad-mmz-graphical-rebind.service';
+ const fixture={unit,home,fragmentPath:home+'/.config/systemd/user/'+unit,
+   execStart:'{ path=/usr/bin/systemctl ; argv[]=/usr/bin/systemctl --user try-restart chatgpt-remote-commander-emad-mmz.service ; ignore_errors=no ; }'};
+ assert.equal(isLinuxOwnerGraphicalRebindUnit(fixture),true);
+ for(const bad of [{unit:'chatgpt-remote-commander-other-graphical-rebind.service'},
+   {fragmentPath:'/etc/systemd/user/'+unit},{home:'relative'},
+   {execStart:fixture.execStart.replace('try-restart','restart')},
+   {execStart:fixture.execStart.replace('emad-mmz.service','other.service')},
+   {execStart:fixture.execStart.replace('path=/usr/bin/systemctl','path=/bin/sh')},
+   {execStart:fixture.execStart.replace('.service ;','.service other.service ;')}]){
+  assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,...bad}),false);
+ }
+});
+
+
+test('graphical rebind inventory rejects multiple ExecStart entries and truncated records',()=>{
+ const home='/home/fixture';
+ const unit='chatgpt-remote-commander-fixture-graphical-rebind.service';
+ const start='{ path=/usr/bin/systemctl ; argv[]=/usr/bin/systemctl --user try-restart chatgpt-remote-commander-fixture.service ; ignore_errors=no ; }';
+ const fixture={unit,home,fragmentPath:home+'/.config/systemd/user/'+unit};
+ const other='{ path=/usr/bin/true ; argv[]=/usr/bin/true ; ignore_errors=no ; }';
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start}),true);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start+' '+other}),false);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.split('ignore_errors')[0]}),false);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.replace(' ; }',' ; pid=0 ; status=0/0 }')}),true);
+});
+
+test('native Linux executable inventory rejects path mentions and noncanonical service commands',()=>{
+ const root='/usr/lib/chatgpt-remote-commander';
+ const node=root+'/runtime/node',launch=root+'/tunnel/native-tunnel-launch.sh';
+ const record=(exe,argv)=>'{ path='+exe+' ; argv[]='+argv+' ; ignore_errors=no ; }';
+ const core={unit:'chatgpt-remote-commander@MMZ-v012.service',
+   fragmentPath:'/usr/lib/systemd/user/chatgpt-remote-commander@.service',
+   execStart:record(node,node+' '+root+'/app/src/server-v0.3.mjs')};
+ const tunnel={unit:'chatgpt-remote-commander-tunnel@mmz-linux.service',
+   fragmentPath:'/usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service',
+   execStart:record(launch,launch+' mmz-linux')};
+ assert.equal(classifyLinuxNativeExecStart(core),'core');
+ assert.equal(classifyLinuxNativeExecStart(tunnel),'tunnel');
+ for(const bad of [
+   {...core,execStart:record('/bin/bash','/bin/bash '+node)},
+   {...core,execStart:record(node+'-fake',node+'-fake '+root+'/app/src/server-v0.3.mjs')},
+   {...core,execStart:record(node,node+' /tmp/fixture.mjs')},
+   {...core,execStart:core.execStart+' '+record('/usr/bin/true','/usr/bin/true')},
+   {...core,execStart:core.execStart.slice(0,-1)},
+   {...core,fragmentPath:'/home/fixture/.config/systemd/user/chatgpt-remote-commander@.service'},
+   {...core,unit:'chatgpt-remote-commander-other.service'},
+   {...tunnel,execStart:record(launch,launch+' other-profile')},
+   {...tunnel,execStart:record('/bin/bash','/bin/bash '+launch+' mmz-linux')}
+ ])assert.equal(classifyLinuxNativeExecStart(bad),null);
+ // systemctl includes live process metadata in the same brace-delimited record.
+ assert.equal(classifyLinuxNativeExecStart({...core,execStart:core.execStart.replace(' ; }',' ; start_time=[Wed] ; pid=123 ; code=(null) ; status=0/0 }')}),'core');
 });
