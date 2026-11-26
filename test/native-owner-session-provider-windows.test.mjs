@@ -4,7 +4,8 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {createWindowsNativeOwnerSessionProvider} from '../src/native-owner-session-provider-windows.mjs';
+import {createWindowsNativeOwnerSessionProvider,
+  selectWindowsNativeOwnerPowerShell} from '../src/native-owner-session-provider-windows.mjs';
 import {
   createWindowsV101OwnerSecurityStack,
   createWindowsV101V2CandidateHost
@@ -199,7 +200,8 @@ test('ambient SystemRoot cannot select the native owner PowerShell image or Wind
     });
     const state=await p.getOwnerSessionSnapshot();
     assert.equal(state.osSessionId,'windows-wts-2');
-    assert.equal(observed.file,POWERSHELL);
+    assert.equal(observed.file,selectWindowsNativeOwnerPowerShell());
+    assert.doesNotMatch(observed.file,/untrusted-owner-image/i);
     assert.equal(observed.options.env.SystemRoot.toLowerCase(),'c:\\windows');
     assert.equal(observed.options.env.WINDIR.toLowerCase(),'c:\\windows');
     assert.doesNotMatch(observed.options.env.PATH,/untrusted-owner-image/i);
@@ -207,4 +209,16 @@ test('ambient SystemRoot cannot select the native owner PowerShell image or Wind
     if(previous===undefined)delete process.env.SystemRoot;
     else process.env.SystemRoot=previous;
   }
+});
+
+test('Windows native owner PowerShell selector uses an absolute protected image and fails closed on unsafe types',()=>{
+  const modern='C:\\Program Files\\PowerShell\\7\\pwsh.exe';
+  const legacy=POWERSHELL;
+  const pick=lstat=>selectWindowsNativeOwnerPowerShell({modern,legacy,lstat});
+  assert.equal(pick(()=>({isFile:()=>true,isSymbolicLink:()=>false})),modern);
+  assert.equal(pick(()=>({isFile:()=>false,isSymbolicLink:()=>false})),legacy);
+  assert.equal(pick(()=>({isFile:()=>true,isSymbolicLink:()=>true})),legacy);
+  assert.equal(pick(()=>{const e=new Error('not found');e.code='ENOENT';throw e;}),legacy);
+  assert.throws(()=>pick(()=>{const e=new Error('denied');e.code='EACCES';throw e;}),/denied/);
+  assert.throws(()=>selectWindowsNativeOwnerPowerShell({modern:'pwsh.exe',legacy}),/SELECTOR_INVALID/);
 });
