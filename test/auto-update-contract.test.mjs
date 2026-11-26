@@ -1417,10 +1417,10 @@ test('Linux staged dependency rejects missing helper, missing executable, and ba
   }
 });
 
-test('preliminary schema probe nonzero must not invoke ERR trap before final continuity gate', {skip:process.platform!=='linux'},()=>{
+test('preliminary schema probe nonzero must be handled explicitly rather than invoking ERR trap', {skip:process.platform!=='linux'},()=>{
   const updater=read('auto-update-linux.sh');
-  const begin=updater.indexOf('if SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs"');
-  const finalGate=updater.indexOf('if ! node "$STAGE_DIR/tools/schema-continuity-gate.mjs"');
+  const begin=updater.indexOf('if SCHEMA_PRE="$(node "$SCHEMA_GATE"');
+  const finalGate=updater.indexOf('if ! node "$SCHEMA_GATE"');
   assert.ok(begin>0&&finalGate>begin,'guard preliminary probe and keep final blocking gate');
   assert.ok(updater.includes('SCHEMA_PRE_REJECTED_BEFORE_ROUTER_BOOTSTRAP'),'diagnostic marker must remain');
   assert.ok(!updater.includes('set +e\n    SCHEMA_PRE='),'unguarded command substitution still triggers ERR trap');
@@ -1435,6 +1435,56 @@ test('preliminary schema probe nonzero must not invoke ERR trap before final con
   assert.match(result.stdout,/EXPECTED_SCHEMA_REJECT/);
   assert.match(result.stdout,/FINAL_GATE_REACHED/);
   assert.doesNotMatch(result.stdout,/ERR_TRAP_FIRED/);
+});
+
+test('R170 incompatible schema must stop before any router source replacement', {skip:process.platform!=='linux'},()=>{
+  const updater=read('auto-update-linux.sh');
+  const begin=updater.indexOf('    if SCHEMA_PRE=');
+  const end=updater.indexOf('  fi\nfi\n',begin);
+  assert.ok(begin>0&&end>begin,'actual routed preflight block must be extractable');
+  const actual=updater.slice(begin,end);
+  const cases=[
+    [2,'{"ok":false,"changed":true}',true],
+    [3,'{"ok":false,"changed":true}',true],
+    [0,'{"ok":false,"changed":true}',true],
+    [0,'{"ok":true,"changed":"true"}',true],
+    [0,'not-json',true],
+    [0,'{"ok":true,"changed":false}',false]
+  ];
+  for(const [code,body,rejected] of cases){
+    const script=[
+      'set -Eeuo pipefail',
+      'STAGE_DIR=/qa; INSTALL_DIR=/qa; SELF_PATH=/qa/auto-update-linux.sh; SCHEMA_GATE=/qa/tools/schema-continuity-gate.mjs',
+      'ROUTE=/qa/route; ROUTING_ROOT=/qa; STATE_ROOT=/qa; PORT=48832; SCHEMA_OLD_PORT=48831; CANDIDATE_PID=1',
+      'log(){ echo "$*"; }; stop_owned_candidate(){ echo CANDIDATE_STOPPED; }',
+      'node(){ case "$1" in */schema-continuity-gate.mjs) printf "%s\\n" \''+body+'\'; return '+code+';; */router-source-bootstrap.mjs) echo ROUTER_MUTATED >&2; echo \'{"changed":true}\';; -e) command node "$@";; *) return 91;; esac; }',
+      actual,'echo POST_GATE_REACHED'
+    ].join('\n');
+    const result=offlineSpawn.spawnSync('bash',['-s'],{input:script,encoding:'utf8'});
+    if(rejected){
+      assert.notEqual(result.status,0,'failed or invalid probe must not return success/retry');
+      assert.match(result.stderr,/SCHEMA_CONTINUITY_GATE_FAIL profile=default/);
+      assert.match(result.stdout,/CANDIDATE_STOPPED/);
+      assert.doesNotMatch(result.stdout+result.stderr,/ROUTER_MUTATED|POST_GATE_REACHED|AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED/);
+    }else{
+      assert.equal(result.status,0,result.stderr);
+      assert.match(result.stderr,/ROUTER_MUTATED/);
+      assert.match(result.stdout,/POST_GATE_REACHED/);
+    }
+  }
+});
+
+test('Windows preflights every routed candidate before any router source replacement',()=>{
+  const win=read('auto-update-windows.ps1');
+  const begin=win.indexOf('$routerBootstrapDeferred=@()');
+  const end=win.indexOf('if($routerBootstrapDeferred.Count-gt0)',begin);
+  const block=win.slice(begin,end);
+  const pre=block.indexOf('$pre=Get-SchemaContinuityProbe');
+  const reject=block.indexOf('if($pre.exitCode -ne 0 -or $pre.ok -ne $true)');
+  const mutation=block.indexOf('$bootstrap=Ensure-RouterCandidateSource');
+  assert.ok(pre>=0&&reject>pre&&mutation>reject,'preflight failure must precede mutation');
+  assert.match(block.slice(reject,mutation),/SCHEMA_CONTINUITY_GATE_FAIL/);
+  assert.match(block.slice(reject,mutation),/foreach\(\$c in \$candidates\)/,'all profile checks must finish before first replacement');
 });
 
 test('R170 isolated rollback retries only an explicit router-bootstrap receipt once',()=>{

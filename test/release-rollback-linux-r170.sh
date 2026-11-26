@@ -106,6 +106,10 @@ assert r['active']['version']==sys.argv[3]
 print('R170_LINUX_PROMOTION_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_PROMOTED.json"
+RUNTIME="$ROOT/state/chatgpt-remote-commander/routing/default.runtime.json"
+[[ -f "$RUNTIME" ]] || { echo R170_NO_ROUTER_RUNTIME >&2; exit 73; }
+ROUTE_BEFORE_REFUSAL_SHA="$(sha256sum "$ROUTE" | cut -d' ' -f1)"
+RUNTIME_BEFORE_REFUSAL_SHA="$(sha256sum "$RUNTIME" | cut -d' ' -f1)"
 
 # A real rollback to pre-Workspace v0.10.20 MUST fail closed rather than silently
 # removing nine supported MCP tools. Keep the promoted route and contract intact.
@@ -122,6 +126,10 @@ if [[ "$INCOMPATIBLE_CODE" == 0 ]] ||
   exit 74
 fi
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$TARGET" ]] || { echo R170_INCOMPATIBLE_ATTEMPT_MUTATED_INSTALL >&2;exit 74; }
+[[ "$(sha256sum "$ROUTE" | cut -d' ' -f1)" == "$ROUTE_BEFORE_REFUSAL_SHA" ]] || { echo R170_REFUSAL_ROUTE_BYTES_CHANGED >&2; exit 74; }
+[[ "$(sha256sum "$RUNTIME" | cut -d' ' -f1)" == "$RUNTIME_BEFORE_REFUSAL_SHA" ]] || { echo R170_REFUSAL_ROUTER_REPLACED >&2; exit 74; }
+curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_AFTER_REFUSAL.json"
+echo R170_REFUSAL_ROUTER_AND_ROUTE_UNCHANGED
 node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_REJECTED_ROLLBACK.json"
 python3 - "$ROOT/ROUTE_AFTER_REJECTED_ROLLBACK.json" "$TARGET" <<'PY_CHECK'
 import json,sys

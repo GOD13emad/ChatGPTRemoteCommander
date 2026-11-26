@@ -714,11 +714,12 @@ function Start-Router([int]$CanonicalPort,[string]$RoutePath,[string]$RouterSour
   if(-not $p.HasExited){Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue}
   throw "ROUTER_START_FAIL profile=$Profile"
 }
-function Get-SchemaContinuityProbe([string]$StageDir,[int]$OldPort,[int]$CandidatePort,[int]$CanonicalPort){
-  $raw=@(& node.exe (Join-Path $StageDir 'tools\schema-continuity-gate.mjs') --old-url ("http://127.0.0.1:{0}/mcp" -f $OldPort) --candidate-url ("http://127.0.0.1:{0}/mcp" -f $CandidatePort) --router-url ("http://127.0.0.1:{0}/router/status" -f $CanonicalPort) 2>$null)
+function Get-SchemaContinuityProbe([string]$PolicyDir,[int]$OldPort,[int]$CandidatePort,[int]$CanonicalPort){
+  $raw=@(& node.exe (Join-Path $PolicyDir 'tools\schema-continuity-gate.mjs') --old-url ("http://127.0.0.1:{0}/mcp" -f $OldPort) --candidate-url ("http://127.0.0.1:{0}/mcp" -f $CandidatePort) --router-url ("http://127.0.0.1:{0}/router/status" -f $CanonicalPort) 2>$null)
   $rc=$LASTEXITCODE
   try{$v=([string]($raw|Select-Object -Last 1))|ConvertFrom-Json}catch{throw "SCHEMA_CONTINUITY_PROBE_INVALID port=$CanonicalPort rc=$rc"}
-  return [pscustomobject]@{ok=[bool]$v.ok;changed=[bool]$v.changed;decision=[string]$v.decision;exitCode=[int]$rc}
+  if($v.ok -isnot [bool] -or $v.changed -isnot [bool]){throw "SCHEMA_CONTINUITY_PROBE_INVALID port=$CanonicalPort rc=$rc"}
+  return [pscustomobject]@{ok=($rc -eq 0 -and $v.ok -eq $true);changed=$v.changed;decision=[string]$v.decision;exitCode=[int]$rc}
 }
 function Ensure-RouterCandidateSource([object]$Target,[string]$StageDir){
   $runtime=Join-Path $RoutingRoot "$($Target.Profile).runtime.json"
@@ -1596,18 +1597,29 @@ try{
   }
 
   $routerBootstrapDeferred=@()
+  # Check every routed profile before the first Router replacement. The
+  # executing updater owns the policy, including when a rollback is staged.
   foreach($c in $candidates){
     $t=$c.Target
     if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
     $liveRoute=Read-Json $t.RoutePath
     if(-not($liveRoute.active -and $liveRoute.active.port)){continue}
-    $pre=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    $pre=Get-SchemaContinuityProbe $PSScriptRoot ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    if($pre.exitCode -ne 0 -or $pre.ok -ne $true){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile) decision=$($pre.decision)"}
+  }
+  foreach($c in $candidates){
+    $t=$c.Target
+    if(-not(Test-Path -LiteralPath $t.RoutePath -PathType Leaf)){continue}
+    $liveRoute=Read-Json $t.RoutePath
+    if(-not($liveRoute.active -and $liveRoute.active.port)){continue}
+    $pre=Get-SchemaContinuityProbe $PSScriptRoot ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    if($pre.exitCode -ne 0 -or $pre.ok -ne $true){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile) decision=$($pre.decision)"}
     $bootstrap=Ensure-RouterCandidateSource $t $stage.Dir
     if($bootstrap.changed -eq $true -and $pre.changed -eq $true){
       $routerBootstrapDeferred+=[string]$t.Profile
       continue
     }
-    $gate=Get-SchemaContinuityProbe $stage.Dir ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
+    $gate=Get-SchemaContinuityProbe $PSScriptRoot ([int]$liveRoute.active.port) ([int]$c.Port) ([int]$t.CanonicalPort)
     if(-not $gate.ok){throw "SCHEMA_CONTINUITY_GATE_FAIL profile=$($t.Profile) decision=$($gate.decision)"}
     Log "SCHEMA_CONTINUITY_GATE_PASS profile=$($t.Profile) decision=$($gate.decision)"
   }
