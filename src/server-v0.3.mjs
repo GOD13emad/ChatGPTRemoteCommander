@@ -782,7 +782,7 @@ async function executeToolEffect(name, args, delegationContext = {}) {
           semanticOnly:true,powerMode:true});
         return result;
       }
-      if (name.startsWith('workspace_') && !name.startsWith('workspace_target_')) {
+      if (name === 'workspace_target_reconcile' || (name.startsWith('workspace_') && !name.startsWith('workspace_target_'))) {
         const scopedCtx = currentExecutionContext();
         assertWorkspaceToolPolicy(scopedCtx.config,name,args);
         const delegated=legacyWorkspaceProxy

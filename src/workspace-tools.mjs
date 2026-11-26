@@ -181,7 +181,7 @@ export const workspaceToolDefinitions=[
    additionalProperties:false},annotations:mutating},
  {name:'workspace_target_reconcile',description:'Acknowledge only one uncertain target after a fresh observation. No action is replayed and no other app is affected.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
-     snapshotId:{type:'string',pattern:'^[sb][0-9a-f]{8}$'},
+     snapshotId:{type:'string',pattern:'^[sbn][0-9a-f]{8}$'},
      surface:{type:'string',enum:['window','browser','native']},workspaceSeat:{type:'string',enum:['a','b']},
      targetGoneVerified:{type:'boolean'},
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},

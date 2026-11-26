@@ -173,3 +173,33 @@ test('UIA foreground switch is accepted only when the authorised exact target be
  assert.equal(result.focusTargetVerified,true);
  assert.equal(result.focusChanged,true);
 });
+
+test('native reconcile contract accepts exact fresh snapshot and preserves no-replay guard',async()=>{
+ const {validateJsonSchema}=await import('../src/schema-validator.mjs');
+ const schema=workspaceToolDefinitions.find(t=>t.name==='workspace_target_reconcile').inputSchema;
+ const calls=[];const ctl=mockController(calls,{failMutation:true});
+ await ctl.execute('workspace_native_ui_observe',target);
+ const a={...target,fingerprint:fp,controlName:'Send',foregroundChangeAuthorized:false,requestId:'rc-native-reconcile-regression-01',
+ explicitUserAuthorization:'Owner authorizes one synthetic fixture invocation only'};
+ const uncertain=await ctl.execute('workspace_native_ui_invoke',a);
+ assert.equal(uncertain.ok,false);
+ const shot=await ctl.execute('workspace_native_ui_observe',target);
+ const request={pid:target.pid,windowId:target.windowId,surface:'native',snapshotId:shot.snapshotId,determination:'EFFECT_OBSERVED'};
+ assert.match(shot.snapshotId,/^n[0-9a-f]{8}$/);
+ assert.deepEqual(validateJsonSchema(request,schema),[]);
+ assert.notEqual(validateJsonSchema({...request,snapshotId:'x00000000'},schema).length,0);
+ await assert.rejects(ctl.execute('workspace_target_reconcile',{...request,snapshotId:'n00000000'}),/WORKSPACE_FRESH_SNAPSHOT_REQUIRED/);
+ await assert.rejects(ctl.execute('workspace_target_reconcile',{...request,surface:'window'}),/WORKSPACE_NO_TARGET_INCIDENT/);
+ const resolved=await ctl.execute('workspace_target_reconcile',request);
+ assert.equal(resolved.ok,true);assert.equal(resolved.replayed,false);
+ assert.equal(calls.filter(x=>x.op==='Invoke').length,1);
+ await assert.rejects(ctl.execute('workspace_native_ui_invoke',a),/WORKSPACE_DUPLICATE_REQUEST_NO_REPLAY/);
+});
+test('native reconcile dispatch reaches the existing workspace controller before target adapter',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const source=readFileSync(new URL('../src/server-v0.3.mjs',import.meta.url),'utf8');
+ const route="if (name === 'workspace_target_reconcile' || (name.startsWith('workspace_') && !name.startsWith('workspace_target_')))";
+ const i=source.indexOf(route), j=source.indexOf("if (name.startsWith('workspace_target_'))");
+ assert.ok(i>=0&&j>i,'reconcile must route through existing workspace controller');
+ assert.match(source.slice(i,j),/executeWorkspaceTool\(scopedCtx,name,args\)/);
+});
