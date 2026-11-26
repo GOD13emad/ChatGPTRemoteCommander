@@ -131,6 +131,60 @@ test('tampering, duplicate registration, drift and unapproved effects fail befor
   const bad=await executeNativeTransaction({action:'plan',input:f.input,adapter:f.adapter});
   assert.equal(bad.plan.baselineRuntimeFingerprint,'0'.repeat(64));
 });
+
+test('pre-effect drift aborts without native effect and releases only its own new lock',async()=>{
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-native-qa-'));
+  try{
+    const f=fixture(),dir=path.join(root,'journal');
+    const journal=createNativeFileJournal({directory:dir});
+    await assert.rejects(executeNativeTransaction({
+      action:'apply',...f,journal,approve:async plan=>{
+        f.setDrift(true);
+        return f.approve(plan);
+      }
+    }),{code:'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT'});
+    assert.deepEqual(f.invocations,[]);
+    assert.equal(fs.existsSync(path.join(dir,'install.lock')),false);
+    const events=fs.readFileSync(path.join(dir,'events.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+    assert.deepEqual(events.map(e=>e.stage),['PRE_EFFECT_ABORTED']);
+    assert.equal(events[0].summary.reason,'PRE_EFFECT_SNAPSHOT_REJECTED');
+    const next=createNativeFileJournal({directory:dir});
+    await next.claim('b'.repeat(64));
+    await next.write('PRE_EFFECT_ABORTED',{action:'apply',reason:'PRE_EFFECT_SNAPSHOT_REJECTED'});
+    await next.close();
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('journal refuses pre-effect abort after any intent or native effect record',async()=>{
+  for(const stage of ['INTENT_COMMITTED','NATIVE_EFFECT_STARTED']){
+    const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-native-qa-'));
+    try{
+      const dir=path.join(root,'journal'),j=createNativeFileJournal({directory:dir});
+      await j.claim('a'.repeat(64));
+      await j.write(stage,{action:'apply'});
+      await assert.rejects(j.write('PRE_EFFECT_ABORTED',{action:'apply',reason:'PRE_EFFECT_SNAPSHOT_REJECTED'}),
+        {code:'UNIVERSAL_NATIVE_PRE_EFFECT_ABORT_INVALID'});
+      await j.close();
+      assert.equal(fs.existsSync(path.join(dir,'install.lock')),true);
+    }finally{fs.rmSync(root,{recursive:true,force:true});}
+  }
+});
+
+
+test('a reused journal never inherits terminal authorization from a previous claim',async()=>{
+  const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-native-qa-'));
+  try{
+    const dir=path.join(root,'journal'),j=createNativeFileJournal({directory:dir});
+    await j.claim('a'.repeat(64));
+    await j.write('PRE_EFFECT_ABORTED',{action:'apply',reason:'PRE_EFFECT_SNAPSHOT_REJECTED'});
+    await j.close();
+    await j.claim('b'.repeat(64));
+    await j.write('NATIVE_EFFECT_STARTED',{action:'apply',version:'0.12.0-dev.9'});
+    await j.close();
+    assert.equal(fs.existsSync(path.join(dir,'install.lock')),true);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir,'install.lock'),'utf8')).transactionId,'b'.repeat(64));
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('real file journal uses exclusive lock and does not remove unknown-effect lock',async()=>{
   const root=fs.mkdtempSync(path.join(os.homedir(),'rc-universal-native-qa-'));
   const dir=path.join(root,'journal');

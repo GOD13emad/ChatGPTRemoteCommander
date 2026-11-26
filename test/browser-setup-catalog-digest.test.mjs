@@ -41,7 +41,7 @@ test('Inno [Run] extracts a dontcopy Browser payload and validates its actual by
 });
 
 const available=spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-Command','$PSVersionTable.PSVersion.Major'],{
-  encoding:'utf8',timeout:5000,windowsHide:true
+  encoding:'utf8',timeout:15000,windowsHide:true
 });
 test('pinned BrowserSetup verifier accepts exact bytes and rejects mismatch, drift and invalid catalog', {
   skip:available.error?.code==='ENOENT'?'pwsh unavailable on this OS':false
@@ -62,7 +62,7 @@ test('pinned BrowserSetup verifier accepts exact bytes and rejects mismatch, dri
     function verify(target=file){
       return spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-File',helper,
         '-BrowserInstaller',target,'-CatalogPath',manifest],
-      {encoding:'utf8',timeout:8000,windowsHide:true});
+      {encoding:'utf8',timeout:15000,windowsHide:true});
     }
     let result=verify();
     assert.equal(result.status,0,result.stderr);

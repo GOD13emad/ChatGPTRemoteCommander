@@ -206,10 +206,16 @@ export async function executeNativeTransaction({
     'UNIVERSAL_NATIVE_OWNER_APPROVAL_REQUIRED');
   await journal.claim(plan.transactionId);
   try{
-    const fresh=await adapter.snapshot();
-    exactSnapshot(fresh);
-    assert(fresh.version===before.version&&sameRuntime(before,fresh),
-      'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+    // A failure before INTENT_COMMITTED cannot have invoked a native effect.
+    // Persist that distinct terminal state; do not claim the external runtime is unchanged.
+    try{
+      const fresh=exactSnapshot(await adapter.snapshot());
+      assert(fresh.version===before.version&&sameRuntime(before,fresh),
+        'UNIVERSAL_NATIVE_PRE_EFFECT_DRIFT');
+    }catch(error){
+      await journal.write('PRE_EFFECT_ABORTED',{action,reason:'PRE_EFFECT_SNAPSHOT_REJECTED'});
+      throw error;
+    }
     const primary=action==='apply'||spec.installationKind==='fresh'
       ?spec.candidate:spec.previous;
     const desiredVersion=action==='rollback'&&spec.installationKind==='fresh'

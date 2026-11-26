@@ -27,7 +27,7 @@ export function createNativeFileJournal({
       'chatgpt-remote-commander','rc-universal-native-journal')
 }={}){
   const root=ownerRoot(directory);
-  let lockHandle=null,lockPath=path.join(root,'install.lock'),txn=null,terminal=false;
+  let lockHandle=null,lockPath=path.join(root,'install.lock'),txn=null,terminal=false,recordAttempted=false;
   function checkLock(){
     if(!lockHandle||!id.test(txn||''))
       fail('UNIVERSAL_NATIVE_JOURNAL_LOCK_REQUIRED');
@@ -41,6 +41,8 @@ export function createNativeFileJournal({
       try{lockHandle=fs.openSync(lockPath,'wx',0o600);}
       catch(e){if(e.code==='EEXIST')fail('UNIVERSAL_NATIVE_INSTALL_LOCK_BUSY');throw e;}
       txn=transactionId;
+      terminal=false;
+      recordAttempted=false;
       const bytes=Buffer.from(JSON.stringify({
         schema:'rc-universal-native-lock-v1',transactionId,
         pid:process.pid,openedAt:new Date().toISOString()
@@ -52,6 +54,8 @@ export function createNativeFileJournal({
       checkLock();
       if(!/^[A-Z][A-Z_]{2,50}$/.test(stage)||!data||typeof data!=='object')
         fail('UNIVERSAL_NATIVE_JOURNAL_INVALID_STAGE');
+      if(stage==='PRE_EFFECT_ABORTED'&&(recordAttempted||terminal||data.reason!=='PRE_EFFECT_SNAPSHOT_REJECTED'))
+        fail('UNIVERSAL_NATIVE_PRE_EFFECT_ABORT_INVALID');
       // Never journal full manifests, absolute account paths or authorization.
       const summary=Object.create(null);
       for(const [k,v] of Object.entries(data)){
@@ -64,9 +68,11 @@ export function createNativeFileJournal({
         schema:'rc-universal-native-event-v1',txn,stage,summary,
         time:new Date().toISOString()
       })+'\n';
+      // Set before I/O so a partial write cannot be treated as a clean abort.
+      recordAttempted=true;
       const fd=fs.openSync(path.join(root,'events.jsonl'),'a',0o600);
       try{fs.writeSync(fd,line);fs.fsyncSync(fd);}finally{fs.closeSync(fd);}
-      if(['VERIFIED','ROLLBACK_VERIFIED','NO_CHANGE_VERIFIED'].includes(stage))
+      if(['VERIFIED','ROLLBACK_VERIFIED','NO_CHANGE_VERIFIED','PRE_EFFECT_ABORTED'].includes(stage))
         terminal=true;
     },
     async close(){
