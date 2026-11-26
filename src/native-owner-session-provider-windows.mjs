@@ -17,6 +17,33 @@ const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const HASH=/^[a-f0-9]{64}$/;
 const BINDING=/^[a-f0-9]{32,64}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
+
+// Prefer the installed, OS-protected PowerShell 7 runtime for native owner
+// dialogs and snapshots. Some Windows PowerShell 5.1 hosts have a stricter
+// script policy than PowerShell 7 and the deliberately minimal child env must
+// not forge a Process ExecutionPolicy override to compensate. Preserve the
+// pinned System32 Windows PowerShell fallback for systems without pwsh 7.
+const SYSTEM_DRIVE=path.win32.parse(WINDOWS_SYSTEM_ROOT).root;
+const OWNER_PWSH7=path.win32.join(
+  SYSTEM_DRIVE,'Program Files','PowerShell','7','pwsh.exe'
+);
+export function selectWindowsNativeOwnerPowerShell({
+  modern=OWNER_PWSH7,legacy=WINDOWS_SYSTEM_POWERSHELL_EXE,
+  lstat=fs.lstatSync
+}={}){
+  if(typeof modern!=='string'||!path.win32.isAbsolute(modern)
+    ||typeof legacy!=='string'||!path.win32.isAbsolute(legacy)
+    ||typeof lstat!=='function')
+    fail('NATIVE_OWNER_WINDOWS_POWERSHELL_SELECTOR_INVALID');
+  try{
+    const stat=lstat(modern);
+    if(stat.isFile()&&!stat.isSymbolicLink())return modern;
+  }catch(error){
+    if(!['ENOENT','ENOTDIR'].includes(error?.code))throw error;
+  }
+  return legacy;
+}
+
 const clean=(v,max=5000)=>typeof v==='string'&&v.length>0&&v.length<=max
   &&!/[\u0000-\u0008\u000b-\u001f\u007f]/.test(v);
 function exact(value,fields,code){
@@ -79,7 +106,7 @@ function same(a,b){
 }
 export function createWindowsNativeOwnerSessionProvider({
   platform=process.platform,execFileImpl=execFileDefault,
-  powershell=WINDOWS_SYSTEM_POWERSHELL_EXE,script=SCRIPT,verifyFile=trustedFile,
+  powershell=selectWindowsNativeOwnerPowerShell(),script=SCRIPT,verifyFile=trustedFile,
   snapshotTimeoutMs=5000,dialogTimeoutMs=65000
 }={}){
   if(platform!=='win32'||typeof execFileImpl!=='function'
