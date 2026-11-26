@@ -20,7 +20,11 @@ test('Windows handoff fails closed on unavailable or malformed MCP status',()=>{
     'HANDOFF_GUI_STATE_UNVERIFIED','HANDOFF_BROWSER_STATE_UNVERIFIED',
     "foreach($tool in @('gui_status','browser_status'))",
     '$s.concurrency.activeOperations','$s.concurrency.queued',
-    '$s.durableWorkflows.schedulerState.currentLeases'
+    '$s.durableWorkflows.schedulerState.currentLeases',
+    '$s.durableWorkflows.schedulerState.rootLeasesBlocking',
+    '$s.durableWorkflows.schedulerState.expiredLeasesRequiringReconciliation',
+    '$leases=[long]$scheduler.rootLeasesBlocking',
+    '$expired -ne ($leases-$live)'
   ])assert.ok(f.includes(marker),'missing fail-closed prerequisite '+marker);
   assert.match(f,/catch\s*\{[^}]*active=1;queued=1;leases=1/su);
   assert.doesNotMatch(f,/catch\s*\{[^}]*active=0;leases=0/su);
@@ -62,7 +66,7 @@ test('Native Windows PowerShell mock covers idle, queued, GUI/browser leases, ma
       path.join(repo,'test','windows-handoff-failclosed-native.ps1')
     ],{cwd:repo,encoding:'utf8',timeout:15000,windowsHide:true});
     assert.equal(result.status,0,result.stderr||result.stdout);
-    assert.match(result.stdout,/HANDOFF_NATIVE_FAILCLOSED_PASS cases=7/u);
+    assert.match(result.stdout,/HANDOFF_NATIVE_FAILCLOSED_PASS cases=16/u);
   });
 
 test('Windows handoff PASS requires SID-qualified user-owned Router and Tunnel listeners',()=>{

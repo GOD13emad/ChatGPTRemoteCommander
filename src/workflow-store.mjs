@@ -564,9 +564,13 @@ export class WorkflowStore {
     // A timed-out owner may still have an active external effect. Never let
     // status/health erase its fencing record: only exact reconciliation or
     // an independently verified completion may release the machine-global root.
-    const leases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at > ?').get(leaseNow).n;
-    const rootLeasesBlocking = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases').get().n;
-    const expiredLeases = this.#leaseDb.prepare('SELECT COUNT(*) AS n FROM root_leases WHERE expires_at <= ?').get(leaseNow).n;
+    // Count all categories in one SQLite statement to share one snapshot.
+    const leaseCounts = this.#leaseDb.prepare(
+      'SELECT COUNT(*) AS total, COUNT(CASE WHEN expires_at > ? THEN 1 END) AS active FROM root_leases'
+    ).get(leaseNow);
+    const leases = Number(leaseCounts.active);
+    const rootLeasesBlocking = Number(leaseCounts.total);
+    const expiredLeases = rootLeasesBlocking - leases;
     const reconciliationRequired = this.#db.prepare("SELECT COUNT(*) AS n FROM operations WHERE status='UNCERTAIN'").get().n;
     return {
       enabled: this.#schedulerPolicy.enabled,
