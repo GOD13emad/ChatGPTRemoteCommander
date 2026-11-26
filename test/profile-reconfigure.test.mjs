@@ -4,8 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
-import { buildProfileInstance } from '../src/profile-instances.mjs';
-import { reconfigureProfileInstance } from '../src/profile-reconfigure.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+const coreRoot = process.env.RC_PROFILE_RECONFIGURE_TEST_CORE
+  ? path.resolve(process.env.RC_PROFILE_RECONFIGURE_TEST_CORE)
+  : fileURLToPath(new URL('..', import.meta.url));
+const { buildProfileInstance } = await import(pathToFileURL(path.join(coreRoot,'src/profile-instances.mjs')));
+const { reconfigureProfileInstance } = await import(pathToFileURL(path.join(coreRoot,'src/profile-reconfigure.mjs')));
 
 const fixture=()=>{
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-profile-recfg-')));
@@ -79,5 +83,29 @@ test('reconfigure persists explicit per-capability opt-outs and can re-enable th
   assert.equal(n.capabilityProfile.disabledCapabilities.includes('browser.input'),false);
   assert.equal(n.capabilityProfile.disabledCapabilities.includes('filesystem.permanent_delete'),false);
   assert.equal(n.capabilityProfile.disabledCapabilities.includes('workflow.scheduler'),false);
+ }finally{f.dispose();}
+});
+
+test('stale config hash is rejected before backup or any write',()=>{
+ const f=fixture();try{
+  const configFile=path.join(f.state,'config.json'),recordFile=path.join(f.state,'instance.json');
+  const drift=fs.readFileSync(configFile,'utf8')+'\n';
+  fs.writeFileSync(configFile,drift);
+  const beforeRecord=fs.readFileSync(recordFile,'utf8');
+  assert.throws(()=>reconfigureProfileInstance({profile:'secondary',stateDirectory:f.state,baseConfigPath:f.baseFile}),/PROFILE_RECONFIGURE_STALE_CONFIG_HASH/);
+  assert.equal(fs.readFileSync(configFile,'utf8'),drift);
+  assert.equal(fs.readFileSync(recordFile,'utf8'),beforeRecord);
+  assert.equal(fs.existsSync(path.join(f.state,'backups')),false);
+ }finally{f.dispose();}
+});
+test('missing record remains denied without reconstructing identity',()=>{
+ const f=fixture();try{
+  const configFile=path.join(f.state,'config.json'),recordFile=path.join(f.state,'instance.json');
+  const before=fs.readFileSync(configFile,'utf8');
+  fs.unlinkSync(recordFile);
+  assert.throws(()=>reconfigureProfileInstance({profile:'secondary',stateDirectory:f.state,baseConfigPath:f.baseFile}),/PROFILE_RECONFIGURE_INSTANCE_MISSING/);
+  assert.equal(fs.readFileSync(configFile,'utf8'),before);
+  assert.equal(fs.existsSync(recordFile),false);
+  assert.equal(fs.existsSync(path.join(f.state,'backups')),false);
  }finally{f.dispose();}
 });
