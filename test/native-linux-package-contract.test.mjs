@@ -204,17 +204,17 @@ test('native Linux QA package pins Node 22 October 2026 security release',()=>{
   assert.doesNotMatch(source,/^NODE_VERSION=22\.23\.3$/m);
 });
 
-linuxOnlyTest('native Debian package version equals canonical dev train and advances dev.13',()=>{
+linuxOnlyTest('native Debian package version equals canonical dev train and advances dev.14',()=>{
   const declaration=source.match(/^DEB_VERSION="[^"\n]+"$/m);
   assert.ok(declaration,'builder must derive a Debian-compatible version from the canonical source');
   assert.match(source,/^Version: \$DEB_VERSION$/m,'native dpkg control must use derived version');
   const out=spawnSync('bash',['-c',declaration[0]+';printf "%s" "$DEB_VERSION"','rc012-package-version-test'],{
-    encoding:'utf8',env:{...process.env,VERSION:'0.12.0-dev.14'}
+    encoding:'utf8',env:{...process.env,VERSION:'0.12.0-dev.15'}
   });
   assert.equal(out.status,0,out.stderr);
-  assert.equal(out.stdout,'0.12.0~dev.14');
-  const monotonic=spawnSync('dpkg',['--compare-versions',out.stdout,'gt','0.12.0~dev.13']);
-  assert.equal(monotonic.status,0,'dev.14 must upgrade an installed dev.13 package');
+  assert.equal(out.stdout,'0.12.0~dev.15');
+  const monotonic=spawnSync('dpkg',['--compare-versions',out.stdout,'gt','0.12.0~dev.14']);
+  assert.equal(monotonic.status,0,'dev.15 must upgrade an installed dev.14 package');
 });
 
 linuxOnlyTest('optional native desktop dependencies survive unified DEB control merge',()=>{
