@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import {isVerifiedSyntheticNotionBearer} from '../tools/security-audit-history.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
 function git(args, options = {}) {
@@ -47,12 +48,10 @@ const mockBearerLiterals = [
   'Bearer ' + 'dummy-super-secret-12345',
   // Historical G1 negative-login probe only: commit 47e2494f (tools/v1-01/installed-g1-readonly-probe.mjs).
   // This fixed noncredential value is deliberately rejected by the test Host.
-  'Bearer ' + 'deliberately-invalid-g1-probe',
-  // Historical Notion MCP unit fixture: the OAuth mock returns this exact noncredential value.
-  'Bearer ' + 'FIXTURE_PRIVATE_ACCESS'
+  'Bearer ' + 'deliberately-invalid-g1-probe'
 ];
 const mockBearerLiteralPatterns = mockBearerLiterals.map(literal=>new RegExp(literal+'(?![A-Za-z0-9._-])','g'));
-function secretPatternMatches(type,pattern,text) {
+function secretPatternMatches(type,pattern,text,origin=null) {
   let sample=text;
   if(type==='Private key block')
     sample=sample.replaceAll(mockPemLiteral,'[MOCK_V2_TLS_KEY_PLACEHOLDER]');
@@ -63,6 +62,8 @@ function secretPatternMatches(type,pattern,text) {
     sample=sample.replace(syntheticTunnelPattern,'[NONPRODUCTION_TUNNEL_FIXTURE]');
   }
   if(type==='Bearer token literal') {
+    const finder=new RegExp(pattern.source,pattern.flags.includes('g')?pattern.flags:pattern.flags+'g');
+    sample=sample.replace(finder,matched=>isVerifiedSyntheticNotionBearer(type,matched,origin)?'[VERIFIED_NOTION_HISTORY_FIXTURE]':matched);
     for(const fixturePattern of mockBearerLiteralPatterns) {
       fixturePattern.lastIndex=0;
       sample=sample.replace(fixturePattern,'[SYNTHETIC_BEARER_TEST_FIXTURE]');
@@ -149,6 +150,7 @@ if(secretPatternMatches('Tunnel identifier',tunnelPattern,knownSyntheticTunnelLa
 function makeHistoryScanner(rules) {
   const hits = new Set();
   let pending = '', preceding = '';
+  let currentCommit=null, currentFile=null;
   let parentPem = null, currentPem = null;
   const limit = 16 * 1024 * 1024;
   function advancePem(state, content) {
@@ -170,6 +172,13 @@ function makeHistoryScanner(rules) {
   function scanLine(line) {
     const raw=line.trimEnd();
     if(/^(?:commit |diff --(?:git|cc|combined) |@@)/.test(line)){
+      if(line.startsWith('commit ')){
+        currentCommit=/^commit ([0-9a-f]{40})\r?\n?$/.exec(line)?.[1]??null;
+        currentFile=null;
+      }else if(line.startsWith('diff --')){
+        const paths=/^diff --git a\/([a-zA-Z0-9._/-]{1,128}) b\/([a-zA-Z0-9._/-]{1,128})\r?\n?$/.exec(line);
+        currentFile=paths&&paths[1]===paths[2]?paths[2]:null;
+      }
       preceding='';resetPem();return;
     }
     const side=raw[0],content=raw.slice(1).trim();
@@ -188,7 +197,7 @@ function makeHistoryScanner(rules) {
     const sample=preceding+line;
     for(const [name,pattern] of rules){
       if(name==='Private key block')continue;
-      if(secretPatternMatches(name,pattern,sample))hits.add(name);
+      if(secretPatternMatches(name,pattern,sample,{commit:currentCommit,file:currentFile}))hits.add(name);
     }
     preceding=sample.slice(-512);
   }
@@ -244,6 +253,24 @@ const probed = boundaryProbe.finish();
 if (!probed.has('Tunnel identifier') || !probed.has('Bearer token literal')) {
   throw new Error('SECURITY_AUDIT_STREAM_SCANNER_REGRESSION');
 }
+// Exercise the actual streaming scanner, not just the pure provenance helper.
+const notionSynthetic='Bearer '+'FIXTURE_PRIVATE_ACCESS';
+const knownNotionCommit='7b28ae4ffbfc3094c70647fd1ad8c4c491ba7bf5';
+const knownNotionFile='test/notion-mcp-engine.test.mjs';
+const provenanceProbe=(commit,file,value)=>{
+  const scanner=makeHistoryScanner(patterns);
+  scanner.write('commit '+commit+'\n');
+  if(file)scanner.write('diff --git a/'+file+' b/'+file+'\n');
+  scanner.write('+'+value+'\n');
+  return scanner.finish().has('Bearer token literal');
+};
+if(provenanceProbe(knownNotionCommit,knownNotionFile,notionSynthetic)
+  ||!provenanceProbe('0'.repeat(40),knownNotionFile,notionSynthetic)
+  ||!provenanceProbe(knownNotionCommit,'src/notion-mcp-engine.mjs',notionSynthetic)
+  ||!provenanceProbe(knownNotionCommit,null,notionSynthetic)
+  ||!provenanceProbe(knownNotionCommit,knownNotionFile,notionSynthetic+'x')
+  ||!secretPatternMatches('Bearer token literal',bearerPattern,notionSynthetic))
+  throw new Error('SECURITY_AUDIT_STREAM_PROVENANCE_REGRESSION');
 async function scanCompleteHistory() {
   const args = ['-c',`safe.directory=${repoRoot}`,'-C',repoRoot,'log', '--all', '-p', '--no-color', '--no-ext-diff'];
   const child = spawn('git', args, { cwd:repoRoot, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
