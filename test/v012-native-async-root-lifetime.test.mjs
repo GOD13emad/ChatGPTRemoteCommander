@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {randomUUID,createHash} from 'node:crypto';
+import {spawnSync,execFileSync} from 'node:child_process';
 import {createAsyncOperationTools} from '../src/async-operations.mjs';
 import {createV012OwnerNativeHostLease} from '../src/v012-owner-native-host-lease-bootstrap.mjs';
 import {createV012SharedPhysicalRootFence} from '../src/v012-shared-physical-root-fence.mjs';
 import {ensureWindowsMonitorDirectories} from '../src/browser-companion-windows-private.mjs';
-import {processContainmentAvailable} from '../src/process-containment.mjs';
+import {processContainmentAvailable,isSerializedProcessCessationProof} from '../src/process-containment.mjs';
 import {DeliveryStore} from '../src/delivery-store.mjs';
 const pause=ms=>new Promise(r=>setTimeout(r,ms)),HOST='native-async-fixture';
 const route={hostId:HOST,profileId:'fixture',principalId:'fixture-owner',
@@ -66,7 +66,46 @@ test('native background worker keeps root, returns receipt, and releases only wi
      if(completed)break;
      await pause(200);
    }
-   assert.ok(completed,'requires durable exact-reservation native process proof');
+   assert.ok(completed,'requires exact-reservation native process proof and live owner IPC');
+   // A different OS process cannot inherit the trusted anonymous supervisor
+   // IPC event merely by opening the same writable receipt files. This is a
+   // REAL process restart probe, unlike logical manager re-creation below.
+   const probe=spawnSync(process.execPath,['--input-type=module','-e',
+     "import {createAsyncOperationTools} from './src/async-operations.mjs';"+
+     "const x=createAsyncOperationTools({config:{asyncOperations:{enabled:true,stateDir:process.env.RC_NATIVE_ROOT}},"+
+     "prepare:()=>{throw Error('NO_LAUNCH')}});"+
+     "const r=await x.readNativeRootCompletion(JSON.parse(process.env.RC_NATIVE_OBSERVED));"+
+     "await x.close();console.log(r===null?'FAIL_CLOSED':'UNSAFE_ACCEPTED')"
+   ],{
+     cwd:path.resolve(import.meta.dirname,'..'),
+     env:{...process.env,RC_NATIVE_ROOT:path.join(f.root,'async'),RC_NATIVE_OBSERVED:JSON.stringify(f.observed)},
+     encoding:'utf8',timeout:10000
+   });
+   assert.equal(probe.status,0,probe.stderr);
+   assert.match(probe.stdout,/FAIL_CLOSED/,
+     'a new OS Core process must not trust unauthenticated persisted proof after restart');
+   // Once a genuine controller closes and certifies its receipt over IPC,
+   // replacing the on-disk JSON and recomputing its public SHA256 is not proof.
+   const certificateFile=path.join(f.root,'async','operations',queued.operationId,'native-completion.json');
+   const originalCertificate=fs.readFileSync(certificateFile);
+   try{
+     const forged=JSON.parse(originalCertificate.toString('utf8'));
+     forged.processCessationProof.outcome='forged-after-native-close';
+     const fields=['schema','workflowId','stepId','operationId','rootFingerprint',
+       'revision','leaseId','fencingToken','provider','runId','activeProcesses',
+       'verified','outcome','cleanupRequired','completedAt'];
+     const digestPayload=Object.fromEntries(fields.map(k=>[k,forged.processCessationProof[k]]));
+     forged.processCessationProof.proofDigest=createHash('sha256')
+       .update(JSON.stringify(digestPayload)).digest('hex');
+     assert.equal(isSerializedProcessCessationProof(forged.processCessationProof,f.observed.binding),true,
+       'tampered proof must satisfy the public SHA256 and original binding validation');
+     fs.writeFileSync(certificateFile,JSON.stringify(forged)+'\n',{mode:0o600});
+     assert.deepEqual(JSON.parse(fs.readFileSync(certificateFile,'utf8')),forged,
+       'tamper fixture must contain valid JSON rather than malformed content');
+     assert.equal(await f.tools.readNativeRootCompletion(f.observed),null,
+       'untrusted file modification cannot forge owner IPC certificate');
+   }finally{fs.writeFileSync(certificateFile,originalCertificate,{mode:0o600});}
+   assert.ok(await f.tools.readNativeRootCompletion(f.observed));
    const proofFile=path.join(f.root,'async','operations',queued.operationId,'native-completion.json');
    const alias=proofFile+'.test-hardlink';
    fs.linkSync(proofFile,alias);
