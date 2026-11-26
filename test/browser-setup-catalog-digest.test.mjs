@@ -17,6 +17,27 @@ test('Windows setup revalidates exact BrowserSetup catalog identity before and a
   assert.match(compiler,/BROWSER_CATALOG_PIN_VERIFICATION_FAILED/);
   assert.match(compiler,/BROWSER_CATALOG_PIN_CHANGED_DURING_BUILD/);
   assert.match(compiler,/BrowserSha=\[string\]\$verified\[0\]/);
+  assert.match(compiler,/\/DBrowserSetupSHA256=/);
+});
+
+test('Inno [Run] extracts a dontcopy Browser payload and validates its actual bytes before execution',()=>{
+  const iss=fs.readFileSync(path.join(root,'installer','RemoteCommander.iss'),'utf8');
+  assert.match(iss,/#error BROWSER_SETUP_EXACT_DIGEST_REQUIRED/);
+  assert.doesNotMatch(iss,/^\s*\{[^\n]*\{tmp\}/m,'Inno Pascal comments must not nest {tmp} braces');
+  assert.match(iss,/Source: "\{#BrowserSetup\}".*Flags: dontcopy/);
+  assert.match(iss,/Filename: "\{tmp\}\\\{#BrowserSetupName\}".*Check: ShouldInstallBundledBrowser/);
+  const functionStart=iss.indexOf('function ShouldInstallBundledBrowser(): Boolean;');
+  const functionEnd=iss.indexOf('end;',functionStart);
+  assert.ok(functionStart>=0 && functionEnd>functionStart);
+  const functionBody=iss.slice(functionStart,functionEnd);
+  assert.match(functionBody,/ExtractTemporaryFile\('\{#BrowserSetupName\}'\)/);
+  assert.match(functionBody,/GetSHA256OfFile\(BrowserPath\)/);
+  assert.match(functionBody,/CompareText\(ActualSha, '\{#BrowserSetupSHA256\}'\)/);
+  assert.match(functionBody,/BROWSER_PAYLOAD_EXTRACTED_SHA256_MISMATCH/);
+  const preflight=iss.indexOf("if WizardIsComponentSelected('browser') and ShouldInstallBundledBrowser()");
+  const prerequisite=iss.indexOf('    EnsurePowerShell7;');
+  assert.ok(preflight>0 && prerequisite>preflight,'Browser must be checked before prerequisite/Core effects');
+  assert.match(iss,/BROWSER_PAYLOAD_PRECHECK_PASS/);
 });
 
 const available=spawnSync('pwsh',['-NoLogo','-NoProfile','-NonInteractive','-Command','$PSVersionTable.PSVersion.Major'],{
