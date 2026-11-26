@@ -95,6 +95,21 @@ test('classifier rejects removed tools, new required fields and narrowed constra
   assert.match(classifyToolSchemaCompatibility([base],[narrowedLength]).reasons.join('|'),/maxLength_narrowed/);
 });
 
+test('native snapshot prefix widening is forward-only and does not waive other pattern changes',async()=>{
+  const current={name:'workspace_target_reconcile',inputSchema:{type:'object',properties:{snapshotId:{type:'string',pattern:'^[sbn][0-9a-f]{8}$'}},additionalProperties:false}};
+  const old=structuredClone(current);old.inputSchema.properties.snapshotId.pattern='^[sb][0-9a-f]{8}$';
+  const forward=await run([old],[current],null);
+  assert.equal(forward.ok,true);assert.equal(forward.decision,'BACKWARD_COMPATIBLE_SCHEMA');
+  const reverse=await run([current],[old],null);
+  assert.equal(reverse.ok,false);assert.match(reverse.compatibilityReasons.join('|'),/pattern_changed/);
+  const other=structuredClone(current);other.name='other_tool';const otherOld=structuredClone(old);otherOld.name='other_tool';
+  assert.equal(classifyToolSchemaCompatibility([otherOld],[other]).compatible,false);
+  const different=structuredClone(current);different.inputSchema.properties.snapshotId.pattern='^[sbn][0-9a-f]{7}$';
+  assert.equal(classifyToolSchemaCompatibility([old],[different]).compatible,false);
+  const required=structuredClone(current);required.inputSchema.required=['snapshotId'];
+  assert.equal(classifyToolSchemaCompatibility([old],[required]).compatible,false);
+});
+
 test('classifier rejects newly imposed pattern and closed additional properties',()=>{
   const old=[{name:'x',inputSchema:{type:'object',properties:{a:{type:'string'}}}}];
   const pattern=[{name:'x',inputSchema:{type:'object',properties:{a:{type:'string',pattern:'^x$'}}}}];

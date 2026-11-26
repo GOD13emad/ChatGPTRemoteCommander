@@ -57,6 +57,13 @@ function setContainsAll(candidate,old){
   return true;
 }
 function exact(a,b){return JSON.stringify(sortDeep(a))===JSON.stringify(sortDeep(b));}
+// The only proven pattern widening here is the exact native snapshot-prefix
+// extension: every old s/b + eight lowercase hex ID is still accepted.
+// Keep all other pattern changes (including the reverse direction) conservative.
+function knownSnapshotPrefixWidening(path,oldPattern,newPattern){
+  return path==='tool.workspace_target_reconcile.inputSchema.properties.snapshotId'
+    &&oldPattern==='^[sb][0-9a-f]{8}$'&&newPattern==='^[sbn][0-9a-f]{8}$';
+}
 function compareSchema(oldSchema,candidateSchema,path='$'){
   const reasons=[];
   const old=oldSchema&&typeof oldSchema==='object'?oldSchema:{};
@@ -78,7 +85,8 @@ function compareSchema(oldSchema,candidateSchema,path='$'){
     if(Object.hasOwn(cand,key)&&(!Object.hasOwn(old,key)||Number(cand[key])<Number(old[key])))reasons.push(path+':'+key+'_narrowed');
   }
   for(const key of ['pattern','format','multipleOf']){
-    if(Object.hasOwn(cand,key)&&(!Object.hasOwn(old,key)||!exact(cand[key],old[key])))reasons.push(path+':'+key+'_changed');
+    if(Object.hasOwn(cand,key)&&(!Object.hasOwn(old,key)||!exact(cand[key],old[key]))
+      &&!(key==='pattern'&&knownSnapshotPrefixWidening(path,old[key],cand[key])))reasons.push(path+':'+key+'_changed');
   }
   const oldReq=new Set(Array.isArray(old.required)?old.required:[]);
   for(const key of Array.isArray(cand.required)?cand.required:[])if(!oldReq.has(key))reasons.push(path+':required_added:'+key);
