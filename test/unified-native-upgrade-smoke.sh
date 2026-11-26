@@ -46,10 +46,18 @@ for pkg in sys.argv[1:]:
         relative=row[at+len(prefix):].split(" -> ",1)[0].strip().rstrip("/")
         if not relative: continue
         head=relative.split("/",1)[0]
-        if relative in allowed_files or relative in allowed_scaffolding or head in allowed_dirs:
-            seen.add(relative)
-            continue
-        raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
+        if relative in seen:
+            raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
+        kind=row.split(None,1)[0][:1]
+        if relative in allowed_files:
+            permitted=kind=="-"
+        elif relative in allowed_scaffolding:
+            permitted=kind=="d"
+        else:
+            permitted=head in allowed_dirs and kind in {"d","-"}
+        if not permitted:
+            raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
+        seen.add(relative)
     required={"package.json","config.json","source-manifest.json","src/server-v0.3.mjs","packaging/unified/owner-pinned-provenance.mjs"}
     if pkg==sys.argv[-1]:
         required.update({"packaging/unified/migration-preflight.mjs","packaging/unified/package.json","packaging/unified/owner-dpapi-profile-recovery.ps1","packaging/unified/owner-systemd-creds-profile-recovery.sh"})
