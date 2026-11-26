@@ -165,7 +165,7 @@ async function main(){
     }
     if(!health?.protectedIngress?.wired)
       fail('RC012_PROTECTED_INGRESS_FAILED_'+String(health?.protectedIngress?.code??'UNAVAILABLE'));
-    assert.equal(health.version,'0.12.0-dev.13');
+    assert.equal(health.version,'0.12.0-dev.14');
     assert.equal(health.protectedIngress.ready,false);
     assert.equal(health.privilegedLegacyHttpQuarantined,true);
     const old=await fetch('http://127.0.0.1:'+plainPort+'/mcp',{
