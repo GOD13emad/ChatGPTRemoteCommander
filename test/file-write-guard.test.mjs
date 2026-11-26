@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {guardFileWrite} from '../src/file-write-guard.mjs';
+import { execFileSync } from 'node:child_process';
+import {guardFileWrite,readBoundHostConfiguration} from '../src/file-write-guard.mjs';
 import {writeText} from '../src/tools-v0.3.mjs';
 
 function fixture(t) {
@@ -55,4 +56,72 @@ test('replacement of an existing parent or leaf invalidates a write snapshot',as
   const replacement=path.join(parent,'replacement.txt');fs.writeFileSync(replacement,'replacement');
   fs.unlinkSync(target);fs.renameSync(replacement,target);
   await assert.rejects(guardFileWrite(target,existing),{code:'FILE_WRITE_TARGET_CHANGED'});
+});
+
+test('Host config selection reads exact local or explicit bytes, and falls back only on absence',async t=>{
+  const root=fixture(t),localConfigPath=path.join(root,'config.local.json'),
+    defaultConfigPath=path.join(root,'config.json');
+  const options={localConfigPath,defaultConfigPath};
+  fs.writeFileSync(defaultConfigPath,'{"source":"default"}');
+  assert.deepEqual(await readBoundHostConfiguration(options),
+    {configPath:defaultConfigPath,configRaw:'{"source":"default"}'});
+  fs.writeFileSync(localConfigPath,'{"source":"local"}');
+  assert.deepEqual(await readBoundHostConfiguration(options),
+    {configPath:localConfigPath,configRaw:'{"source":"local"}'});
+  assert.deepEqual(await readBoundHostConfiguration({...options,explicitConfigPath:defaultConfigPath}),
+    {configPath:defaultConfigPath,configRaw:'{"source":"default"}'});
+  await assert.rejects(readBoundHostConfiguration({...options,explicitConfigPath:path.join(root,'absent.json')}),
+    {code:'HOST_CONFIG_NOT_FOUND'});
+});
+test('an existing nonregular, hardlinked, or aliased local Host config must not fall back',async t=>{
+  const root=fixture(t),localConfigPath=path.join(root,'config.local.json'),
+    defaultConfigPath=path.join(root,'config.json');
+  const options={localConfigPath,defaultConfigPath};
+  fs.writeFileSync(defaultConfigPath,'{"source":"default"}');
+  fs.mkdirSync(localConfigPath);
+  await assert.rejects(readBoundHostConfiguration(options),{code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  fs.rmdirSync(localConfigPath);
+  fs.linkSync(defaultConfigPath,localConfigPath);
+  await assert.rejects(readBoundHostConfiguration(options),{code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  fs.unlinkSync(localConfigPath);
+  const dir=path.join(root,'actual'),alias=path.join(root,'alias');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir,'config.json'),'{"source":"alias"}');
+  fs.symlinkSync(dir,alias,process.platform==='win32'?'junction':'dir');
+  await assert.rejects(readBoundHostConfiguration({...options,explicitConfigPath:path.join(alias,'config.json')}),
+    {code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  assert.equal(fs.readFileSync(defaultConfigPath,'utf8'),'{"source":"default"}');
+});
+test('Host config reads are bounded before allocating bytes, without fallback',async t=>{
+  const root=fixture(t),localConfigPath=path.join(root,'config.local.json'),
+    defaultConfigPath=path.join(root,'config.json');
+  fs.writeFileSync(defaultConfigPath,'{}');
+  fs.writeFileSync(localConfigPath,'{}');
+  fs.truncateSync(localConfigPath,8*1024*1024+1);
+  await assert.rejects(readBoundHostConfiguration({localConfigPath,defaultConfigPath}),{code:'HOST_CONFIG_TOO_LARGE'});
+});
+
+test('Windows Host config accepts identity-verified NTFS short names but writes and junctions stay denied',
+ {skip:process.platform!=='win32'}, async t=>{
+  const root=fixture(t),dir=path.join(root,'Long Configuration Directory');
+  fs.mkdirSync(dir);
+  const file=path.join(dir,'config.json'),raw='{"source":"short-name"}';
+  fs.writeFileSync(file,raw);
+  // Fixed command, fixed relative fixture name, no untrusted interpolation.
+  const cmd=path.join(process.env.SystemRoot||'C:\\\\Windows','System32','cmd.exe');
+  const shortDir=execFileSync(cmd,['/d','/c','for %I in ("Long Configuration Directory") do @echo %~sI'],
+    {cwd:root,encoding:'utf8',windowsVerbatimArguments:true}).trim();
+  assert.equal(fs.realpathSync.native(shortDir).toLowerCase(),dir.toLowerCase());
+  if(shortDir.toLowerCase()===dir.toLowerCase())return t.skip('NTFS short-name generation disabled on this test volume');
+  const shortFile=path.join(shortDir,'config.json');
+  assert.equal((await readBoundHostConfiguration({explicitConfigPath:shortFile})).configRaw,raw);
+  await assert.rejects(guardFileWrite(shortFile),{code:'FILE_WRITE_ALIAS'});
+  const alias=path.join(root,'alias');fs.symlinkSync(dir,alias,'junction');
+  await assert.rejects(readBoundHostConfiguration({explicitConfigPath:path.join(alias,'config.json')}),
+    {code:'HOST_CONFIG_PATH_UNTRUSTED'});
+  const missing=path.join(shortDir,'absent.json');
+  assert.equal((await readBoundHostConfiguration({localConfigPath:missing,defaultConfigPath:shortFile})).configRaw,raw);
+  fs.linkSync(file,path.join(dir,'hard.json'));
+  await assert.rejects(readBoundHostConfiguration({explicitConfigPath:shortFile}),
+    {code:'HOST_CONFIG_PATH_UNTRUSTED'});
 });
