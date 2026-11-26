@@ -35,26 +35,33 @@ function verifiedJson(name,sha=candidateSha){
     }
   }]);
 }
-test('Windows one-click script is a real owner-session Yes/No UI, never a typed hash',()=>{
+test('Windows package-owner approval is a fully visible bounded Form with No default',()=>{
   const plan={installedVersion:'0.12.0-dev.9',
     candidate:{version:'0.12.0-dev.10'},
     transactionId:"user-manifest-'$($evil)-"+'c'.repeat(64)};
   const script=windowsGuiApprovalScript(plan);
-  assert.match(script,/System\.Windows\.Forms\.MessageBox/);
-  assert.match(script,/System\.Windows\.Forms\.MessageBoxButtons\]::YesNo/);
-  assert.match(script,/MessageBoxDefaultButton\]::Button2/);
-  assert.match(script,/\$hostForm\.TopMost=\$true/);
-  assert.match(script,/MessageBox\]::Show\(\$hostForm,\$message/);
-  assert.match(script,/\$hostForm\.Dispose\(\)/);
+  assert.match(script,/System\.Windows\.Forms\.Form/);
+  assert.match(script,/\$dialog\.TopMost=\$true/);
+  assert.match(script,/\$dialog\.ShowInTaskbar=\$true/);
+  assert.match(script,/\$dialog\.ShowDialog\(\)/);
+  assert.match(script,/\$approve\.DialogResult=\[System\.Windows\.Forms\.DialogResult\]::Yes/);
+  assert.match(script,/\$decline\.DialogResult=\[System\.Windows\.Forms\.DialogResult\]::No/);
+  assert.match(script,/\$dialog\.AcceptButton=\$decline/);
+  assert.match(script,/\$dialog\.CancelButton=\$decline/);
+  assert.match(script,/\$timer\.Interval=85000/);
+  assert.match(script,/\$timer\.Stop\(\);\$timer\.Dispose\(\);\$dialog\.Dispose\(\)/);
+  assert.doesNotMatch(script,/System\.Windows\.Forms\.MessageBox/);
+  assert.doesNotMatch(script,/\$dialog\.Opacity=0|ShowInTaskbar=\$false/);
   assert.match(script,/UserInteractive/);
   assert.match(script,/SessionId -le 0/);
-  assert.ok(script.includes('\n'),'PowerShell script must have actual line breaks');
+  assert.ok(script.includes('\n'));
   assert.doesNotMatch(script,/\$\(\$evil\)/,
     'an untrusted transaction string cannot become a PowerShell expression');
   const encoded=script.match(/FromBase64String\('([^']+)'\)/)?.[1];
   assert.ok(encoded);
   assert.match(Buffer.from(encoded,'base64').toString('utf8'),/user-manifest-'\$\(\$evil\)/);
-  assert.match(script,/DialogResult\]::Yes/);
+  const nativeSource=fs.readFileSync(new URL('../tools/universal-install/native-cli.mjs',import.meta.url),'utf8');
+  assert.match(nativeSource,/'-NonInteractive',\s*'-Sta','-EncodedCommand'/);
 });
 test('signed candidate uses official pinned repo/source/signer and refuses bad results',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-signed-owner-'));

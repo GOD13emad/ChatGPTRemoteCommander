@@ -56,26 +56,42 @@ export function windowsGuiApprovalScript(plan){
     "if ($owner.IsSystem -or $owner.IsAnonymous) {exit 19}",
     "Add-Type -AssemblyName System.Windows.Forms",
     "$message=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+b64+"'))",
-    // A normal unowned MessageBox appeared behind the active browser on the
-    // owner's real Windows desktop. Attach it to a topmost zero-opacity form.
-    // This changes visibility ONLY, never consent, elevation or user input.
-    "$hostForm=New-Object System.Windows.Forms.Form",
-    "$hostForm.TopMost=$true",
-    "$hostForm.ShowInTaskbar=$false",
-    "$hostForm.FormBorderStyle='None'",
-    "$hostForm.Width=1",
-    "$hostForm.Height=1",
-    "$hostForm.Opacity=0",
-    "try {",
-    " $hostForm.Show()",
-    " $hostForm.Activate()",
-    " $answer=[System.Windows.Forms.MessageBox]::Show($hostForm,$message,"+
-      "'ChatGPT Commander - Native owner approval',"+
-      "[System.Windows.Forms.MessageBoxButtons]::YesNo,"+
-      "[System.Windows.Forms.MessageBoxIcon]::Question,"+
-      "[System.Windows.Forms.MessageBoxDefaultButton]::Button2)",
-    "} finally { $hostForm.Close(); $hostForm.Dispose() }",
-    "if($answer -eq [System.Windows.Forms.DialogResult]::Yes) {exit 0} else {exit 10}"
+    // Use a real visible topmost owner form; an opacity-zero MessageBox
+    // host is not a reliable visible consent surface on active desktops.
+    // Explicit Yes/No buttons, Cancel default and bounded expiry; never
+    // infer approval from session existence or inherited capabilities.
+    "$dialog=New-Object System.Windows.Forms.Form",
+    "$dialog.Text='ChatGPT Commander - Native owner approval'",
+    "$dialog.StartPosition='CenterScreen'",
+    "$dialog.TopMost=$true",
+    "$dialog.ShowInTaskbar=$true",
+    "$dialog.FormBorderStyle='FixedDialog'",
+    "$dialog.Width=650",
+    "$dialog.Height=320",
+    "$dialog.MaximizeBox=$false",
+    "$dialog.MinimizeBox=$false",
+    "$label=New-Object System.Windows.Forms.Label",
+    "$label.SetBounds(20,15,605,188)",
+    "$label.Text=$message",
+    "$approve=New-Object System.Windows.Forms.Button",
+    "$approve.Text='Approve package only'",
+    "$approve.SetBounds(285,215,170,36)",
+    "$approve.DialogResult=[System.Windows.Forms.DialogResult]::Yes",
+    "$decline=New-Object System.Windows.Forms.Button",
+    "$decline.Text='Decline'",
+    "$decline.SetBounds(475,215,125,36)",
+    "$decline.DialogResult=[System.Windows.Forms.DialogResult]::No",
+    "$dialog.Controls.Add($label)",
+    "$dialog.Controls.Add($approve)",
+    "$dialog.Controls.Add($decline)",
+    "$dialog.AcceptButton=$decline",
+    "$dialog.CancelButton=$decline",
+    "$timer=New-Object System.Windows.Forms.Timer",
+    "$timer.Interval=85000",
+    "$timer.Add_Tick({$timer.Stop();$dialog.DialogResult=[System.Windows.Forms.DialogResult]::Cancel;$dialog.Close()})",
+    "$timer.Start()",
+    "try {$answer=$dialog.ShowDialog()} finally {$timer.Stop();$timer.Dispose();$dialog.Dispose()}",
+    "if($answer -eq [System.Windows.Forms.DialogResult]::Yes){exit 0}else{exit 10}"
   ].join('\n');
 }
 export function resolveLinuxOwnerGuiSession({
