@@ -444,7 +444,7 @@ test('preview upgrade refuses oversized runtime data without replacing current C
 });
 
 test('hosted public native DEB path policy admits audited packaging files and rejects private paths', {
-  skip: process.platform!=='linux'
+  skip: spawnSync(process.platform==='win32'?'python':'python3',['--version'],{windowsHide:true}).status!==0
 },()=>{
   const source=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
   const section=source.match(/python3 - "\$OLD" "\$NEW" <<'PUBLIC_APP_BOUNDARY'\r?\n([\s\S]+?)\r?\nPUBLIC_APP_BOUNDARY/u);
@@ -467,7 +467,7 @@ test('hosted public native DEB path policy admits audited packaging files and re
       'sys.argv=["policy-test","old.deb","merged.deb"]',
       section[1]
     ].join('\n');
-    return spawnSync('python3',['-c',code,listing],{
+    return spawnSync(process.platform==='win32'?'python':'python3',['-c',code,listing],{
       cwd:repo,encoding:'utf8',timeout:12000,windowsHide:true});
   };
   const allowed=execute(base);
@@ -498,12 +498,19 @@ test('hosted public native DEB path policy admits audited packaging files and re
     ['packaging/unified/owner-pinned-provenance.mjs','lrwxrwxrwx'],
     ['packaging/unified','-rw-r--r--'],
     ['packaging/unified/owner-systemd-creds-profile-recovery.sh','lrwxrwxrwx'],
-    ['source-manifest.json','drwxr-xr-x']
+    ['source-manifest.json','drwxr-xr-x'],
+    ['packaging/unified/migration-preflight.mjs','crw-rw-rw-'],
+    ['src/server-v0.3.mjs','lrwxrwxrwx'],
+    ['src/server-v0.3.mjs','drwxr-xr-x'],
+    ['packaging','lrwxrwxrwx']
   ]){
     const invalid=execute(base,{[rel]:kind});
     assert.notEqual(invalid.status,0,'must reject wrong entry type: '+rel);
     assert.match(invalid.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   }
+  const duplicate=execute([...base,'package.json']);
+  assert.notEqual(duplicate.status,0,'duplicate payload entries are denied');
+  assert.match(duplicate.stderr,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/u);
   const missingProvenance=execute(base.filter(p=>p!=='packaging/unified/owner-pinned-provenance.mjs'));
   assert.notEqual(missingProvenance.status,0);
   assert.match(missingProvenance.stderr,/RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING/u);
@@ -558,6 +565,8 @@ test('hosted public native DEB path policy checks actual archive entry types bef
       ['provenance-link',app=>replaceWithLink(app,'packaging/unified/owner-pinned-provenance.mjs')],
       ['recovery-link',app=>replaceWithLink(app,'packaging/unified/owner-systemd-creds-profile-recovery.sh')],
       ['manifest-dir',app=>{const dest=path.join(app,'source-manifest.json');fs.unlinkSync(dest);fs.mkdirSync(dest);}],
+      ['core-entry-link',app=>replaceWithLink(app,'src/server-v0.3.mjs')],
+      ['core-entry-dir',app=>{const dest=path.join(app,'src/server-v0.3.mjs');fs.unlinkSync(dest);fs.mkdirSync(dest);}],
       ['parent-file',app=>{const dest=path.join(app,'packaging/unified');fs.rmSync(dest,{recursive:true});fs.writeFileSync(dest,'fixture\n');}]
     ]){
       const bad=run(valid,build(name,change));
