@@ -112,7 +112,9 @@ $cuaAssetPin = $cuaPin.assets.PSObject.Properties[('windows-' + $cuaArch)].Value
 $cuaMeta = Get-Content -LiteralPath $cuaMetaPath -Raw | ConvertFrom-Json
 $cuaHash = (Get-FileHash -LiteralPath $cua -Algorithm SHA256).Hash.ToLowerInvariant()
 $cuaReceipt = (Get-Content -LiteralPath $cuaReceiptPath -Raw).Trim().ToLowerInvariant()
-$cuaVersionText = (& $cua --version 2>&1 | Out-String).Trim()
+if ($cuaHash -cne ([string]$manifest.cuaDriverSha256).ToLowerInvariant()) {
+  throw 'OWNER_WORKSPACE_CUA_HASH_MISMATCH'
+}
 if ($cua -cne $expectedCua -or
     [string]$cuaPin.version -cne '0.38.0' -or
     [string]$cuaMeta.version -cne [string]$cuaPin.version -or
@@ -123,11 +125,13 @@ if ($cua -cne $expectedCua -or
     [string]$cuaMeta.binarySha256 -cne [string]$cuaAssetPin.binarySha256 -or
     $cuaReceipt -cne [string]$cuaAssetPin.sha256 -or
     $cuaHash -cne [string]$cuaAssetPin.binarySha256 -or
-    $cuaHash -cne ([string]$manifest.cuaDriverSha256).ToLowerInvariant() -or
     [string]$manifest.cuaDriverVersion -cne [string]$cuaPin.version -or
     [string]$manifest.cuaDriverUpstreamCommit -cne [string]$cuaPin.upstreamCommit -or
-    [string]$manifest.cuaDriverAssetSha256 -cne [string]$cuaAssetPin.sha256 -or
-    $cuaVersionText -cne ('cua-driver ' + [string]$cuaPin.version)) {
+    [string]$manifest.cuaDriverAssetSha256 -cne [string]$cuaAssetPin.sha256) {
+  throw 'OWNER_WORKSPACE_CUA_PROVENANCE_INVALID'
+}
+$cuaVersionText = (& $cua --version 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $cuaVersionText -cne ('cua-driver ' + [string]$cuaPin.version)) {
   throw 'OWNER_WORKSPACE_CUA_PROVENANCE_INVALID'
 }
 

@@ -60,7 +60,7 @@ verify_binary_set() {
   actual_binary="$(sha256sum "$FINAL_EXE" 2>/dev/null | awk '{print $1}')"
   actual_cloudflared="$(sha256sum "$CLOUDFLARED_EXE" 2>/dev/null | awk '{print $1}')"
   [[ "$actual_binary" == "$BINARY_SHA" && "$actual_cloudflared" == "$CLOUDFLARED_SHA" ]] || return 1
-  actual_version="$("$FINAL_EXE" --version 2>/dev/null || true)"
+  actual_version="$("$FINAL_EXE" --version 2>/dev/null)" || return 1
   [[ "$actual_version" == "$VERSION+$UPSTREAM_COMMIT"* ]]
 }
 
@@ -133,7 +133,7 @@ if [[ "$SELF_TEST" == 1 ]]; then
 fi
 
 if [[ "$VERIFY_ONLY" == 1 ]]; then
-  verify_binary_set && verify_metadata || { echo 'TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID' >&2; exit 1; }
+  verify_metadata && verify_binary_set || { echo 'TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID' >&2; exit 1; }
   echo "TUNNEL_CLIENT_VERIFY_PASS version=$VERSION path=$FINAL_EXE"
   exit 0
 fi
@@ -202,7 +202,6 @@ CLOUDFLARED_ACTUAL_SHA="$(sha256sum "$STAGE/cloudflared" | awk '{print $1}')"
 [[ "$BINARY_ACTUAL_SHA" == "$BINARY_SHA" && "$CLOUDFLARED_ACTUAL_SHA" == "$CLOUDFLARED_SHA" ]] || {
   echo 'Tunnel-client binary-set SHA-256 mismatch.' >&2; exit 1;
 }
-
 VERSION_TEXT="$("$STAGE/tunnel-client" --version 2>&1)"
 [[ "$VERSION_TEXT" == "$VERSION+$UPSTREAM_COMMIT"* ]] || { echo "Tunnel-client binary provenance mismatch: $VERSION_TEXT" >&2; exit 1; }
 

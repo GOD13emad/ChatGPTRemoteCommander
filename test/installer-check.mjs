@@ -25,7 +25,8 @@ for (const required of [
   'Get-ExpectedConfigHash',
   'mcp-runtime.json',
   'tunnel-client.json',
-  'Skipping tunnel-client installation as requested',
+  'install-tunnel-client-windows.ps1',
+  "if($SkipTunnelClient){$args += '-VerifyOnly'}",
   'update-backups',
   'SAFE_UPDATE_PASS',
   '$isCanonicalLiveInstall',
@@ -243,8 +244,9 @@ for (const required of [
   '--max-time "$CURL_MAX_TIME"',
   'curl_fetch https://nodejs.org/dist/index.json',
   'curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:47831/health',
-  'TUNNEL_CLIENT_REQUIRED_MISSING',
-  'Reusing existing pinned tunnel-client while skip was requested'
+  '/bin/bash "$helper" --install-dir "$INSTALL_DIR" --verify-only',
+  'install-cua-driver-linux.sh',
+  'data_home="$INSTALL_DIR/var/isolated/data"'
 ]) {
   if (!linuxInstaller.includes(required)) {
     throw new Error(`install.sh missing required release behavior: ${required}`);

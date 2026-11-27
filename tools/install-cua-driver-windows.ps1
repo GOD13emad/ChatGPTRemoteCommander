@@ -46,9 +46,9 @@ function Test-ExistingCuaPayload {
   }
   $actual = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
   $receipt = (Get-Content -LiteralPath $receiptPath -Raw).Trim().ToLowerInvariant()
-  if (-not ($actual -ceq $binarySha -and $receipt -ceq $assetSha)) { return $false }
+  if ($actual -cne $binarySha -or $receipt -cne $assetSha) { return $false }
   $versionText = (& $exe --version 2>&1 | Out-String).Trim()
-  return ($versionText -ceq ('cua-driver ' + $version))
+  return ($LASTEXITCODE -eq 0 -and $versionText -ceq ('cua-driver ' + $version))
 }
 function Test-ExistingCuaMetadata {
   if (-not (Test-Path -LiteralPath $metaPath -PathType Leaf)) { return $false }
@@ -78,7 +78,7 @@ if ($SelfTest) {
   exit 0
 }
 if ($VerifyOnly) {
-  if (-not (Test-ExistingCuaPayload) -or -not (Test-ExistingCuaMetadata)) { throw 'CUA_DRIVER_EXISTING_PROVENANCE_INVALID' }
+  if (-not (Test-ExistingCuaMetadata) -or -not (Test-ExistingCuaPayload)) { throw 'CUA_DRIVER_EXISTING_PROVENANCE_INVALID' }
   Write-Output "CUA_DRIVER_VERIFY_PASS version=$version path=$exe"
   exit 0
 }
@@ -122,7 +122,7 @@ try {
   $stagedHash = (Get-FileHash -LiteralPath $stagedExe -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($stagedHash -cne $binarySha) { throw 'CUA_DRIVER_BINARY_SHA_MISMATCH' }
   $versionText = (& $stagedExe --version 2>&1 | Out-String).Trim()
-  if ($versionText -cne ('cua-driver ' + $version)) { throw 'CUA_DRIVER_VERSION_MISMATCH' }
+  if ($LASTEXITCODE -ne 0 -or $versionText -cne ('cua-driver ' + $version)) { throw 'CUA_DRIVER_VERSION_MISMATCH' }
   Set-Content -LiteralPath (Join-Path $extract '.verified-archive-sha256') -Value $assetSha -NoNewline -Encoding ascii
   $meta = [ordered]@{schema=1;version=$version;releaseTag=$releaseTag;upstreamCommit=$upstreamCommit;asset=$asset;assetSha256=$assetSha;binarySha256=$binarySha;verification='official-archive-and-binary-sha256'}
   $meta | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $extract 'cua-driver-installed.json') -Encoding utf8

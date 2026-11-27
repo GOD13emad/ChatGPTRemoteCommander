@@ -326,6 +326,9 @@ install_cua_driver() {
   [[ "$tier" == "FULL_POWER" ]] || { echo 'CUA_DRIVER_NOT_REQUIRED tier=STANDARD'; return 0; }
   [[ -f "$pin" && -f "$helper" ]] || { echo 'CUA_DRIVER_PINNED_INSTALLER_MISSING' >&2; return 1; }
   data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  if [[ "$CUSTOM_NO_START" == 1 ]]; then
+    data_home="$INSTALL_DIR/var/isolated/data"
+  fi
   if [[ "$SKIP_CUA_DRIVER" == 1 ]]; then
     /bin/bash "$helper" --pin-file "$pin" --data-home "$data_home" --verify-only
   else
