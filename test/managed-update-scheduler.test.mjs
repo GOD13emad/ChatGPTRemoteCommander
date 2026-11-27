@@ -12,6 +12,7 @@ test('universal scheduler runs only the user-local signed staging command',()=>{
  assert.match(s.service,/ProtectSystem=full/);
  assert.match(s.timer,/OnUnitActiveSec=6h/);
  assert.match(s.timer,/Persistent=true/);
+ assert.ok(s.timer.split('\n').includes('OnCalendar=*-*-* 00/6:00:00'), 'persistent calendar fallback must remain schedulable after lost monotonic state');
  assert.doesNotMatch(s.service,/--apply|--attested-gui-approval|pkexec|sudo/);
  assert.throws(()=>linuxUnitFiles({nodeBinary:'/usr/bin/node',
    ghBinary:'/usr/bin/gh',runner:'/tmp/unsafe\nExecStart=/bin/sh'}),/UNSAFE_PATH/);

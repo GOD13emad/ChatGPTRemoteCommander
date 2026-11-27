@@ -50,6 +50,7 @@ export function linuxUnitFiles({nodeBinary,ghBinary,runner}){
   const timer=[
     '[Unit]','Description=Periodic ChatGPT Commander signed-release check',
     '[Timer]','OnBootSec=10min','OnUnitActiveSec=6h',
+    'OnCalendar=*-*-* 00/6:00:00',
     'Persistent=true','RandomizedDelaySec=20min',
     'Unit=chatgpt-commander-native-autoupdate.service',
     '[Install]','WantedBy=timers.target',''
