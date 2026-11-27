@@ -796,17 +796,17 @@ test('one native DEB derives its version from the exact same source and GUI trai
   ]) assert.equal(candidateNativeDebianVersion(source,gui),null,
     String(source)+' / '+String(gui));
 });
-test('Debian dev.16 candidate advances installed dev.15 without implying owner admission',{skip:process.platform!=='linux'},()=>{
+test('Debian current candidate advances installed dev.15 without implying owner admission',{skip:process.platform!=='linux'},()=>{
  const app=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
  const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
- assert.equal(app.version,'0.12.0-dev.16');
+ assert.match(app.version,/^0\.12\.0-dev\.(?:19|[2-9][0-9])$/);
  assert.equal(app.version,gui.version);
  assert.equal(train.sourceVersion,app.version);
  assert.equal(train.installedPromotionApproved,false);
  assert.equal(train.publishApproved,false);
  const cand=candidateNativeDebianVersion(app.version,gui.version);
- assert.equal(cand,'0.12.0~dev.16');
+ assert.equal(cand,app.version.replace('-dev.','~dev.'));
  for(const [lower,relation,upper,expected] of [
    ['0.12.0~dev.15','lt',cand,0],
    [cand,'gt','0.12.0~dev.15',0],

@@ -106,6 +106,10 @@ fs.writeFileSync(path.join(core,'source-manifest.json'),JSON.stringify(manifest,
 fs.chmodSync(path.join(core,'source-manifest.json'),0o644);
 const pkg=JSON.parse(fs.readFileSync(path.join(core,'package.json'),'utf8'));
 const guiPkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
+const runtimeVersionText=fs.readFileSync(path.join(core,'src/runtime-version.mjs'),'utf8');
+const runtimeVersion=runtimeVersionText.match(/^export const CORE_VERSION='(0\.12\.0-dev\.[1-9][0-9]*)';$/m)?.[1];
+if(runtimeVersion!==pkg.version)
+  throw Error('UNIFIED_RUNTIME_HEALTH_VERSION_MISMATCH');
 const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
 if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(pkg.version)
    ||pkg.version!==guiPkg.version||train.sourceVersion!==pkg.version

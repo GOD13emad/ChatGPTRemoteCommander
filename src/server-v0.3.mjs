@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {CORE_VERSION as VERSION} from './runtime-version.mjs';
 import { legacyPrivilegedMcpQuarantine, rejectLegacyPrivilegedMcp } from './full-access-http-quarantine.mjs';
 import { probeWindowsAdministrator } from './windows-admin-token.mjs';
 import { createAccessStatusReader } from './full-access-status.mjs';
@@ -41,7 +42,7 @@ import {
 let workflowTools = null;
 let protectedPhysicalRootFence=null;
 let browserCompanionMonitor = null;
-const VERSION = '0.12.0-dev.16';
+
 const MODERN_VERSION = '2026-07-28';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26'];
 const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';

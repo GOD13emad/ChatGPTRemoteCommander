@@ -18,8 +18,8 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.equal(manifest.sourceVersion,corePkg.version);
  assert.equal(manifest.sourceVersion,guiPkg.version);
  assert.match(manifest.sourceVersion,/^0\.12\.0-dev\.[1-9][0-9]*$/);
- assert.equal(compareReleaseVersions(manifest.sourceVersion,'0.12.0-dev.17'),1,
-   'hardened candidate advances QA dev.17 and previously installed dev.16 without reusing a version');
+ assert.equal(compareReleaseVersions(manifest.sourceVersion,'0.12.0-dev.18'),1,
+   'runtime-parity candidate advances QA dev.18 and installed dev.16 without reusing a version');
  assert.equal(compareReleaseVersions('0.12.0',manifest.sourceVersion),1,'must remain development, never Stable');
  assert.equal(manifest.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
  assert.equal(manifest.sourceBaseSha,'40256873627780cc7b62359935e43bac5ef856b3');
