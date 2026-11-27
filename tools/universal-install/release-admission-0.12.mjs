@@ -60,9 +60,9 @@ export function verifyV012Publication(version,tag,manifest) {
 
 // A single product release has two platform artifacts. This validates
 // inventory only; downloaded bytes still require pinned Sigstore verification.
-export function nativeV012ReleaseAssetSet(release) {
+function nativeAssetSet(release,tagPattern) {
  const tag=release?.tag_name;
- if(typeof tag!=='string'||!/^v0\.12\.(?:0|[1-9][0-9]*)$/.test(tag)
+ if(typeof tag!=='string'||!tagPattern.test(tag)
     ||!Array.isArray(release.assets)||release.assets.length!==2)return null;
  const version=tag.slice(1);
  const names={linux:'Remote-Commander-Unified-'+version+'-Linux-amd64.deb',
@@ -77,6 +77,15 @@ export function nativeV012ReleaseAssetSet(release) {
    selected[platform]=a;
  }
  return selected;
+}
+export function nativeV012ReleaseAssetSet(release){
+ return nativeAssetSet(release,/^v0\.12\.(?:0|[1-9][0-9]*)$/);
+}
+
+// Inventory-only development candidate. Never an authorization to publish,
+// stage, install or promote; stable admission deliberately excludes it.
+export function nativeV012DevCandidateAssetSet(release){
+ return nativeAssetSet(release,/^v0\.12\.0-dev\.[1-9][0-9]*$/);
 }
 export function isV012InstalledVersion(version){
  return typeof version==='string'&&

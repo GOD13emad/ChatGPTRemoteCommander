@@ -3,11 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {nativeV012ReleaseAssetSet} from './release-admission-0.12.mjs';
+import {nativeV012ReleaseAssetSet,nativeV012DevCandidateAssetSet} from './release-admission-0.12.mjs';
 
 const deny=()=>{throw Error('RC012_NATIVE_RELEASE_INVENTORY_DENIED');};
-export async function inspectNativeReleaseInventory({version,directory}={}){
- if(typeof version!=='string'||!/^0\.12\.(?:0|[1-9][0-9]*)$/.test(version)
+export async function inspectNativeReleaseInventory({version,directory,channel='stable'}={}){
+ const pattern=channel==='stable'?/^0\.12\.(?:0|[1-9][0-9]*)$/:
+   channel==='development'?/^0\.12\.0-dev\.[1-9][0-9]*$/:null;
+ if(!pattern||typeof version!=='string'||!pattern.test(version)
     ||typeof directory!=='string'||!path.isAbsolute(directory))deny();
  const root=fs.lstatSync(directory);
  if(!root.isDirectory()||root.isSymbolicLink())deny();
@@ -39,15 +41,19 @@ export async function inspectNativeReleaseInventory({version,directory}={}){
    assets.push({name,state:'uploaded',size:count,digest:'sha256:'+hash.digest('hex')});
   }finally{fs.closeSync(fd);}
  }
- const release={tag_name:'v'+version,assets};
- if(!nativeV012ReleaseAssetSet(release))deny();
+ const release={tag_name:'v'+version,assets,
+   ...(channel==='development'?{channel,draft:true,prerelease:true}:{})};
+ const validate=channel==='development'?nativeV012DevCandidateAssetSet:nativeV012ReleaseAssetSet;
+ if(!validate(release))deny();
  return {schema:'rc012-native-release-inventory-v1',version,...release,
    inventoryOnly:true,publicationApproved:false,provenanceVerified:false};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
-  if(process.argv.length!==4)deny();
-  const result=await inspectNativeReleaseInventory({version:process.argv[2],directory:process.argv[3]});
+  const dev=process.argv.length===5&&process.argv[4]==='--development';
+  if(process.argv.length!==4&&!dev)deny();
+  const result=await inspectNativeReleaseInventory({version:process.argv[2],directory:process.argv[3],
+    channel:dev?'development':'stable'});
   process.stdout.write(JSON.stringify(result)+'\n');
  }catch(e){console.error('RC012_NATIVE_RELEASE_INVENTORY_DENIED');process.exitCode=2;}
 }
