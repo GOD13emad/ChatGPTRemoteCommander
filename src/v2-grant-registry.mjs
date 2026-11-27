@@ -143,8 +143,15 @@ export class V2GrantRegistry {
     this.directory = assertPrivatePath(directory);
     this.location = path.join(this.directory, 'v2-access.sqlite');
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
-      if (!fs.existsSync(this.location + suffix)) continue;
-      const info = fs.lstatSync(this.location + suffix);
+      // SQLite may remove a transient rollback journal between two metadata
+      // calls. Stat once and treat only ENOENT as an absent file; other errors
+      // and unsafe aliases must still fail closed.
+      let info;
+      try { info = fs.lstatSync(this.location + suffix); }
+      catch (error) {
+        if (error?.code === 'ENOENT') continue;
+        throw error;
+      }
       if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) fail('V2_GRANT_ALIAS_NOT_ALLOWED');
     }
     this.db = new DatabaseSync(this.location, { allowExtension: false });
