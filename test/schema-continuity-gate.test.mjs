@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
-import { classifyToolSchemaCompatibility, evaluateSchemaContinuity, validateLocalSchemaEndpoint } from '../tools/schema-continuity-gate.mjs';
+import { classifyToolSchemaCompatibility, evaluateSchemaContinuity, validateLocalSchemaEndpoint, fetchToolSchema } from '../tools/schema-continuity-gate.mjs';
 
 function server(handler){return http.createServer(handler);}
 let portCursor=20000+(process.pid%10000);
@@ -140,4 +140,18 @@ test('SSRF guard blocks redirects from a loopback schema endpoint to a different
     routerUrl:`http://127.0.0.1:${port}/router/status`
   }),/redirect|fetch failed/i);
  }finally{await close(source);}
+});
+
+
+test('schema transport uses numeric loopback and rejects role mismatch before I/O',async()=>{
+ const original=globalThis.fetch;const calls=[];
+ try{
+  globalThis.fetch=async(url,options)=>{calls.push([String(url),options.method,options.redirect]);return {ok:true,json:async()=>({result:{tools:[]}})};};
+  await fetchToolSchema('http://localhost:47831/mcp');
+  assert.deepEqual(calls,[['http://127.0.0.1:47831/mcp','POST','error']]);
+  await fetchToolSchema('http://[::1]:47831/mcp');
+  assert.deepEqual(calls[1],['http://[::1]:47831/mcp','POST','error']);
+  await assert.rejects(fetchToolSchema('http://127.0.0.1:47831/router/status'),/SCHEMA_ENDPOINT_/);
+  assert.equal(calls.length,2);
+ }finally{globalThis.fetch=original;}
 });

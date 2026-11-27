@@ -25,16 +25,20 @@ export function validateLocalSchemaEndpoint(value,role=null){
     ||(role==='mcp'&&u.pathname!=='/mcp')
     ||(role==='router'&&u.pathname!=='/router/status'))
     throw new Error('SCHEMA_ENDPOINT_LOOPBACK_REQUIRED');
-  return u.href;
+  // Do not send a hostname through DNS/hosts resolution. Preserve explicit
+  // IPv6 loopback; the localhost spelling means IPv4 loopback for this gate.
+  const host=u.hostname==='[::1]'?'[::1]':'127.0.0.1';
+  const route=u.pathname==='/mcp'?'/mcp':'/router/status';
+  return `http://${host}:${Number(u.port)}${route}`;
 }
-async function fetchJson(url,options){
-  const safeUrl=validateLocalSchemaEndpoint(url);
+async function fetchJson(url,options,role){
+  const safeUrl=validateLocalSchemaEndpoint(url,role);
   const r=await fetch(safeUrl,{...options,redirect:'error',signal:AbortSignal.timeout(5000)});
   if(!r.ok)throw new Error('SCHEMA_HTTP_'+r.status);
   return r.json();
 }
 export async function fetchToolSchema(url){
-  const body=await fetchJson(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})});
+  const body=await fetchJson(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})},'mcp');
   if(!Array.isArray(body?.result?.tools))throw new Error('SCHEMA_TOOLS_LIST_INVALID');
   return body.result.tools;
 }
@@ -126,7 +130,7 @@ export async function evaluateSchemaContinuity({oldUrl,candidateUrl,routerUrl}){
   const compatibility=classifyToolSchemaCompatibility(oldTools,candidateTools);
   if(compatibility.compatible)return {ok:true,changed:true,backwardCompatible:true,oldHash,candidateHash,decision:'BACKWARD_COMPATIBLE_SCHEMA'};
   let status;
-  try{status=await fetchJson(routerUrl,{method:'GET'});}catch(error){
+  try{status=await fetchJson(routerUrl,{method:'GET'},'router');}catch(error){
     return {ok:false,changed:true,backwardCompatible:false,compatibilityReasons:compatibility.reasons,oldHash,candidateHash,decision:'ROUTER_CONTINUITY_UNAVAILABLE',error:error.message};
   }
   const c=status?.schemaContinuity;
