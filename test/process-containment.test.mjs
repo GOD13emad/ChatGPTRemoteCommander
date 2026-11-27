@@ -25,6 +25,29 @@ function fixture(){
   };
   return {root,binding};
 }
+test('contained commands reject unsafe timer bounds before touching native process providers',async()=>{
+  const {root,binding}=fixture();
+  let coerced=false;
+  const trap={valueOf(){coerced=true;throw Error('UNTRUSTED_COERCION');}};
+  try{
+    for(const timeoutMs of [
+      undefined,null,NaN,Infinity,-Infinity,0,-1,999,3600001,
+      2147483648,1.5,'1000','30000',trap
+    ]){
+      await assert.rejects(
+        runContainedProjectCommand({
+          program:'this-command-must-never-be-started',args:[],cwd:root,
+          timeoutMs,outputLimit:32768,env:process.env,binding
+        }),
+        error=>error?.workflowCode==='PROCESS_CONTAINMENT_TIMEOUT_INVALID',
+        'invalid timeout should fail before any native operation'
+      );
+    }
+    assert.equal(coerced,false,'caller-controlled valueOf must not be invoked');
+    assert.deepEqual(fs.readdirSync(root),[],'rejected invocations leave no artifacts');
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('trusted cessation proofs cannot be minted through public module exports',async()=>{
   const api=await import('../src/process-containment.mjs');
   assert.equal(Object.hasOwn(api,'issueTrustedProcessCessationProof'),false);
