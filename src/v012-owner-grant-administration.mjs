@@ -196,6 +196,39 @@ export function createV012OwnerGrantAdministration({
         fail('V012_OWNER_GRANT_POST_APPROVAL_UNVERIFIED');
       return Object.freeze({alreadyActive:false,revision:result.revision});
     },
+    async revokeCanaryWorker(){
+      // Revoke only the SAME currently J01-bound canary Worker. The durable
+      // Worker grant registry requests genuine fresh native owner consent.
+      // No client-supplied identity, tool, expiry or target can broaden this.
+      const e=await evidence(),before=registry.readWorkerGrant(e.workerContext);
+      if(!sameWorkerGrant(before,e.workerContext,clock())){
+        if(before&&before.bindingId===e.workerContext.bindingId
+          &&before.workerId===e.workerContext.workerId
+          &&before.keyId===e.workerContext.keyId
+          &&(before.status==='REVOKED'||before.expiresAtMs<=clock())
+          &&registry.isWorkerAllowed(e.route,e.workerContext,'system_status')!==true
+          &&registry.isWorkerAllowed(e.route,e.workerContext,'worker.register')!==true)
+          return Object.freeze({revoked:true,alreadyInactive:true});
+        fail('V012_OWNER_GRANT_REVOKE_NO_CURRENT_WORKER');
+      }
+      const result=await registry.changeWorkerGrant({
+        workerContext:e.workerContext,status:'REVOKED',
+        expectedRevision:before.revision,actor:identity.principalId,
+        reason:'Owner-requested revocation of one scoped Core migration canary'
+      });
+      // Re-evaluate the exact native owner+Worker binding after consent.
+      // A changed J01 or a racing grant reactivation is never reported as
+      // a successful revocation.
+      const after=await evidence();
+      if(!sameCanary(e,after)
+        ||result.status!=='REVOKED'||result.bindingId!==e.workerContext.bindingId
+        ||result.revision!==before.revision+1
+        ||registry.readWorkerGrant(after.workerContext)?.status!=='REVOKED'
+        ||registry.isWorkerAllowed(after.route,after.workerContext,'system_status')!==false
+        ||registry.isWorkerAllowed(after.route,after.workerContext,'worker.register')!==false)
+        fail('V012_OWNER_GRANT_REVOKE_POST_CONSENT_UNVERIFIED');
+      return Object.freeze({revoked:true,alreadyInactive:false});
+    },
     async approveReadOnlyCanary(){
       const e=await evidence();
       const parent=registry.readWorkerGrant(e.workerContext);

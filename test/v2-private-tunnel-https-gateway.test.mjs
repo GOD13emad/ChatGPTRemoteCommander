@@ -904,8 +904,27 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
               if(invocation.tool==='read_text' ? invocation.arguments.path!==approved
                 : !['operation_status','operation_cancel'].includes(invocation.tool))return null;
               const claims=state.worker.claims;
+              // The production WorkerIdentityAuthority checks the durable
+              // native parent Worker grant on EVERY operation. This isolated
+              // test double must model that invariant rather than treating
+              // an Ed25519 signature as standalone authorization.
+              const current=ownerStack.grantRegistry.readWorkerGrant({
+                hostId:claims.hostId,profileId:claims.profileId,
+                principalId:claims.principalId,conversationId:claims.conversationId,
+                bindingId:claims.bindingId,workerId,keyId,
+                ownerSidHash:ownerHash,deviceProvider:'native-key-store',
+                deviceIdHash:'d'.repeat(64),
+                tunnelProvider:'openai-secure-mcp-tunnel',tunnelIdHash:tunnelHash,
+                capabilityPolicyDigest:policy
+              });
+              if(current?.status!=='ACTIVE'
+                ||current.bindingId!==claims.bindingId
+                ||current.workerId!==workerId||current.keyId!==keyId
+                ||current.revision!==claims.grantRevision
+                ||current.capabilityPolicyDigest!==policy
+                ||current.expiresAtMs<=now)return null;
               return {authorized:true,workerId,keyId,bindingId:claims.bindingId,
-                capabilityPolicyDigest:policy,grantRevision:1,
+                capabilityPolicyDigest:policy,grantRevision:current.revision,
                 expiresAtMs:claims.expiresAtMs};
             }},
             // A synthetic Worker callback must NOT replace the separate
@@ -1049,6 +1068,22 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     const replay=await send(4,'read_text',{path:approved});
     assert.equal(replay.status,200);
     assert.equal(state.effects,1,'same operation must be at-most-once');
+    // The true private Core pipeline must deny a previously authorized
+    // Worker immediately after owner-approved native grant revocation,
+    // before any synthetic worker-stub revocation toggles.
+    const promptsBeforeRevoke=state.consents;
+    const revokedByOwner=await runtime.ownerAdministration.revokeCanaryWorker();
+    assert.equal(revokedByOwner.revoked,true);
+    assert.equal(revokedByOwner.alreadyInactive,false);
+    assert.equal(state.consents,promptsBeforeRevoke+1,
+      'revocation must obtain one fresh OS-native owner approval');
+    assert.equal((await runtime.ownerAdministration.inspect()).workerActive,false);
+    const deniedByGrant=await send(42,'read_text',{path:approved});
+    assert.equal(deniedByGrant.status,503,
+      'native owner Worker grant revocation denies real Core dispatch');
+    assert.equal(state.effects,1,'revocation must not trigger side effects');
+    assert.equal((await runtime.ownerAdministration.revokeCanaryWorker()).alreadyInactive,true);
+    assert.equal(state.consents,promptsBeforeRevoke+1,'revoke retry is idempotent');
     state.allow=false;
     const deniedObservation=await send(6,'operation_status',{});
     assert.equal(deniedObservation.status,503,'observation still requires a current native owner and Worker grant');

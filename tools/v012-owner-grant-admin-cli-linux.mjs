@@ -11,7 +11,8 @@ const MODES=Object.freeze({
   '--approve-worker':'approve_worker',
   '--approve-system-status':'approve_system_status_canary',
   '--approve-registration':'approve_worker_registration',
-  '--register-signed-worker':'register_signed_worker'
+  '--register-signed-worker':'register_signed_worker',
+  '--revoke-canary-worker':'revoke_canary_worker'
 });
 const ID=/^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
@@ -79,7 +80,9 @@ export async function runCli(argv){
   }else if(Object.keys(result).length!==2
     ||(action==='register_signed_worker'
       ?result.registered!==true
-      :result.approved!==true))
+      :action==='revoke_canary_worker'
+        ?result.revoked!==true
+        :result.approved!==true))
     fail('RC012_OWNER_ADMIN_CLI_RESPONSE_INVALID');
   return Object.freeze({...result,profile,action});
 }

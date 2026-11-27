@@ -9,7 +9,8 @@ import net from 'node:net';
 import path from 'node:path';
 
 const ACTIONS=new Set(['inspect','approve_worker','approve_system_status_canary',
-  'approve_worker_registration','register_signed_worker']);
+  'approve_worker_registration','register_signed_worker',
+  'revoke_canary_worker']);
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function checkSocketPath(socketPath){
   const uid=process.getuid?.(),runtime='/run/user/'+uid;
@@ -88,7 +89,9 @@ export function createV012OwnerGrantAdminUnix({
               ?await administration.approveReadOnlyCanary()
               :action==='approve_worker_registration'
                 ?await administration.approveSignedRegistration?.()
-                :await administration.registerSignedWorker?.();
+                :action==='register_signed_worker'
+                  ?await administration.registerSignedWorker?.()
+                  :await administration.revokeCanaryWorker?.();
         // Return only bounded non-secret outcome fields.
         const response=action==='inspect'
           ?{ok:true,nativeOwnerBound:result.nativeOwnerBound===true,
@@ -98,13 +101,17 @@ export function createV012OwnerGrantAdminUnix({
             readOnlyCanaryAllowed:result.readOnlyCanaryAllowed===true}
           :action==='register_signed_worker'
             ?{ok:true,registered:result?.registered===true}
-            :{ok:true,approved:action==='approve_worker'
+            :action==='revoke_canary_worker'
+              ?{ok:true,revoked:result?.revoked===true}
+              :{ok:true,approved:action==='approve_worker'
               ?Number.isSafeInteger(result?.revision)
               :action==='approve_worker_registration'
                 ?result?.registrationAllowed===true
                 :result?.canaryAllowed===true};
         if((action==='register_signed_worker'&&response.registered!==true)
-          ||(action!=='inspect'&&action!=='register_signed_worker'&&response.approved!==true))
+          ||(action==='revoke_canary_worker'&&response.revoked!==true)
+          ||(action!=='inspect'&&action!=='register_signed_worker'
+            &&action!=='revoke_canary_worker'&&response.approved!==true))
           fail('RC012_OWNER_ADMIN_ACTION_DENIED');
         socket.end(JSON.stringify(response)+'\n');
       }catch{socket.end('{"ok":false,"code":"OWNER_DENIED"}\n');}

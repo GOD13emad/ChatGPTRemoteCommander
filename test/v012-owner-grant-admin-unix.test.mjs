@@ -35,7 +35,8 @@ test('owner-local Unix endpoint sends fixed actions to actual native approval ca
         approveWorker:async()=>{prompts++;return {revision:1,workerId:'SECRET_WORKER_ID'};},
         approveReadOnlyCanary:async()=>{prompts++;return {canaryAllowed:true,token:'SECRET'};},
         approveSignedRegistration:async()=>{prompts++;return {registrationAllowed:true};},
-        registerSignedWorker:async()=>{prompts++;return {registered:true,privateKey:'NEVER_EXPOSE'};}
+        registerSignedWorker:async()=>{prompts++;return {registered:true,privateKey:'NEVER_EXPOSE'};},
+        revokeCanaryWorker:async()=>{prompts++;return {revoked:true,secret:'NEVER_EXPOSE'};}
       }
     });
     const state=await controller.start();
@@ -55,6 +56,10 @@ test('owner-local Unix endpoint sends fixed actions to actual native approval ca
     assert.deepEqual(JSON.parse(enrolled),{ok:true,registered:true});
     assert.equal(enrolled.includes('NEVER_EXPOSE'),false);
     assert.equal(prompts,4);
+    const revoked=await call(socketPath,request('revoke_canary_worker'));
+    assert.deepEqual(JSON.parse(revoked),{ok:true,revoked:true});
+    assert.equal(revoked.includes('NEVER_EXPOSE'),false);
+    assert.equal(prompts,5);
     for(const text of [
       '{"schema":1,"action":"approve_worker","tool":"run_shell"}\n',
       '{"schema":1,"action":"approve_worker","action":"approve_system_status_canary"}\n',
@@ -62,7 +67,7 @@ test('owner-local Unix endpoint sends fixed actions to actual native approval ca
       '{"schema":1,"action":"run_shell"}\n',
       '{"schema":1,"action":"approve_worker","workerId":"fake"}\n'
     ])assert.deepEqual(JSON.parse(await call(socketPath,text)),{ok:false,code:'INVALID'});
-    assert.equal(prompts,4);
+    assert.equal(prompts,5);
   }finally{await controller?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('existing socket, public runtime directory, alias and absent admin provider deny bind',

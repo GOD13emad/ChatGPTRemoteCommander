@@ -210,7 +210,8 @@ export function createV012PrivateCoreRuntime({
       })
     }));
     if(ownerAdminFactory&&[
-      'inspect','approveWorker','approveReadOnlyCanary'
+      'inspect','approveWorker','approveReadOnlyCanary',
+      'revokeCanaryWorker'
     ].some(k=>typeof localOwnerAdministration?.[k]!=='function'))
       fail('V012_PRIVATE_OWNER_ADMIN_RESULT_INVALID');
     if(security.ownerAdminSocketPath!==undefined&&!ownerAdminFactory)

@@ -138,6 +138,46 @@ test('live J01 and fresh native owner consent are required for exact read-only c
   }finally{f.close();}
 });
 
+test('owner-local canary Worker can be revoked under real native consent; exact Worker cannot regain the same J01 epoch',async()=>{
+  const f=fixture({withSigner:true});
+  try{
+    await assert.rejects(f.controller.revokeCanaryWorker(),
+      {code:'V012_OWNER_GRANT_REVOKE_NO_CURRENT_WORKER'});
+    assert.equal(f.state.prompts.length,0);
+    await f.controller.approveWorker();
+    await f.controller.approveReadOnlyCanary();
+    await f.controller.approveSignedRegistration();
+    assert.equal((await f.controller.inspect()).readOnlyCanaryAllowed,true);
+    const before=f.state.prompts.length;
+    f.state.consent=false;
+    await assert.rejects(f.controller.revokeCanaryWorker(),
+      {code:'V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED'});
+    assert.equal(f.state.prompts.length,before+1);
+    assert.equal((await f.controller.inspect()).workerActive,true,
+      'denied native approval must never revoke a grant');
+    f.state.consent=true;
+    f.state.bound=false;
+    await assert.rejects(f.controller.revokeCanaryWorker());
+    assert.equal(f.state.prompts.length,before+1,
+      'missing native owner binding must reject before any prompt');
+    f.state.bound=true;
+    const revoked=await f.controller.revokeCanaryWorker();
+    assert.deepEqual(revoked,{revoked:true,alreadyInactive:false});
+    assert.equal(f.state.prompts.length,before+2);
+    const inactive=await f.controller.inspect();
+    assert.equal(inactive.workerActive,false);
+    assert.equal(inactive.readOnlyCanaryAllowed,false);
+    assert.deepEqual(await f.controller.revokeCanaryWorker(),
+      {revoked:true,alreadyInactive:true});
+    assert.equal(f.state.prompts.length,before+2,
+      'repeat owner-local revoke is idempotent; no new native grant');
+    await assert.rejects(f.controller.approveWorker(),
+      {code:'V2_WORKER_GRANT_EPOCH_REUSE'});
+    assert.equal((await f.controller.inspect()).workerActive,false);
+    assert.equal((await f.controller.inspect()).readOnlyCanaryAllowed,false);
+  }finally{f.close();}
+});
+
 test('human native approval can outlive ephemeral signed Tunnel witness but must re-attest same key',async()=>{
   const f=fixture();
   try{
