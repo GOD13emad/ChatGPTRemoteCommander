@@ -18,6 +18,11 @@ const within=(file,base)=>{const rel=path.relative(base,file);return rel===''||(
 // Never follow a symlink inside the app-managed queue/staging/publication
 // tree, even when the peer and transfer ID are valid.
 function assertInternalDirectories(p){
+ // The configured root is a caller-selected trust boundary, not an
+ // authority to follow a preexisting directory alias. It must already
+ // exist (the pilot node configuration is provisioned separately).
+ const rootEntry=fs.lstatSync(root);
+ assertion(rootEntry.isDirectory()&&!rootEntry.isSymbolicLink(),'TRANSFER_ROOT_UNSAFE');
  const directories=[
   path.join(root,'jobs'),p.jobDir,
   path.join(root,'staging'),p.stageDir,
@@ -25,6 +30,7 @@ function assertInternalDirectories(p){
   path.dirname(p.destination),p.destination
  ];
  for(const dir of directories){
+  assertion(within(dir,root),'TRANSFER_DIRECTORY_UNSAFE');
   let st;
   try{st=fs.lstatSync(dir);}
   catch(e){if(e?.code==='ENOENT')continue;throw e;}

@@ -65,3 +65,14 @@ for(const components of [
   }finally{fs.rmSync(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
  });
 }
+
+
+test('durable transfer rejects an aliased configured root before inspecting queue state',{skip:process.platform==='win32'},()=>{
+ const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-root-alias-'));
+ const home=path.join(base,'owner'),outside=path.join(base,'outside');
+ try{
+  fs.mkdirSync(outside);fs.symlinkSync(outside,home,'dir');
+  assert.throws(()=>call(home,'job-status','--peer','Linux','--id','root-alias-001'),/TRANSFER_ROOT_UNSAFE/);
+  assert.deepEqual(fs.readdirSync(outside),[]);
+ }finally{fs.rmSync(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});
