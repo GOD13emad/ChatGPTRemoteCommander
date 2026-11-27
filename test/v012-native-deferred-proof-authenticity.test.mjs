@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import {createAsyncOperationTools} from '../src/async-operations.mjs';
 import {createV012OwnerNativeHostLease} from '../src/v012-owner-native-host-lease-bootstrap.mjs';
 import {createV012SharedPhysicalRootFence} from '../src/v012-shared-physical-root-fence.mjs';
@@ -115,4 +116,58 @@ assert.equal(evidence?.syntheticPrivateFilesAccepted,false,
   'owner-root reader must not accept same-owner forged completion files without native provenance');
 assert.equal(evidence?.secondEffectAdmittedBeforeRelease,false,
   'same-owner forged receipt must not release occupied native host root');
+});
+
+
+// Qualification only: does not launch a Commander Worker, access an actual
+// owner secret, confer a grant or assert a production trust boundary.
+test('Linux filesystem isolation hides synthetic owner state while preserving workspace write', {timeout:15000}, t=>{
+  if(process.platform!=='linux')return t.skip('Linux-only namespace qualification');
+  const executable='/usr/bin/bwrap';
+  if(!fs.existsSync(executable)||!fs.existsSync('/usr/bin/python3'))
+    return t.skip('native namespace fixture dependencies unavailable');
+  const top=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'rc012-isolation-fixture-'));
+  const work=path.join(top,'work'),owner=path.join(top,'private');
+  const marker=path.join(owner,'marker'),result=path.join(work,'result');
+  const original='SYNTHETIC_OWNER_MARKER\n';
+  try{
+    fs.mkdirSync(work,{mode:0o700});
+    fs.mkdirSync(owner,{mode:0o700});
+    fs.writeFileSync(marker,original,{mode:0o600,flag:'wx'});
+    fs.accessSync(marker,fs.constants.R_OK|fs.constants.W_OK);
+    const script=[
+      'import pathlib,sys',
+      'private=pathlib.Path(sys.argv[1])',
+      'assert not private.exists(), "owner fixture visible"',
+      'try:',
+      '    private.read_text()',
+      '    raise AssertionError("owner fixture readable")',
+      'except OSError: pass',
+      'try:',
+      '    private.write_text("changed")',
+      '    raise AssertionError("owner fixture writable")',
+      'except OSError: pass',
+      'assert not pathlib.Path("/run/user").exists()',
+      'assert not pathlib.Path("/home").exists()',
+      'pathlib.Path("result").write_text("SANDBOX_FIXTURE_PASS")'
+    ].join('\n');
+    const run=spawnSync(executable,[
+      '--unshare-user','--unshare-pid','--unshare-net','--unshare-ipc',
+      '--unshare-uts','--disable-userns','--die-with-parent','--new-session',
+      '--clearenv','--setenv','PATH','/usr/bin:/bin',
+      '--ro-bind','/usr','/usr','--symlink','usr/bin','/bin',
+      '--symlink','usr/lib','/lib','--symlink','usr/lib64','/lib64',
+      '--proc','/proc','--dev','/dev','--tmpfs','/tmp','--dir','/fixture',
+      '--bind',work,'/fixture/work','--chdir','/fixture/work',
+      '/usr/bin/python3','-I','-c',script,marker
+    ],{encoding:'utf8',timeout:10000,maxBuffer:16384});
+    assert.equal(fs.readFileSync(marker,'utf8'),original,'owner fixture unchanged');
+    if(run.error)throw run.error;
+    if(run.status!==0&&/^bwrap: (?:No permissions to create a new namespace|Creating new namespace failed: Operation not permitted)/m.test(run.stderr??''))
+      return t.skip('OS denied namespace creation; no isolation acceptance');
+    assert.equal(run.status,0,run.stderr);
+    assert.equal(fs.readFileSync(result,'utf8'),'SANDBOX_FIXTURE_PASS');
+  }finally{
+    fs.rmSync(top,{recursive:true,force:true});
+  }
 });
