@@ -224,6 +224,48 @@ test('worker grant event history is append-only and owner admin rejection has no
   }finally{f.close();}
 });
 
+test('grant transactions revalidate expiry and enrollment after asynchronous owner approval',async t=>{
+  await t.test('expired enrollment is not recorded',async()=>{
+    const f=fixture();
+    try{
+      const expiry=f.state.now+1000;
+      f.registry.authorizeAdministration=async()=>{f.state.now=expiry;return true;};
+      await assert.rejects(grantEnrollment(f,f.context,0,expiry),/V2_WORKER_GRANT_EXPIRY_INVALID/);
+      assert.equal(f.registry.readWorkerGrant(f.context),null);
+      assert.equal(f.registry.workerGrantEvents(f.context).length,0);
+    }finally{f.close();}
+  });
+  await t.test('expired tool approval is not recorded',async()=>{
+    const f=fixture();
+    try{
+      await grantEnrollment(f);
+      const expiry=f.state.now+1000;
+      f.registry.authorizeAdministration=async()=>{f.state.now=expiry;return true;};
+      await assert.rejects(grantTool(f,f.context,route(),'read_text',0,expiry),
+        /V2_WORKER_TOOL_GRANT_EXPIRY_INVALID/);
+      assert.equal(f.registry.readWorkerToolGrant(route(),f.context,'read_text'),null);
+      assert.equal(f.registry.workerToolGrantEvents(route(),f.context,'read_text').length,0);
+    }finally{f.close();}
+  });
+  await t.test('concurrent revocation during approval prevents tool registration',async()=>{
+    const f=fixture();
+    let peer;
+    try{
+      await grantEnrollment(f);
+      peer=new V2GrantRegistry({directory:path.join(f.root,'secure'),
+        now:()=>f.state.now,authorizeAdministration:async()=>true});
+      f.registry.authorizeAdministration=async()=>{
+        await peer.changeWorkerGrant({workerContext:f.context,status:'REVOKED',
+          expectedRevision:1,actor:'owner-1',reason:'owner revoked worker'});
+        return true;
+      };
+      await assert.rejects(grantTool(f),/V2_WORKER_GRANT_NOT_ACTIVE/);
+      assert.equal(f.registry.readWorkerToolGrant(route(),f.context,'read_text'),null);
+      assert.equal(f.registry.workerToolGrantEvents(route(),f.context,'read_text').length,0);
+    }finally{peer?.close();f.close();}
+  });
+});
+
 test('V1-07 adapter returns the exact owner grant and composes owner, base and worker grants',async()=>{
   const f=fixture();
   try{

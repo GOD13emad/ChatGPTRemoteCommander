@@ -179,7 +179,11 @@ export function createNativeOwnerAdministrationAuthorizer({
       if(approved!==true)return false;
       const after=ownerOf(await nativeSessionBindings.resolveNativeOwnerContext(conversationId));
       const afterSnapshot=await ownerSessionProvider.getOwnerSessionSnapshot();
-      return sameOwner(before,after)
+      const afterTime=now();
+      return Number.isSafeInteger(afterTime)&&afterTime>=t
+        &&after.expiresAtMs>afterTime
+        &&(request.expiresAtMs===null||request.expiresAtMs>afterTime)
+        &&sameOwner(before,after)
         &&afterSnapshot.ownerSidHash===snapshot.ownerSidHash
         &&afterSnapshot.osSessionId===snapshot.osSessionId
         &&afterSnapshot.seatId===snapshot.seatId

@@ -385,6 +385,29 @@ test('native administration authorizer binds grant approval to the live owner ep
   });
 });
 
+test('owner administration rejects an approval returned after the requested grant or owner binding expires',async t=>{
+  for(const [label,grantExpiry,ownerExpiry,after] of [
+    ['grant expires',2000,3000,2000],['owner expires',3000,3000,3000],
+    ['clock regresses',2000,3000,999]
+  ]) await t.test(label,async()=>{
+    let time=1000;
+    const owner=ownerContext({expiresAtMs:ownerExpiry});
+    const snapshot={
+      ownerSidHash:owner.ownerSidHash,osSessionId:'linux-logind-4',
+      seatId:'seat0',displayId:':0',sessionType:'x11',leaderPid:3519
+    };
+    const authorize=createNativeOwnerAdministrationAuthorizer({
+      now:()=>time,
+      ownerSessionProvider:{
+        getOwnerSessionSnapshot:async()=>snapshot,
+        requestConsent:async()=>{time=after;return true;}
+      },
+      nativeSessionBindings:{resolveNativeOwnerContext:async()=>owner}
+    });
+    assert.equal(await authorize(adminRequest(workerContext(),{expiresAtMs:grantExpiry})),false);
+  });
+});
+
 test('Linux V1-01 bootstrap composes native session binding and async owner-admin grant approval',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'v101-linux-owner-stack-'));
   let prompts=0;

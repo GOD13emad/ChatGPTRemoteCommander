@@ -281,7 +281,7 @@ export class V2GrantRegistry {
     safeId(actor);
     if(typeof reason!=='string'||reason.trim().length<5||reason.length>400)
       fail('V2_WORKER_GRANT_REASON_REQUIRED');
-    const now=this.now();
+    let now=this.now();
     if(!Number.isSafeInteger(now)||now<0)fail('V2_WORKER_GRANT_CLOCK_INVALID');
     if(status==='ACTIVE'&&(!Number.isSafeInteger(expiresAtMs)||expiresAtMs<=now
       ||expiresAtMs-now>MAX_WORKER_GRANT_TTL_MS))
@@ -292,6 +292,13 @@ export class V2GrantRegistry {
     })!==true)fail('V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED');
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      // The native consent dialog may outlive the originally checked grant.
+      const approvedAt=this.now();
+      if(!Number.isSafeInteger(approvedAt)||approvedAt<now)
+        fail('V2_WORKER_GRANT_CLOCK_INVALID');
+      now=approvedAt;
+      if(status==='ACTIVE'&&expiresAtMs<=now)
+        fail('V2_WORKER_GRANT_EXPIRY_INVALID');
       const current=this.db.prepare('SELECT * FROM v2_worker_grants WHERE host=? AND principal=? AND profile=? AND conversation=? AND worker_id=?')
         .get(c.hostId,c.principalId,c.profileId,c.conversationId,c.workerId);
       const revision=current?Number(current.revision):0;
@@ -363,7 +370,7 @@ export class V2GrantRegistry {
     safeId(actor);
     if(typeof reason!=='string'||reason.trim().length<5||reason.length>400)
       fail('V2_WORKER_TOOL_GRANT_REASON_REQUIRED');
-    const now=this.now();
+    let now=this.now();
     if(!Number.isSafeInteger(now)||now<0)fail('V2_WORKER_GRANT_CLOCK_INVALID');
     const enrollment=this.readWorkerGrant(c);
     if(!enrollment||enrollment.status!=='ACTIVE'||!ownerGrantMatchesContext(enrollment,c)
@@ -377,6 +384,20 @@ export class V2GrantRegistry {
     })!==true)fail('V2_WORKER_TOOL_GRANT_ADMIN_AUTH_REQUIRED');
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      // Re-read the parent grant under the same write lock as the tool grant.
+      const approvedAt=this.now();
+      if(!Number.isSafeInteger(approvedAt)||approvedAt<now)
+        fail('V2_WORKER_GRANT_CLOCK_INVALID');
+      now=approvedAt;
+      const currentEnrollment=this.readWorkerGrant(c);
+      if(!currentEnrollment||currentEnrollment.status!=='ACTIVE'
+        ||!ownerGrantMatchesContext(currentEnrollment,c)
+        ||currentEnrollment.revision!==enrollment.revision
+        ||currentEnrollment.expiresAtMs<=now)
+        fail('V2_WORKER_GRANT_NOT_ACTIVE');
+      if(status==='ENABLED'&&(expiresAtMs<=now
+        ||expiresAtMs>currentEnrollment.expiresAtMs))
+        fail('V2_WORKER_TOOL_GRANT_EXPIRY_INVALID');
       const current=this.db.prepare('SELECT * FROM v2_worker_tool_grants '+
         'WHERE host=? AND principal=? AND profile=? AND conversation=? AND operation_id=? AND kind=? '+
         'AND target=? AND tool=? AND worker_id=?').get(...scope,c.workerId);
