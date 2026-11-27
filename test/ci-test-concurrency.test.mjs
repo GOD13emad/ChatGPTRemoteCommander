@@ -751,7 +751,7 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,42,'retain 40 previous suites and add both native deferred lifetime suites');
+  assert.equal(files.length,43,'retain 42 previous suites and require deferred proof authenticity');
   for(const required of [
     'test/v012-host-global-operation-lease.test.mjs',
     'test/v012-windows-host-global-operation-lease.test.mjs',
@@ -764,9 +764,10 @@ test('V012 source regression retains every pinned test exactly once with bounded
       'test/v012-shared-physical-root-fence-windows-native.test.mjs',
       'test/v012-shared-core-workflow-fence.test.mjs',
       'test/v012-native-deferred-lease.test.mjs',
-      'test/v012-native-async-root-lifetime.test.mjs'
+      'test/v012-native-async-root-lifetime.test.mjs',
+      'test/v012-native-deferred-proof-authenticity.test.mjs'
   ])assert.ok(files.includes(required),'required source QA missing: '+required);
-  assert.deepEqual(ranges.slice(16),[[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42]],
+  assert.deepEqual(ranges.slice(16),[[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42],[42,43]],
     'new native suites execute separately without changing the prior batch indices');
   assert.ok(files.includes('test/windows-owner-tunnel-host-resolution.test.mjs'),'native Windows read-only exact owner host regression must run in CI');
   assert.ok(files.includes('test/v012-owner-local-canary.test.mjs'),'real owner-local canary and failed-bootstrap quarantine must run in CI');
@@ -785,7 +786,7 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
   assert.deepEqual(ranges.slice(12,15),[[20,21],[21,22],[22,23]],
     'protected Core, Windows DPAPI and Linux owner recovery must not share a short subprocess deadline');
-  assert.match(runner,/timeout: index === 13 \? 100000\s*: index === 14 \? \(part === 0 \? 55000 : 65000\)\s*: index === 16 \? 60000\s*: index === 17 \? 240000\s*: index === 19 \? 270000\s*: index === 26 \? 125000\s*: index === 27 \? 125000\s*: 30000/,
+  assert.match(runner,/timeout: index === 13 \? 100000\s*: index === 14 \? \(part === 0 \? 55000 : 65000\)\s*: index === 16 \? 60000\s*: index === 17 \? 240000\s*: index === 19 \? 270000\s*: index === 26 \? 125000\s*: index === 27 \? 125000\s*: index === 28 \? 100000\s*: 30000/,
     'retain previous deadlines; allow bounded aggregate budgets for native Linux, Windows and owner-bootstrap tests without relaxing per-test limits');
   assert.ok(runner.includes('index === 14 ? linuxOwnerRecoveryTests.map(name =>'),
     'only the named Linux native credential tests may use separate bounded deadlines');

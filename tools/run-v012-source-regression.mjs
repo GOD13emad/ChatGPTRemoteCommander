@@ -43,7 +43,8 @@ const files = [
   "test/v012-shared-physical-root-fence-windows-native.test.mjs",
   "test/v012-shared-core-workflow-fence.test.mjs",
   "test/v012-native-deferred-lease.test.mjs",
-  "test/v012-native-async-root-lifetime.test.mjs"
+  "test/v012-native-async-root-lifetime.test.mjs",
+  "test/v012-native-deferred-proof-authenticity.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -80,7 +81,8 @@ const batches = [
   files.slice(38, 39), // Independent native Windows holder/WorkflowStore
   files.slice(39, 40), // Protected Core gate and WorkflowTools composition
   files.slice(40, 41), // Exact native cessation, restart and stale-proof denial
-  files.slice(41, 42) // Native async tree, durable public completion and revoke
+  files.slice(41, 42), // Native async tree, durable public completion and revoke
+  files.slice(42, 43) // Same-owner completion authenticity (90s fixture deadline)
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length
@@ -163,6 +165,7 @@ for (let index = range.first-1; index < range.last; index++) {
         : index === 19 ? 270000
         : index === 26 ? 125000
         : index === 27 ? 125000
+        : index === 28 ? 100000
         : 30000
     });
     if (result.error) {
