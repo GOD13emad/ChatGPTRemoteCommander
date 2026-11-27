@@ -9,6 +9,7 @@ param(
   [string[]]$EnableCapability = @(),
   [switch]$StartServer,
   [switch]$SkipTunnelClient,
+  [switch]$SkipCuaDriver,
   [string]$TunnelClientVersion = '0.0.15',
   [string]$SourceRef = 'v0.12.0',
   [string]$ExpectedCommit = '',
@@ -351,64 +352,31 @@ function Write-TunnelClientState([string]$ExePath) {
 }
 
 function Install-TunnelClient {
-  $arch = if ($env:PROCESSOR_ARCHITECTURE -match 'ARM64') { 'arm64' } else { 'amd64' }
-  $toolDir = Join-Path $InstallDir "tools\tunnel-client-v$TunnelClientVersion-windows-$arch"
-  $exe = Join-Path $toolDir 'tunnel-client.exe'
-
-  if ($SkipTunnelClient) {
-    if (Test-Path -LiteralPath $exe -PathType Leaf) {
-      Write-TunnelClientState $exe
-      Write-Host "Reusing pinned tunnel client: $exe"
-      return
-    }
-    Write-Host "Skipping tunnel-client installation as requested; no pinned client exists in this fresh/custom install."
-    return
-  }
-
-  if (Test-Path -LiteralPath $exe -PathType Leaf) {
-    Write-TunnelClientState $exe
-    Write-Host "Tunnel client already installed and pinned: $exe"
-    return
-  }
-
-  $tag = "v$TunnelClientVersion"
-  $file = "tunnel-client-v$TunnelClientVersion-windows-$arch.zip"
-  $base = "https://github.com/openai/tunnel-client/releases/download/$tag"
-  $tmp = Join-Path $env:LOCALAPPDATA "ChatGPTRemoteCommander\downloads\$([guid]::NewGuid().ToString('N'))"
-  New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-
-  try {
-    Write-Host "Downloading official OpenAI tunnel-client $tag..."
-    Invoke-WebRequest "$base/$file" -OutFile (Join-Path $tmp $file)
-    Invoke-WebRequest "$base/SHA256SUMS.txt" -OutFile (Join-Path $tmp 'SHA256SUMS.txt')
-
-    $line = Get-Content (Join-Path $tmp 'SHA256SUMS.txt') |
-      Where-Object { $_ -match [regex]::Escape($file) } |
-      Select-Object -First 1
-
-    if (-not $line) {
-      throw 'Could not find tunnel-client archive in SHA256SUMS.txt'
-    }
-
-    $expected = ($line -split '\s+')[0].ToLowerInvariant()
-    $actual = (Get-FileHash (Join-Path $tmp $file) -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($expected -ne $actual) {
-      throw "Tunnel client checksum mismatch: expected $expected actual $actual"
-    }
-
-    New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
-    Expand-Archive -LiteralPath (Join-Path $tmp $file) -DestinationPath $toolDir -Force
-    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
-      throw 'tunnel-client.exe missing after extraction'
-    }
-
-    Write-TunnelClientState $exe
-    Write-Host "Tunnel client verified, installed and pinned: $exe"
-  } finally {
-    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-  }
+  $helper=Join-Path $PSScriptRoot 'tools\install-tunnel-client-windows.ps1'
+  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'TUNNEL_CLIENT_PINNED_INSTALLER_MISSING'}
+  $args=@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$helper,
+    '-InstallDir',$InstallDir,'-ExpectedVersion',$TunnelClientVersion)
+  if($SkipTunnelClient){$args += '-VerifyOnly'}
+  & pwsh.exe @args
+  if($LASTEXITCODE -ne 0){throw "TUNNEL_CLIENT_INSTALL_FAILED:$LASTEXITCODE"}
 }
 
+function Install-CuaDriver {
+  $cfgPath=Join-Path $InstallDir 'config.local.json'
+  if(-not(Test-Path -LiteralPath $cfgPath -PathType Leaf)){throw 'CUA_DRIVER_CONFIG_MISSING'}
+  $cfg=Get-Content -LiteralPath $cfgPath -Raw | ConvertFrom-Json
+  if([string]$cfg.capabilityProfile.tier -cne 'FULL_POWER'){
+    Write-Host 'CUA_DRIVER_NOT_REQUIRED tier=STANDARD'
+    return
+  }
+  $helper=Join-Path $InstallDir 'tools\install-cua-driver-windows.ps1'
+  if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'CUA_DRIVER_PINNED_INSTALLER_MISSING'}
+  $stateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
+  $args=@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$helper,'-InstallRoot',$stateRoot)
+  if($SkipCuaDriver){$args += '-VerifyOnly'}
+  & pwsh.exe @args
+  if($LASTEXITCODE -ne 0){throw "CUA_DRIVER_INSTALL_FAILED:$LASTEXITCODE"}
+}
 function Configure-LocalPolicy {
   $defaultRoot = Join-Path $env:USERPROFILE 'source\repos'
   New-Item -ItemType Directory -Force -Path $defaultRoot | Out-Null
@@ -607,6 +575,7 @@ if ($existingInstall -and $isCanonicalLiveInstall) {
   Install-TunnelClient
   Ensure-ProjectProvider
   Configure-LocalPolicy
+  Install-CuaDriver
   Test-Installation
   Start-LocalServer
   $effective = Get-Content -LiteralPath (Join-Path $InstallDir 'config.local.json') -Raw | ConvertFrom-Json

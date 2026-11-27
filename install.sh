@@ -12,6 +12,7 @@ BROWSER_PROFILE_ROOT=""
 START_SERVER=0
 INSTALL_PREREQS=0
 SKIP_TUNNEL_CLIENT=0
+SKIP_CUA_DRIVER=0
 SOURCE_REF="${REMOTE_COMMANDER_SOURCE_REF:-v0.12.0}"
 EXPECTED_COMMIT="${REMOTE_COMMANDER_EXPECTED_COMMIT:-}"
 CURL_CONNECT_TIMEOUT="${REMOTE_COMMANDER_CURL_CONNECT_TIMEOUT:-15}"
@@ -27,7 +28,8 @@ Usage: install.sh [options]
   --disable-capability CAP  Explicit capability opt-out (repeatable)
   --enable-capability CAP   Explicit capability opt-in (repeatable)
   --start-server            Start MCP server with nohup after validation
-  --skip-tunnel-client      Skip tunnel-client download; reuse existing pinned client when present
+  --skip-tunnel-client      Skip tunnel-client download; verify the existing pinned binary
+  --skip-cua-driver         Skip CUA Driver download; verify the existing pinned binary
   --source-ref REF          Git ref to install (default: v0.12.0)
   --expected-commit SHA     Require the fetched ref to peel to this exact 40-hex commit
   -h, --help                Show help
@@ -44,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     --enable-capability) ENABLE_CAPS+=("$2"); shift 2 ;;
     --start-server) START_SERVER=1; shift ;;
     --skip-tunnel-client) SKIP_TUNNEL_CLIENT=1; shift ;;
+    --skip-cua-driver) SKIP_CUA_DRIVER=1; shift ;;
     --source-ref) SOURCE_REF="$2"; shift 2 ;;
     --expected-commit) EXPECTED_COMMIT="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -303,41 +306,31 @@ ensure_browser_backend() {
   return 0
 }
 install_tunnel_client() {
-  local pin helper version machine arch dir actual upstream
-  pin="$INSTALL_DIR/tools/tunnel-client-pin.json"
-  helper="$INSTALL_DIR/tools/install-tunnel-client-linux.sh"
-  [[ -f "$pin" && -f "$helper" ]] || { echo "Pinned tunnel-client installer metadata is missing." >&2; exit 1; }
-
-  version="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$pin" --field version)"
-  upstream="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$pin" --field upstreamCommit)"
-  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$upstream" =~ ^[0-9a-f]{40}$ ]] || {
-    echo "Pinned tunnel-client metadata is invalid." >&2
-    exit 1
-  }
-
+  local helper="$INSTALL_DIR/tools/install-tunnel-client-linux.sh"
+  local pin="$INSTALL_DIR/tools/tunnel-client-pin.json"
+  [[ -f "$pin" && -f "$helper" ]] || { echo 'TUNNEL_CLIENT_PINNED_INSTALLER_MISSING' >&2; return 1; }
   if [[ "$SKIP_TUNNEL_CLIENT" == 1 ]]; then
-    machine="$(uname -m)"
-    case "$machine" in
-      x86_64|amd64) arch="amd64" ;;
-      aarch64|arm64) arch="arm64" ;;
-      *) echo "Unsupported tunnel-client architecture: $machine" >&2; exit 1 ;;
-    esac
-    dir="$INSTALL_DIR/tools/tunnel-client-v$version-linux-$arch"
-    if [[ -x "$dir/tunnel-client" ]]; then
-      actual="$("$dir/tunnel-client" --version 2>/dev/null || true)"
-      [[ "$actual" == "$version+$upstream"* ]] || {
-        echo "Existing pinned tunnel-client provenance mismatch: $actual" >&2
-        exit 1
-      }
-      echo "Reusing existing pinned tunnel-client while skip was requested: $dir/tunnel-client"
-    else
-      echo "TUNNEL_CLIENT_REQUIRED_MISSING: --skip-tunnel-client requires an existing verified pinned executable." >&2
-      return 1
-    fi
-    return 0
+    /bin/bash "$helper" --install-dir "$INSTALL_DIR" --verify-only
+  else
+    /bin/bash "$helper" --install-dir "$INSTALL_DIR"
   fi
+}
 
-  /bin/bash "$helper" --install-dir "$INSTALL_DIR"
+install_cua_driver() {
+  local helper="$INSTALL_DIR/tools/install-cua-driver-linux.sh"
+  local pin="$INSTALL_DIR/tools/cua-driver-pin.json"
+  local cfg="$INSTALL_DIR/config.local.json"
+  local tier data_home
+  [[ -f "$cfg" ]] || { echo 'CUA_DRIVER_CONFIG_MISSING' >&2; return 1; }
+  tier="$(node "$INSTALL_DIR/tools/json-field.mjs" --file "$cfg" --field capabilityProfile.tier 2>/dev/null || true)"
+  [[ "$tier" == "FULL_POWER" ]] || { echo 'CUA_DRIVER_NOT_REQUIRED tier=STANDARD'; return 0; }
+  [[ -f "$pin" && -f "$helper" ]] || { echo 'CUA_DRIVER_PINNED_INSTALLER_MISSING' >&2; return 1; }
+  data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  if [[ "$SKIP_CUA_DRIVER" == 1 ]]; then
+    /bin/bash "$helper" --pin-file "$pin" --data-home "$data_home" --verify-only
+  else
+    /bin/bash "$helper" --pin-file "$pin" --data-home "$data_home"
+  fi
 }
 
 write_local_config() {
@@ -561,9 +554,10 @@ else
   ensure_project_provider
   ensure_browser_backend
   write_local_config
+  install_cua_driver
   chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR/connect-chatgpt-account.sh" "$INSTALL_DIR/run-server.sh" \
     "$INSTALL_DIR/autostart-linux.sh" "$INSTALL_DIR/supervisor-routing-linux.sh" "$INSTALL_DIR/auto-update-linux.sh" \
-    "$INSTALL_DIR/tools/install-tunnel-client-linux.sh" \
+    "$INSTALL_DIR/tools/install-tunnel-client-linux.sh" "$INSTALL_DIR/tools/install-cua-driver-linux.sh" \
     "$INSTALL_DIR/enable-autostart-linux.sh" "$INSTALL_DIR/disable-autostart-linux.sh" \
     "$INSTALL_DIR/tools/gui-control-linux.py" "$INSTALL_DIR/tools/install-gnome-gui-extension.sh"
   install_linux_gui_backend "$INSTALL_DIR" "$INSTALL_DIR/config.local.json"
