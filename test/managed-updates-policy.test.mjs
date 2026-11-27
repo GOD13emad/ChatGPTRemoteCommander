@@ -15,7 +15,7 @@ const valid=(tag,extra={})=>({
  autoupdateApproved:true,installedPromotionApproved:true,
  channel:'stable',...extra
 });
-const r=tag=>({tag_name:tag,draft:false,prerelease:false,assets:[]});
+const r=tag=>({tag_name:tag,draft:false,prerelease:false,assets:['Windows-x64.exe','Linux-amd64.deb'].map((suffix,i)=>({name:'Remote-Commander-Unified-'+tag.slice(1)+'-'+suffix,state:'uploaded',size:1500,digest:'sha256:'+String(i+1).repeat(64)}))});
 test('stable semver strictly advances and never downgrades native dev.9',()=>{
  assert.equal(compareReleaseVersions('0.12.0','0.12.0-dev.9'),1);
  assert.equal(compareReleaseVersions('0.12.0-dev.10','0.12.0-dev.9'),1);
@@ -61,10 +61,14 @@ test('auto-stage enforces exact signed asset version and OS architecture',()=>{
     {name:'Remote-Commander-Unified-0.11.0-Windows-x64.exe',
       state:'uploaded',size:1000000,digest:'sha256:'+'c'.repeat(64)}
   ]};
-  assert.equal(expectedArtifact(released,'linux')?.name,
+  assert.equal(expectedArtifact(released,'linux'),null,
+    'incomplete or mixed release inventory must not stage on either platform');
+  assert.equal(expectedArtifact(released,'win32'),null);
+  const complete=r('v0.12.0');
+  assert.equal(expectedArtifact(complete,'linux')?.name,
     'Remote-Commander-Unified-0.12.0-Linux-amd64.deb');
-  assert.equal(expectedArtifact(released,'win32'),null,
-    'Windows must never stage a package from another release');
+  assert.equal(expectedArtifact(complete,'win32')?.name,
+    'Remote-Commander-Unified-0.12.0-Windows-x64.exe');
   assert.equal(expectedArtifact(released,'linux','arm64'),null,
     'Unsupported CPU must fail closed');
   assert.equal(expectedArtifact({...released,assets:released.assets.slice(0,1)},'linux'),null,

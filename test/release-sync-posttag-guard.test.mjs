@@ -138,7 +138,7 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
  assert.equal(verifyV012Publication('0.12.0','v0.12.0',ready),
    'V108_V012_RELEASE_APPROVED_MANIFEST_PASS');
  // Synthetic fixtures only: identical approved source train must satisfy publication and discovery.
- const release=tag=>({tag_name:tag,draft:false,prerelease:false,assets:[]});
+ const release=tag=>({tag_name:tag,draft:false,prerelease:false,assets:['Windows-x64.exe','Linux-amd64.deb'].map((suffix,i)=>({name:'Remote-Commander-Unified-'+tag.slice(1)+'-'+suffix,state:'uploaded',size:1500,digest:'sha256:'+String(i+1).repeat(64)}))});
  assert.equal(approvedRelease({current:manifest.sourceVersion,releases:[release('v0.12.0')],
    trainFor:()=>ready})?.tag,'v0.12.0');
  const successor={...ready,sourceVersion:'0.12.1',releaseTag:'v0.12.1'};
@@ -268,4 +268,14 @@ test('v0.12 development QA provenance uses a separate trusted integration-only j
    'publishing job must refuse the development integration branch');
  assert.ok(publish.includes("steps.release_identity.outputs.accepted == 'true'"),
    'Stable tag-only publication gate must remain intact');
+});
+
+test('legacy publication must not distribute 0.12 even after the full admission gate',()=>{
+ const gate='node tools/verify-v012-publish-readiness.mjs "$version" "$tag"';
+ const stop='echo "::error::RC012_NATIVE_RELEASE_PIPELINE_REQUIRED" >&2';
+ assert.equal(workflow.split(stop).length-1,2);
+ for(const segment of workflow.split(gate).slice(1)){
+  assert.match(segment,/^\s*echo "::error::RC012_NATIVE_RELEASE_PIPELINE_REQUIRED" >&2\s*exit 1/);
+ }
+ assert.ok(script.indexOf(stop)<script.indexOf('accepted=true'));
 });

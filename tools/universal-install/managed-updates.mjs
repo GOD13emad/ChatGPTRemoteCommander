@@ -8,7 +8,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {verifyPublicSignedNativeRelease} from './signed-native-provenance.mjs';
-import {verifyV012Publication} from './release-admission-0.12.mjs';
+import {verifyV012Publication,nativeV012ReleaseAssetSet,isV012InstalledVersion} from './release-admission-0.12.mjs';
 
 const REPO='GOD13emad/ChatGPTRemoteCommander';
 const TAG=/^v0\.12\.(?:0|[1-9][0-9]*)$/;
@@ -40,7 +40,8 @@ export function approvedRelease({current,releases,trainFor}={}){
   if(typeof current!=='string'||!Array.isArray(releases)
     ||typeof trainFor!=='function')
     fail('RC012_AUTO_UPDATE_ARGUMENT_INVALID');
-  const sorted=releases.filter(r=>r&&!r.draft&&!r.prerelease&&TAG.test(r.tag_name||''))
+  if(!isV012InstalledVersion(current))return null;
+  const sorted=releases.filter(r=>r&&!r.draft&&!r.prerelease&&TAG.test(r.tag_name||'')&&nativeV012ReleaseAssetSet(r))
     .sort((a,b)=>compareReleaseVersions(b.tag_name.slice(1),a.tag_name.slice(1)));
   for(const release of sorted){
     const tag=release.tag_name,version=tag.slice(1);
@@ -124,21 +125,8 @@ async function signedSourceTrain(sourceHead,majorMinor,api){
   return json(text);
 }
 export function expectedArtifact(release,platform,architecture='x64'){
-  // Match the signed release version, not merely a filename pattern.
-  // A GitHub v0.12.0 release must NEVER stage an unrelated dev.10 build
-  // or an artifact for the wrong CPU/OS.
-  if(!release||!TAG.test(release.tag_name??'')
-    ||!['linux','win32'].includes(platform)
-    ||architecture!=='x64')return null;
-  const version=release.tag_name.slice(1);
-  const exact=platform==='linux'
-    ? 'Remote-Commander-Unified-'+version+'-Linux-amd64.deb'
-    : 'Remote-Commander-Unified-'+version+'-Windows-x64.exe';
-  const matches=(release.assets||[]).filter(a=>
-    a?.name===exact && a?.state==='uploaded'
-    && Number.isSafeInteger(a.size) && a.size>1024
-    && /^sha256:[a-f0-9]{64}$/.test(a.digest??''));
-  return matches.length===1?matches[0]:null;
+  if(!['linux','win32'].includes(platform)||architecture!=='x64')return null;
+  return nativeV012ReleaseAssetSet(release)?.[platform]??null;
 }
 function stageDirectory(){
   return process.platform==='win32'
@@ -153,10 +141,11 @@ export async function discoverApprovedUpdate({
   const current=readInstalled();
   if(current===null)return {current:null,selected:null,
     needsFirstInstall:true};
+  if(!isV012InstalledVersion(current))return {current,selected:null,migrationRequired:true};
   const releases=await api('releases?per_page=30');
   if(!Array.isArray(releases)||releases.length>30)
     fail('RC012_AUTO_UPDATE_RELEASE_INDEX_INVALID');
-  const sorted=releases.filter(r=>r&&!r.draft&&!r.prerelease&&TAG.test(r.tag_name||''))
+  const sorted=releases.filter(r=>r&&!r.draft&&!r.prerelease&&TAG.test(r.tag_name||'')&&nativeV012ReleaseAssetSet(r))
     .sort((a,b)=>compareReleaseVersions(b.tag_name.slice(1),a.tag_name.slice(1)));
   for(const release of sorted){
     const tag=release.tag_name,version=tag.slice(1);
@@ -229,9 +218,9 @@ export async function downloadPublicReleaseAsset({
   return destination;
 }
 export async function stageApprovedUpdate({run=spawnSync,api=publicGitHubJson}={}){
-  const {current,selected}=await discoverApprovedUpdate({api});
+  const {current,selected,migrationRequired}=await discoverApprovedUpdate({api});
   if(!selected)return {status:current===null
-    ?'NATIVE_FIRST_INSTALL_REQUIRED':'NO_APPROVED_NEW_RELEASE',
+    ?'NATIVE_FIRST_INSTALL_REQUIRED':migrationRequired?'NATIVE_012_MIGRATION_REQUIRED':'NO_APPROVED_NEW_RELEASE',
     current,installed:false};
   const platform=process.platform;
   const asset=expectedArtifact(selected.release,platform,os.arch());
@@ -292,7 +281,7 @@ async function main(args){
   const result=args[0]==='--stage'?await stageApprovedUpdate():
     await (async()=>{const v=await discoverApprovedUpdate();return {
       status:v.needsFirstInstall?'NATIVE_FIRST_INSTALL_REQUIRED'
-        :v.selected?'APPROVED_UPDATE_DISCOVERED':'NO_APPROVED_NEW_RELEASE',
+        :v.migrationRequired?'NATIVE_012_MIGRATION_REQUIRED':v.selected?'APPROVED_UPDATE_DISCOVERED':'NO_APPROVED_NEW_RELEASE',
       current:v.current,next:v.selected?.version??null,installed:false
     };})();
   console.log(JSON.stringify(result));

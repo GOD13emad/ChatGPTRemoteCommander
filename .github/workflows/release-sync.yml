@@ -14,6 +14,9 @@ on:
       - 'tools/verify-v012-publish-readiness.mjs'
       - 'tools/universal-install/release-admission-0.12.mjs'
       - 'tools/universal-install/managed-updates.mjs'
+      - 'tools/universal-install/native-release-inventory.mjs'
+      - 'test/native-release-inventory.test.mjs'
+      - 'test/native-release-set-regression.test.mjs'
       - 'test/managed-updates-policy.test.mjs'
       - 'test/release-sync-posttag-guard.test.mjs'
       - 'installer/**'
@@ -307,6 +310,8 @@ jobs:
           fi
           if [[ "$version" == 0.12.* ]]; then
             node tools/verify-v012-publish-readiness.mjs "$version" "$tag"
+            echo "::error::RC012_NATIVE_RELEASE_PIPELINE_REQUIRED" >&2
+            exit 1
           fi
           test -f "docs/RELEASE_$version.md"
           (cd dist/release && sha256sum -c SHA256SUMS.txt)
@@ -401,6 +406,8 @@ jobs:
           fi
           if [[ "$version" == 0.12.* ]]; then
             node tools/verify-v012-publish-readiness.mjs "$version" "$tag"
+            echo "::error::RC012_NATIVE_RELEASE_PIPELINE_REQUIRED" >&2
+            exit 1
           fi
           gh release create "$tag" "${assets[@]}" \
             --repo "$GH_REPO" \

@@ -57,3 +57,28 @@ export function verifyV012Publication(version,tag,manifest) {
     manifest.distribution?.oldReleasesHistorical!==true)deny();
  return 'V108_V012_RELEASE_APPROVED_MANIFEST_PASS';
 }
+
+// A single product release has two platform artifacts. This validates
+// inventory only; downloaded bytes still require pinned Sigstore verification.
+export function nativeV012ReleaseAssetSet(release) {
+ const tag=release?.tag_name;
+ if(typeof tag!=='string'||!/^v0\.12\.(?:0|[1-9][0-9]*)$/.test(tag)
+    ||!Array.isArray(release.assets)||release.assets.length!==2)return null;
+ const version=tag.slice(1);
+ const names={linux:'Remote-Commander-Unified-'+version+'-Linux-amd64.deb',
+   win32:'Remote-Commander-Unified-'+version+'-Windows-x64.exe'};
+ const selected={};
+ for(const [platform,name] of Object.entries(names)){
+   const matches=release.assets.filter(a=>a?.name===name);
+   if(matches.length!==1)return null;
+   const a=matches[0];
+   if(a.state!=='uploaded'||!Number.isSafeInteger(a.size)||a.size<1024
+     ||a.size>1536*1024*1024||!/^sha256:[a-f0-9]{64}$/.test(a.digest??''))return null;
+   selected[platform]=a;
+ }
+ return selected;
+}
+export function isV012InstalledVersion(version){
+ return typeof version==='string'&&
+   /^0\.12\.(?:0|[1-9][0-9]*)(?:(?:-|~)(?:dev|rc)\.[1-9][0-9]*)?$/.test(version);
+}
