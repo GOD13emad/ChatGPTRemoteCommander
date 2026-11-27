@@ -176,6 +176,32 @@ export function sanitizeWorkspaceSnapshot(input, monitor) {
       items:valid?rows.map(({id,revision,lifecycle,schedulerEnabled})=>({id,revision,lifecycle,schedulerEnabled})):[]}};
 }
 
+// Separate optional sidecar: do not extend either closed monitor schema.
+// Counts describe durable records, never live worker state or action authority.
+export function sanitizeProjectSummary(input,monitor) {
+  const runs=input?.projectRuns;
+  const {profile,port,configSha256}=monitor.identity;
+  if (!sanitizeWorkspaceSnapshot({},monitor) || !Array.isArray(runs) ||
+      runs.length>10000 || runs.length!==monitor.workflows.runCount) return null;
+  const counts={runs:runs.length,reviewPassed:0,reviewFailed:0,reviewUnknown:0,
+    workerReady:0,workerReserved:0,workerImportedRuns:0};
+  for(const run of runs){
+    if(!run || typeof run!=='object' || Array.isArray(run))return null;
+    const checks=run.verification;
+    if(Array.isArray(checks)&&checks.length>0&&checks.length<=1000&&
+       checks.every(x=>typeof x?.passed==='boolean')){
+      if(checks.every(x=>x.passed))counts.reviewPassed++;
+      else counts.reviewFailed++;
+    }else counts.reviewUnknown++;
+    if(run.pendingWorker?.status==='READY')counts.workerReady++;
+    else if(run.pendingWorker?.status==='RESERVED')counts.workerReserved++;
+    if(Array.isArray(run.workerReceipts)&&run.workerReceipts.length>0)counts.workerImportedRuns++;
+  }
+  return {schema:1,kind:'COMMANDER_PROJECT_SUMMARY',observedAtEpochMs:monitor.observedAtEpochMs,
+    expiresAtEpochMs:monitor.expiresAtEpochMs,identity:{profile,port,configSha256},
+    actionAllowed:false,counts};
+}
+
 export async function writeBrowserCompanionMonitor(root, input, options = {}) {
   await provePrivateRoot(root, options);
   return publishMonitor(root, input, options);
@@ -207,7 +233,13 @@ async function publishMonitor(root, input, options) {
     try { await publishPrivateSnapshot(root, 'commander-workspace', workspace, options); }
     catch (error) { return {...receipt, workspacePublished:false}; }
   }
-  return {...receipt, workspacePublished:!!workspace};
+  const projectSummary=sanitizeProjectSummary(input,monitor);
+  let projectSummaryPublished=false;
+  if(projectSummary){
+    try{await publishPrivateSnapshot(root,'commander-project-summary',projectSummary,options);projectSummaryPublished=true;}
+    catch{}
+  }
+  return {...receipt, workspacePublished:!!workspace,projectSummaryPublished};
 }
 
 export async function writeBrowserCompanionInstanceMonitor(base, instance, input, options = {}) {

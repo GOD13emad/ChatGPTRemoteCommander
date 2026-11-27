@@ -633,6 +633,7 @@ async function buildBrowserMonitorSnapshot() {
   const concurrency = lockStats();
   return {
     workspace,
+    projectRuns:runs,
     relay:extensionEventRelay.status(),
     identity: {
       deviceName: config.deviceName || os.hostname(),

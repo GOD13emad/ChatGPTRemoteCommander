@@ -336,3 +336,24 @@ test('native monitor schema stays closed when workspace and relay are present',(
   assert.deepEqual(Object.keys(monitor).sort(),['schema','kind','observedAtEpochMs','expiresAtEpochMs','identity','gui','browser','workflows','extensions','operations'].sort());
   assert.deepEqual(Object.keys(monitor.workflows).sort(),['enabled','engineEnabled','runCount'].sort());
 });
+
+test('project summary publishes only generation-bound recorded review and worker counts',async t=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-project-summary-'));
+  t.after(()=>rm(base,{recursive:true,force:true}));
+  const a={profile:'qa-summary',port:51913};
+  const input={...instanceFixture(a.profile,a.port),workflows:{enabled:true,engineEnabled:true,runCount:3},
+    projectRuns:[{verification:[{passed:true,path:'PRIVATE'}],pendingWorker:{status:'READY',artifact:'PRIVATE'}},
+    {verification:[{passed:false}],workerReceipts:[{path:'PRIVATE'}],pendingWorker:{status:'RESERVED'}},
+    {verification:[{passed:'true'}]}]};
+  const result=await writeBrowserCompanionInstanceMonitor(base,a,input,{now:()=>1000});
+  assert.equal(result.projectSummaryPublished,true);
+  const file=path.join(path.dirname(result.target),'commander-project-summary.json');
+  const raw=await readFile(file,'utf8'),data=JSON.parse(raw);
+  assert.deepEqual(data,{schema:1,kind:'COMMANDER_PROJECT_SUMMARY',observedAtEpochMs:1000,expiresAtEpochMs:11000,
+    identity:{profile:a.profile,port:a.port,configSha256:'a'.repeat(64)},actionAllowed:false,
+    counts:{runs:3,reviewPassed:1,reviewFailed:1,reviewUnknown:1,workerReady:1,workerReserved:1,workerImportedRuns:1}});
+  assert.doesNotMatch(raw,/PRIVATE/);
+  assert.equal((await writeBrowserCompanionInstanceMonitor(base,a,{...input,projectRuns:[]},{now:()=>2000})).projectSummaryPublished,false);
+  assert.equal(JSON.parse(await readFile(file,'utf8')).observedAtEpochMs,1000);
+  assert.equal(JSON.parse(await readFile(result.target,'utf8')).observedAtEpochMs,2000);
+});
