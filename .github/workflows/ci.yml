@@ -59,6 +59,8 @@ jobs:
         run: npm run test:v1-07-worker-identity
       - name: Verify v0.12 owner-bound Worker admission and real DPAPI custody
         run: npm run test:v012-owner-worker-admission
+      - name: Verify bounded command timeout policy on all execution routes
+        run: npm run test:timeout-bounds
       # Keep R157's validated Windows qualification command grammar intact.
       # Run shared installer QA once per OS, as one independent CI step.
       - name: Verify Browser Core companion, packed byte integrity and extension pairing (NoPromote)
