@@ -67,7 +67,8 @@ const monitorSelect=document.getElementById('monitor-select');
 const monitorRefresh=document.getElementById('monitor-refresh');
 const monitorResult=document.getElementById('monitor-result');
 const dashboardFreshness=document.getElementById('dashboard-freshness');
-const dashboardKeys=['gui','browser','workflows','runs','extensions','relay','active','locks','run-completed','run-stopped','run-waiting','run-other'];
+const dashboardKeys=['gui','browser','workflows','runs','extensions','relay','active','locks'];
+const workspaceList=document.getElementById('workspace-list'),workspaceStatus=document.getElementById('workspace-status');
 const profileList=document.getElementById('profile-list'),profileStatus=document.getElementById('profile-status');
 let monitorGeneration=0, expirationTimer;
 const countLabel=v=>Number.isSafeInteger(v)&&v>=0?String(v):'Unknown';
@@ -90,6 +91,7 @@ function clearDashboard(message='Not selected',note='Select a local Core instanc
   clearTimeout(expirationTimer);
   for(const key of dashboardKeys)show(document.getElementById('dashboard-'+key),message);
   show(dashboardFreshness,note);
+  workspaceList.replaceChildren();show(workspaceStatus,message);
 }
 function showDashboard(selected,generation){
   const summary=selected?.summary;
@@ -103,7 +105,14 @@ function showDashboard(selected,generation){
     workflows:workflowLabel(summary.workflows),runs:countLabel(summary.workflows?.runCount),
     extensions:countLabel(summary.extensionCount),relay:relayLabel(summary.eventRelay),active:countLabel(summary.operations?.active),
     locks:countLabel(summary.operations?.lockedKeys)};
-  for(const key of ['completed','stopped','waiting','other'])values['run-'+key]=countLabel(summary.workflows?.runStates?.[key]);
+  workspaceList.replaceChildren();
+  const page=summary.workspace;
+  if(page?.state==='OBSERVED'&&Array.isArray(page.items)&&page.items.length<=8){
+    for(const item of page.items){
+      const row=document.createElement('li');show(row,item.id+' | '+item.lifecycle+' · revision '+item.revision+' · scheduler '+(item.schedulerEnabled?'enabled':'disabled'));workspaceList.append(row);
+    }
+    show(workspaceStatus,page.items.length+' observed workflows'+(page.hasMore?' · more available':''));
+  }else show(workspaceStatus,'Unknown');
   for(const key of dashboardKeys)show(document.getElementById('dashboard-'+key),values[key]);
   show(dashboardFreshness,'Read-only snapshot · expires automatically. Not an action grant.');
   expirationTimer=setTimeout(()=>{

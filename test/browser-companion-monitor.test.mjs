@@ -211,9 +211,10 @@ test('fresh instance discovery and explicit revalidation refuse stale, mismatche
   const rich={...instanceFixture(a.profile,a.port),
     gui:{enabled:true,available:true,uncertain:false,capabilities:{screenshot:true,mouse:false}},
     browser:{enabled:true,available:true,uncertain:true},
-    workflows:{enabled:true,engineEnabled:true,runCount:7,runStates:{completed:1,stopped:2,waiting:3,other:1}},
+    workflows:{enabled:true,engineEnabled:true,runCount:7},
     extensions:{items:[{id:'fixture',version:'1',secret:'PRIVATE'}]},
-    eventRelay:{enabled:true,ready:true,deliveryConfirmed:true,adapterPath:'PRIVATE',extensionId:'PRIVATE'},
+    relay:{enabled:true,ready:true,extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false,adapterPath:'PRIVATE'},
+    workspace:{hasMore:true,workflows:[{id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true,root:'PRIVATE'}]},
     operations:{active:2,lockedKeys:3}};
   const updated=await writeBrowserCompanionInstanceMonitor(base,a,rich,{now:()=>1000});
   const raw=JSON.parse(await readFile(updated.target,'utf8'));
@@ -225,16 +226,22 @@ test('fresh instance discovery and explicit revalidation refuse stale, mismatche
     observedAtEpochMs:1000,
     gui:{enabled:true,available:true,uncertain:false},
     browser:{enabled:true,available:true,uncertain:true},
-    workflows:{enabled:true,engineEnabled:true,runCount:7,runStates:{completed:1,stopped:2,waiting:3,other:1}},
+    workflows:{enabled:true,engineEnabled:true,runCount:7},
     extensionCount:1,
     eventRelay:{enabled:true,ready:true,deliveryConfirmed:false},
+    workspace:{state:'OBSERVED',hasMore:true,items:[{id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true}]},
     operations:{active:null,lockedKeys:3}
   });
   assert.doesNotMatch(JSON.stringify(dashboard.summary),/PRIVATE|configSha256|capabilities/);
   assert.equal(dashboard.actionAuthorization,false);
-  raw.workflows.runStates.waiting=999;
-  await writeFile(updated.target,JSON.stringify(raw));
-  assert.equal((await selectBrowserCompanionInstance(aId,{base,now:10001})).summary.workflows.runStates,null);
+  const sidecar=path.join(path.dirname(updated.target),'commander-workspace.json');
+  const side=JSON.parse(await readFile(sidecar,'utf8'));
+  side.actionAllowed=true;
+  await writeFile(sidecar,JSON.stringify(side));
+  assert.equal((await selectBrowserCompanionInstance(aId,{base,now:10001})).summary.workspace.state,'UNVERIFIED');
+  side.actionAllowed=false;side.observedAtEpochMs++;
+  await writeFile(sidecar,JSON.stringify(side));
+  assert.equal((await selectBrowserCompanionInstance(aId,{base,now:10001})).summary.eventRelay.ready,null);
   assert.ok((await listBrowserCompanionInstances({base,now:10001})).every(x=>!Object.hasOwn(x,'summary')));
   await assert.rejects(()=>selectBrowserCompanionInstance(aId,{base,now:11000}),/STALE_OR_MISMATCH/);
   await assert.rejects(()=>selectBrowserCompanionInstance('../escape',{base,now:10001}),/SELECTION_INVALID/);
@@ -266,19 +273,66 @@ test('Windows refuses pre-existing unsafe monitor ACL without modifying existing
   assert.equal(await readFile(marker,'utf8'),'preserve');
 });
 
-test('workflow monitor reports bounded persisted run states, not live workers or private workflow content',async()=>{
-  const {summarizeWorkflowRuns}=await import('../src/browser-companion-monitor.mjs');
-  const states=summarizeWorkflowRuns([
-    {status:'COMPLETED',workflowId:'PRIVATE'}, {status:'BLOCKED'}, {status:'CANCELLED'},
-    {status:'EXHAUSTED'}, {status:'WAITING_INPUT'}, {status:'PAUSED'}, {status:'RUNNING'},
-    {status:'PRIVATE_UNKNOWN'}]);
-  assert.deepEqual(states,{completed:1,stopped:3,waiting:2,other:2});
-  assert.equal(summarizeWorkflowRuns(null),null);
-  assert.equal(summarizeWorkflowRuns(Array(10001).fill({status:'RUNNING'})),null);
-  const sanitized=sanitizeMonitorSnapshot({workflows:{runCount:8,runStates:{...states,secret:'PRIVATE'}}});
-  assert.deepEqual(sanitized.workflows.runStates,states);
-  assert.equal(sanitizeMonitorSnapshot({workflows:{runCount:9,runStates:states}}).workflows.runStates,null);
-  assert.equal(sanitizeMonitorSnapshot({workflows:{runCount:8,runStates:{...states,other:-1}}}).workflows.runStates,null);
-  assert.equal(sanitizeMonitorSnapshot({workflows:{runCount:3}}).workflows.runStates,null);
-  assert.doesNotMatch(JSON.stringify(sanitized.workflows),/PRIVATE/);
+test('monitor writer matches native UTF-16, version, and safe-counter bounds',()=>{
+  const s=sanitizeMonitorSnapshot({
+    identity:{deviceName:'x'.repeat(159)+'😀',profile:'default',
+      version:'0.12.0-dev.15+build.1',configSha256:'a'.repeat(64),port:48832,platform:'linux'},
+    gui:{enabled:true,available:true,backend:'b'.repeat(160),sessionType:'s'.repeat(160),reason:'r'.repeat(160)},
+    browser:{enabled:true,available:true,backend:'c'.repeat(160),reason:'d'.repeat(160)},
+    workflows:{enabled:true,engineEnabled:true,runCount:3},
+    extensions:{items:[{id:'project-execution-brain',version:'1.2.3+'+'v'.repeat(80)}]},
+    operations:{active:10001,lockedKeys:Number.MAX_SAFE_INTEGER}
+  },1000);
+  assert.equal(s.identity.deviceName,'x'.repeat(159));
+  assert.equal(s.identity.version,'0.12.0-dev.15+build.1');
+  assert.equal(s.gui.backend.length,160);
+  assert.equal(s.gui.sessionType.length,160);
+  assert.equal(s.browser.reason.length,160);
+  assert.equal(s.extensions.items[0].version.length,64);
+  assert.equal(s.operations.active,10001);
+  assert.equal(s.operations.lockedKeys,Number.MAX_SAFE_INTEGER);
+  const malformed=sanitizeMonitorSnapshot({
+    identity:{deviceName:'x'.repeat(159)+String.fromCharCode(0xD800),version:'0.12.0',profile:'default',port:48832},
+    operations:{active:Number.MAX_SAFE_INTEGER+1,lockedKeys:1.5}
+  },1000);
+  assert.equal(malformed.identity.deviceName,'x'.repeat(159)+'�');
+  assert.equal(malformed.operations.active,0);
+  assert.equal(malformed.operations.lockedKeys,0);
+});
+
+
+test('owner-private workspace page is generation bound and cannot grant actions', async t=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-workspace-sidecar-'));
+  t.after(()=>rm(base,{recursive:true,force:true}));
+  const a={profile:'qa-a',port:51913}, b={profile:'qa-b',port:51923};
+  const good={...instanceFixture(a.profile,a.port),relay:{enabled:true,ready:true,extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false},workspace:{hasMore:true,workflows:[
+    {id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true,lastFailure:'private detail',root:'/never/export'}
+  ]},actionAllowed:true};
+  const ra=await writeBrowserCompanionInstanceMonitor(base,a,good,{now:()=>1000});
+  const rb=await writeBrowserCompanionInstanceMonitor(base,b,instanceFixture(b.profile,b.port),{now:()=>2000});
+  assert.equal(ra.workspacePublished,true);assert.equal(rb.workspacePublished,true);
+  const read=async r=>JSON.parse(await readFile(path.join(path.dirname(r.target),'commander-workspace.json'),'utf8'));
+  const monitor=JSON.parse(await readFile(ra.target,'utf8'));
+  const ws=await read(ra);
+  assert.deepEqual(ws,{schema:2,kind:'COMMANDER_WORKSPACE_MONITOR',observedAtEpochMs:1000,expiresAtEpochMs:11000,
+    identity:{profile:'qa-a',port:51913,configSha256:'a'.repeat(64)},actionAllowed:false,
+    relay:{state:'PIN_READY',extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false},
+    workflows:{state:'OBSERVED',hasMore:true,items:[{id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true}]}});
+  assert.equal(monitor.observedAtEpochMs,ws.observedAtEpochMs);
+  assert.equal(Object.hasOwn(monitor,'workspace'),false);
+  assert.equal((await read(rb)).workflows.state,'UNVERIFIED');
+  assert.equal((await read(rb)).relay.state,'UNVERIFIED');
+  const claimed={...good,relay:{...good.relay,deliveryConfirmed:true}};
+  await writeBrowserCompanionInstanceMonitor(base,a,claimed,{now:()=>2500});
+  assert.equal((await read(ra)).relay.state,'UNVERIFIED');
+  if(process.platform==='linux')assert.equal((await stat(path.join(path.dirname(ra.target),'commander-workspace.json'))).mode&0o777,0o600);
+  const invalid={...good,workspace:{hasMore:false,workflows:[good.workspace.workflows[0],good.workspace.workflows[0]]}};
+  await writeBrowserCompanionInstanceMonitor(base,a,invalid,{now:()=>3000});
+  assert.deepEqual((await read(ra)).workflows,{state:'UNVERIFIED',hasMore:false,items:[]});
+});
+
+test('native monitor schema stays closed when workspace and relay are present',()=>{
+  const monitor=sanitizeMonitorSnapshot({workflows:{enabled:true,engineEnabled:true,runCount:3,runStates:{completed:3}},eventRelay:{enabled:true},workspace:{workflows:[]}});
+  assert.deepEqual(Object.keys(monitor).sort(),['schema','kind','observedAtEpochMs','expiresAtEpochMs','identity','gui','browser','workflows','extensions','operations'].sort());
+  assert.deepEqual(Object.keys(monitor.workflows).sort(),['enabled','engineEnabled','runCount'].sort());
 });

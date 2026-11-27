@@ -13,10 +13,12 @@ fields display Unknown; stale or changed selections clear the entire dashboard.
 
 The Profiles list shows local profile/port records observed during discovery;
 it is not a fleet inventory or account binding. Selection revalidates the
-exact instance. The Workflows panel groups persisted project-engine run states
-(completed, blocked/cancelled/exhausted, waiting/paused, other); it never
-reports them as live workers. Invalid or missing groups show Unknown and
-selection expiry clears them together with the rest of the dashboard.
+exact instance. The Workspace panel reads the same bounded schema-2 sidecar
+as native CEF Glass (up to eight workflow IDs/revisions/lifecycle/scheduler
+flags). Schema-1 stays closed for strict native readers. Missing, mismatched
+or malformed sidecars fail closed; selection expiry clears the page and relay.
+Native CEF/Glass is the primary product GUI; Electron remains a packaging
+engineering pilot, not a second production browser or execution authority.
 
 The Add-ons section consumes the same `installer/products.json` catalog as
 the native GTK Control Center. Preparation stages the committed catalog bytes

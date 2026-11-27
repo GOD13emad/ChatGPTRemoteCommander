@@ -47,14 +47,10 @@
 </dl>
 <p id="dashboard-freshness" role="status">Select a local Core instance to inspect its snapshot.</p>
 <pre id="monitor-result" role="status" aria-live="polite"></pre></section>
-<section id="workflows-panel" aria-labelledby="workflows-panel-title"><h2 id="workflows-panel-title">Recorded workflow runs</h2>
-<p>For the same selected local Core instance. Persisted run states are not proof of live worker activity. Select or refresh the instance in <a href="#monitor-panel">Control Center</a>.</p>
-<dl class="monitor-grid" aria-label="Recorded run states">
-<div><dt>Completed</dt><dd id="dashboard-run-completed">Not selected</dd></div>
-<div><dt>Blocked / cancelled / exhausted</dt><dd id="dashboard-run-stopped">Not selected</dd></div>
-<div><dt>Waiting for input / paused</dt><dd id="dashboard-run-waiting">Not selected</dd></div>
-<div><dt>Other recorded states</dt><dd id="dashboard-run-other">Not selected</dd></div>
-</dl></section>
+<section id="workflows-panel" aria-labelledby="workflows-panel-title"><h2 id="workflows-panel-title">Workspace / CoS workflow list</h2>
+<p>The engineering pilot reads the same private, generation-bound workspace page as native CEF Glass. Persisted workflow metadata is not live worker activity. Select or refresh the instance in <a href="#monitor-panel">Control Center</a>.</p>
+<p id="workspace-status" role="status">Not selected</p>
+<ul id="workspace-list" aria-label="Observed workflows"></ul></section>
 <section id="companion-panel" aria-labelledby="companion-panel-title"><h2 id="companion-panel-title">Browser Companion (opt-in)</h2><p>Pair a browser extension through an owner-visible, expiring code. Chrome, Edge and Brave can load the packaged folder via their extensions page. Firefox needs separate qualification. No automated ChatGPT messages or privileged tools are enabled.</p>
 <button id="companion-start" type="button">Start companion</button>
 <button id="companion-stop" type="button">Stop companion</button>

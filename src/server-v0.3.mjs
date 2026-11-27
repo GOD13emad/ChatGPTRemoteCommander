@@ -33,7 +33,7 @@ import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCom
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import { createOptionalEventHook } from './optional-event-hook.mjs';
-import { startBrowserCompanionMonitor, summarizeWorkflowRuns } from './browser-companion-monitor.mjs';
+import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
 } from './no-codex-policy.mjs';
@@ -624,8 +624,16 @@ async function buildBrowserMonitorSnapshot() {
   const runs = Array.isArray(workflowStatus?.projectEngine?.runs)
     ? workflowStatus.projectEngine.runs
     : Array.isArray(workflowStatus?.runs) ? workflowStatus.runs : [];
+  // Native CEF and the engineering pilot share the same generation-bound page.
+  let workspace = null;
+  if (workflowTools) {
+    try { workspace = await workflowTools.execute('workflow_list', { limit:8 }); }
+    catch { workspace = null; }
+  }
   const concurrency = lockStats();
   return {
+    workspace,
+    relay:extensionEventRelay.status(),
     identity: {
       deviceName: config.deviceName || os.hostname(),
       profile: config.instance?.profile ?? 'default',
@@ -639,11 +647,9 @@ async function buildBrowserMonitorSnapshot() {
     workflows: {
       enabled: workflowStatus.enabled === true,
       engineEnabled: workflowStatus.engineEnabled === true,
-      runCount: runs.length,
-      runStates: summarizeWorkflowRuns(runs)
+      runCount: runs.length
     },
     extensions: { items:extensionItems },
-    eventRelay: extensionEventRelay.status(),
     operations: {
       active:Number(concurrency.activeOperations ?? 0),
       lockedKeys:Number(concurrency.lockedKeys ?? 0)

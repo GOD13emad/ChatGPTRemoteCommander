@@ -3,6 +3,7 @@ import path from 'node:path';
 import { mkdir, lstat, chmod, writeFile, rename, unlink, opendir, open } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { ensureWindowsMonitorDirectories } from './browser-companion-windows-private.mjs';
 
 const MAX_BYTES = 64 * 1024;
@@ -56,29 +57,23 @@ async function provePrivateRoot(root, { platform = process.platform } = {}) {
   return root;
 }
 
-const RUN_STATE_KEYS=['completed','stopped','waiting','other'];
-const boundedRunCount=n=>Number.isSafeInteger(n)&&n>=0&&n<=10000;
-function validateRunStates(value,total){
-  if(!boundedRunCount(total)||!value||typeof value!=='object'||Array.isArray(value)||
-     RUN_STATE_KEYS.some(key=>!boundedRunCount(value[key])))return null;
-  const result=Object.fromEntries(RUN_STATE_KEYS.map(key=>[key,value[key]]));
-  return Object.values(result).reduce((a,b)=>a+b,0)===total?result:null;
-}
-// Persisted run states are not a count of active workers. No IDs or run content.
-export function summarizeWorkflowRuns(runs){
-  if(!Array.isArray(runs)||!boundedRunCount(runs.length))return null;
-  const counts={completed:0,stopped:0,waiting:0,other:0};
-  for(const run of runs){
-    const status=run?.status;
-    const key=status==='COMPLETED'?'completed':
-      ['BLOCKED','CANCELLED','EXHAUSTED'].includes(status)?'stopped':
-      ['WAITING_INPUT','PAUSED'].includes(status)?'waiting':'other';
-    counts[key]++;
-  }
-  return counts;
-}
 export function sanitizeMonitorSnapshot(input, now = Date.now()) {
-  const text = value => typeof value === 'string' ? value.slice(0, 160) : '';
+  const text = (value, limit = 160) => {
+    if (typeof value !== 'string') return '';
+    let out = '';
+    for (let i = 0; i < value.length && out.length < limit; i++) {
+      const code = value.charCodeAt(i);
+      if (code >= 0xD800 && code <= 0xDBFF) {
+        const next = value.charCodeAt(i + 1);
+        if (next >= 0xDC00 && next <= 0xDFFF) {
+          if (out.length + 2 > limit) break;
+          out += value[i] + value[++i];
+        } else out += '\uFFFD';
+      } else if (code >= 0xDC00 && code <= 0xDFFF) out += '\uFFFD';
+      else out += value[i];
+    }
+    return out;
+  };
   const optionalText = value => {
     const normalized = text(value);
     return normalized ? normalized : null;
@@ -89,8 +84,8 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
   const capability = (name, policyName) =>
     Object.prototype.hasOwnProperty.call(cap, name) ? truth(cap[name]) : truth(guiPolicy[policyName]);
   const extensions = Array.isArray(input?.extensions?.items) ? input.extensions.items.slice(0, 32).map(item => ({
-    id: text(item?.id).slice(0, 64),
-    version: text(item?.version).slice(0, 64)
+    id: text(item?.id, 64),
+    version: text(item?.version, 64)
   })).filter(item => item.id) : [];
   return {
     schema: 1,
@@ -100,9 +95,9 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
     identity: {
       deviceName: text(input?.identity?.deviceName),
       profile: text(input?.identity?.profile),
-      version: text(input?.identity?.version),
+      version: text(input?.identity?.version, 64),
       configSha256: /^[a-f0-9]{64}$/.test(input?.identity?.configSha256 ?? '') ? input.identity.configSha256 : '',
-      port: Number.isInteger(input?.identity?.port) ? input.identity.port : 0,
+      port: Number.isSafeInteger(input?.identity?.port) ? input.identity.port : 0,
       platform: text(input?.identity?.platform)
     },
     gui: {
@@ -129,20 +124,56 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
     workflows: {
       enabled: truth(input?.workflows?.enabled),
       engineEnabled: truth(input?.workflows?.engineEnabled),
-      runCount: Number.isInteger(input?.workflows?.runCount) ? Math.max(0, Math.min(input.workflows.runCount, 10000)) : 0,
-      runStates: validateRunStates(input?.workflows?.runStates,input?.workflows?.runCount)
+      runCount: Number.isInteger(input?.workflows?.runCount) ? Math.max(0, Math.min(input.workflows.runCount, 10000)) : 0
     },
     extensions: { count: extensions.length, items: extensions },
-    eventRelay: input?.eventRelay && typeof input.eventRelay==='object' ? {
-      enabled: typeof input.eventRelay.enabled==='boolean'?input.eventRelay.enabled:null,
-      ready: typeof input.eventRelay.ready==='boolean'?input.eventRelay.ready:null,
-      deliveryConfirmed: false
-    } : null,
     operations: {
-      active: Number.isInteger(input?.operations?.active) ? Math.max(0, input.operations.active) : 0,
-      lockedKeys: Number.isInteger(input?.operations?.lockedKeys) ? Math.max(0, input.operations.lockedKeys) : 0
+      active: Number.isSafeInteger(input?.operations?.active) ? Math.max(0, input.operations.active) : 0,
+      lockedKeys: Number.isSafeInteger(input?.operations?.lockedKeys) ? Math.max(0, input.operations.lockedKeys) : 0
     }
   };
+}
+
+// Optional generic relay observation only. Never invoke or configure an adapter here.
+function sanitizeRelayObservation(value) {
+  const unknown = {state:'UNVERIFIED',extensionId:null,attempts:0,relayProcessExitedZero:0,dropped:0,inFlight:false,deliveryConfirmed:false};
+  const count = n => Number.isSafeInteger(n) && n >= 0;
+  if (!value || typeof value.enabled !== 'boolean' || typeof value.ready !== 'boolean' ||
+      typeof value.inFlight !== 'boolean' || value.deliveryConfirmed !== false ||
+      !count(value.attempts) || !count(value.relayProcessExitedZero) || !count(value.dropped) ||
+      value.relayProcessExitedZero > value.attempts ||
+      (value.extensionId !== null && (typeof value.extensionId !== 'string' ||
+        !/^[a-z][a-z0-9-]{0,63}$/.test(value.extensionId))) ||
+      (value.ready && (!value.enabled || !value.extensionId)) ||
+      (!value.enabled && (value.inFlight || value.attempts || value.relayProcessExitedZero || value.dropped))) return unknown;
+  return {state:!value.enabled?'DISABLED':value.ready?'PIN_READY':'NOT_READY',
+    extensionId:value.extensionId,attempts:value.attempts,relayProcessExitedZero:value.relayProcessExitedZero,
+    dropped:value.dropped,inFlight:value.inFlight,deliveryConfirmed:false};
+}
+
+// Separate additive schema: older strict monitor readers still receive monitor schema 1 unchanged.
+export function sanitizeWorkspaceSnapshot(input, monitor) {
+  const {profile,port,configSha256} = monitor.identity;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(profile) ||
+      !Number.isSafeInteger(port) || port < 1 || port > 65535 ||
+      !/^[a-f0-9]{64}$/.test(configSha256)) return null;
+  const page = input?.workspace;
+  const rows = page?.workflows;
+  const ids = new Set();
+  const valid = Array.isArray(rows) && rows.length <= 8 && typeof page.hasMore === 'boolean' &&
+    rows.every(item => {
+      if (!item || typeof item.id !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(item.id) ||
+          ids.has(item.id) || !Number.isSafeInteger(item.revision) || item.revision < 0 ||
+          typeof item.lifecycle !== 'string' || !/^[A-Z][A-Z0-9_]{0,39}$/.test(item.lifecycle) ||
+          typeof item.schedulerEnabled !== 'boolean') return false;
+      ids.add(item.id); return true;
+    });
+  return {schema:2, kind:'COMMANDER_WORKSPACE_MONITOR',
+    observedAtEpochMs:monitor.observedAtEpochMs, expiresAtEpochMs:monitor.expiresAtEpochMs,
+    identity:{profile,port,configSha256}, actionAllowed:false,
+    relay:sanitizeRelayObservation(input?.relay),
+    workflows:{state:valid?'OBSERVED':'UNVERIFIED',hasMore:valid&&page.hasMore,
+      items:valid?rows.map(({id,revision,lifecycle,schedulerEnabled})=>({id,revision,lifecycle,schedulerEnabled})):[]}};
 }
 
 export async function writeBrowserCompanionMonitor(root, input, options = {}) {
@@ -150,13 +181,12 @@ export async function writeBrowserCompanionMonitor(root, input, options = {}) {
   return publishMonitor(root, input, options);
 }
 
-async function publishMonitor(root, input, options) {
-  const snapshot = sanitizeMonitorSnapshot(input, options.now?.() ?? Date.now());
+async function publishPrivateSnapshot(root, name, snapshot, options) {
   const data = JSON.stringify(snapshot) + '\n';
   if (Buffer.byteLength(data) > MAX_BYTES) throw new Error('BROWSER_COMPANION_SNAPSHOT_LIMIT');
   const flavor = (options.platform ?? process.platform) === 'win32' ? path.win32 : path.posix;
-  const target = flavor.join(root, 'commander-monitor.json');
-  const temporary = flavor.join(root, '.commander-monitor-' + process.pid + '-' + randomUUID() + '.tmp');
+  const target = flavor.join(root, name + '.json');
+  const temporary = flavor.join(root, '.' + name + '-' + process.pid + '-' + randomUUID() + '.tmp');
   try {
     await writeFile(temporary, data, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
     if ((options.platform ?? process.platform) !== 'win32') await chmod(temporary, 0o600);
@@ -166,6 +196,18 @@ async function publishMonitor(root, input, options) {
     throw error;
   }
   return { target, bytes: Buffer.byteLength(data), observedAtEpochMs: snapshot.observedAtEpochMs };
+}
+async function publishMonitor(root, input, options) {
+  const monitor = sanitizeMonitorSnapshot(input, options.now?.() ?? Date.now());
+  const receipt = await publishPrivateSnapshot(root, 'commander-monitor', monitor, options);
+  // Matching time/identity is mandatory in the reader. If publication fails,
+  // the old sidecar cannot be mistaken for the new monitor generation.
+  const workspace = sanitizeWorkspaceSnapshot(input, monitor);
+  if (workspace) {
+    try { await publishPrivateSnapshot(root, 'commander-workspace', workspace, options); }
+    catch (error) { return {...receipt, workspacePublished:false}; }
+  }
+  return {...receipt, workspacePublished:!!workspace};
 }
 
 export async function writeBrowserCompanionInstanceMonitor(base, instance, input, options = {}) {
@@ -197,7 +239,31 @@ async function inspectExistingPrivateDirectory(root) {
 }
 // Only the selected, validated local instance may expose this read-only projection.
 // Do not relay backend labels, reason strings, extension identities, or policy grants.
-function dashboardSummary(data) {
+// Read only the same generation-bound sidecar used by native CEF. Never extend
+// the closed schema-1 monitor with UI-specific keys.
+function projectWorkspaceSnapshot(data,monitor){
+  if(!data||data.schema!==2||data.kind!=='COMMANDER_WORKSPACE_MONITOR'||
+     data.observedAtEpochMs!==monitor.observedAtEpochMs||
+     data.expiresAtEpochMs!==monitor.expiresAtEpochMs||
+     data.actionAllowed!==false)return null;
+  const {profile,port,configSha256}=monitor.identity;
+  if(!isDeepStrictEqual(data.identity,{profile,port,configSha256}))return null;
+  const r=data.relay;
+  const relay=r?.state==='UNVERIFIED'?null:{
+    enabled:r?.state!=='DISABLED',ready:r?.state==='PIN_READY',
+    extensionId:r?.extensionId,attempts:r?.attempts,
+    relayProcessExitedZero:r?.relayProcessExitedZero,dropped:r?.dropped,
+    inFlight:r?.inFlight,deliveryConfirmed:r?.deliveryConfirmed};
+  const page=data.workflows?.state==='OBSERVED'?
+    {hasMore:data.workflows.hasMore,workflows:data.workflows.items}:null;
+  const expected=sanitizeWorkspaceSnapshot({relay,workspace:page},monitor);
+  if(!isDeepStrictEqual(data,expected))return null;
+  return {workflows:expected.workflows,relay:{
+    enabled:r.state==='UNVERIFIED'?null:r.state!=='DISABLED',
+    ready:r.state==='UNVERIFIED'?null:r.state==='PIN_READY',
+    deliveryConfirmed:false}};
+}
+function dashboardSummary(data,workspace) {
   const flag=value=>typeof value==='boolean'?value:null;
   const count=(value,max=Number.MAX_SAFE_INTEGER)=>
     Number.isSafeInteger(value)&&value>=0&&value<=max?value:null;
@@ -208,17 +274,14 @@ function dashboardSummary(data) {
     gui:readiness(data.gui),
     browser:readiness(data.browser),
     workflows:{enabled:flag(data.workflows?.enabled),engineEnabled:flag(data.workflows?.engineEnabled),
-      runCount:count(data.workflows?.runCount,10000),runStates:validateRunStates(data.workflows?.runStates,data.workflows?.runCount)},
+      runCount:count(data.workflows?.runCount,10000)},
     extensionCount:Array.isArray(data.extensions?.items)?count(data.extensions.items.length,32):null,
-    eventRelay:{enabled:flag(data.eventRelay?.enabled),ready:flag(data.eventRelay?.ready),deliveryConfirmed:false},
+    eventRelay:workspace?.relay??{enabled:null,ready:null,deliveryConfirmed:false},
+    workspace:workspace?.workflows??{state:'UNVERIFIED',hasMore:false,items:[]},
     operations:{active:count(data.operations?.active),lockedKeys:count(data.operations?.lockedKeys)}
   };
 }
-async function readInstanceSelection(base,id,now,includeSummary=false) {
-  if(typeof id!=='string'||!SCOPE_ID.test(id))throw Error('BROWSER_COMPANION_SELECTION_INVALID');
-  const instances=path.join(base,'instances'),root=path.join(instances,id);
-  for(const dir of [base,instances,root])await inspectExistingPrivateDirectory(dir);
-  const file=path.join(root,'commander-monitor.json');
+async function readPrivateSnapshot(file){
   const first=await lstat(file);
   const safe=st=>st.isFile()&&!st.isSymbolicLink()&&st.nlink===1&&st.size>0&&st.size<=MAX_BYTES&&
     (process.platform==='win32'||((st.mode&0o077)===0&&
@@ -237,6 +300,13 @@ async function readInstanceSelection(base,id,now,includeSummary=false) {
       throw Error('BROWSER_COMPANION_SNAPSHOT_CHANGED');
     data=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(buf.subarray(0,total)));
   }finally{await fd.close();}
+  return data;
+}
+async function readInstanceSelection(base,id,now,includeSummary=false) {
+  if(typeof id!=='string'||!SCOPE_ID.test(id))throw Error('BROWSER_COMPANION_SELECTION_INVALID');
+  const instances=path.join(base,'instances'),root=path.join(instances,id);
+  for(const dir of [base,instances,root])await inspectExistingPrivateDirectory(dir);
+  const data=await readPrivateSnapshot(path.join(root,'commander-monitor.json'));
   const identity=data?.identity;
   if(data?.schema!==1||data.kind!=='COMMANDER_LIVE_MONITOR'||
     identity?.platform!==process.platform||
@@ -247,8 +317,12 @@ async function readInstanceSelection(base,id,now,includeSummary=false) {
     data.expiresAtEpochMs<data.observedAtEpochMs||data.expiresAtEpochMs-data.observedAtEpochMs>30000||
     browserCompanionInstanceRoot(base,identity)!==root)
     throw Error('BROWSER_COMPANION_SELECTION_STALE_OR_MISMATCH');
+  let workspace=null;
+  if(includeSummary){
+    try{workspace=projectWorkspaceSnapshot(await readPrivateSnapshot(path.join(root,'commander-workspace.json')),data);}catch{}
+  }
   return {scopeId:id,profile:identity.profile,port:identity.port,version:identity.version,
-    expiresAtEpochMs:data.expiresAtEpochMs,root,...(includeSummary?{summary:dashboardSummary(data)}:{})};
+    expiresAtEpochMs:data.expiresAtEpochMs,root,...(includeSummary?{summary:dashboardSummary(data,workspace)}:{})};
 }
 export async function listBrowserCompanionInstances({base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
   if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
