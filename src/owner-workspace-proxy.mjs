@@ -19,10 +19,12 @@ const fail=(c)=>Object.assign(new Error(c),{code:c});
 export function createOwnerWorkspaceProxy({config,fetchImpl=globalThis.fetch,readFileImpl=readFile,timeoutSignal=AbortSignal.timeout}={}){
  const policy=config?.ownerWorkspaceDelegation;
  if(policy?.enabled!==true)return null;
- if(!Number.isSafeInteger(policy.port)||policy.port<1024||policy.port>65535||
+ if((policy.port!==48838&&policy.port!==48839)||
     typeof policy.authFile!=='string'||!path.isAbsolute(policy.authFile))
     throw fail('WORKSPACE_OWNER_PROXY_CONFIG_INVALID');
- const endpoint='http://127.0.0.1:'+policy.port+'/mcp';
+ // The owner credential must never reach an arbitrary other loopback listener.
+ const endpoint=policy.port===48839
+  ?'http://127.0.0.1:48839/mcp':'http://127.0.0.1:48838/mcp';
  return {async execute(name,args={},context={}){
   if(!ALLOWED.has(name))return {handled:false};
   if(MUTATIONS.has(name)){
