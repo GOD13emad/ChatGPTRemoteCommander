@@ -1,6 +1,7 @@
 // Durable workflow adapter. Stored memory is data, never authority.
 // Autonomous scheduler may reconcile evidence automatically, but it never blind-replays mutations.
 import { WorkflowStore, fail } from './workflow-store.mjs';
+import {createWorkflowStoreWorkerIdentityRegistry} from './worker-identity-store.mjs';
 import { deriveCapabilitySet, FULL_WORKFLOW_EXECUTION_TOOLS } from './capability-profile.mjs';
 import path from 'node:path';
 import { createProjectEngine } from './project-engine.mjs';
@@ -291,6 +292,10 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   }
 
   const api = {
+    // Trusted local Core-only seam. Not an MCP tool or a second durable
+    // worker store: the existing machine-global WorkflowStore is authoritative
+    // for signed registration, native revocation and append-only receipts.
+    ownerWorkerRegistry:createWorkflowStoreWorkerIdentityRegistry(store),
     definitions: [...WORKFLOW_TOOL_DEFINITIONS, ...PROJECT_ENGINE_TOOL_DEFINITIONS],
     close: () => { if(timer)clearInterval(timer); const pending=engine?.close(); if(pending?.then)return pending.then(()=>store.close());store.close(); },
     schedulerTick,

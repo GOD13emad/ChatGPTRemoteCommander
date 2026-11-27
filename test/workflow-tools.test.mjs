@@ -10,6 +10,20 @@ const fixture=()=>{
  const tool=createWorkflowTools(base);
  return {root,base,tool,dispose(){tool.close();fs.rmSync(root,{recursive:true,force:true});}};
 };
+test('signed Worker registry uses the same durable WorkflowStore, not an MCP method',async()=>{
+ const f=fixture();
+ try{
+  const registry=f.tool.ownerWorkerRegistry;
+  for(const name of ['get','register','isRevoked','revoke'])
+   assert.equal(typeof registry[name],'function');
+  assert.equal(await registry.get('cw_'+'0'.repeat(64)),null);
+  assert.equal(f.tool.definitions.some(x=>x.name==='worker.register'
+    ||x.name==='ownerWorkerRegistry'||x.name==='grant_admin'),false);
+  assert.equal(f.tool.definitions.length,
+    WORKFLOW_TOOL_DEFINITIONS.length+PROJECT_ENGINE_TOOL_DEFINITIONS.length);
+ }finally{f.dispose();}
+});
+
 test('disabled adapter cannot silently create memory',()=>assert.throws(()=>createWorkflowTools({config:{}}),/DISABLED/));
 test('catalog preserves original tools and adds autonomy controls with unique names',()=>{
  assert.equal(new Set(WORKFLOW_TOOL_DEFINITIONS.map(d=>d.name)).size,WORKFLOW_TOOL_DEFINITIONS.length);

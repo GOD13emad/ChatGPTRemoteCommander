@@ -11,6 +11,15 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const core=path.join(root,'tools/qa-v012-broker-core-no-grant-linux.mjs');
 const runner=path.join(root,'tools/qa-v012-protected-broker-run-linux.sh');
 
+test('private native worker registration uses only the Core-owned durable WorkflowStore',()=>{
+ const workflow=fs.readFileSync(path.join(root,'src/workflow-tools.mjs'),'utf8');
+ const server=fs.readFileSync(path.join(root,'src/server-v0.3.mjs'),'utf8');
+ assert.match(workflow,/ownerWorkerRegistry:createWorkflowStoreWorkerIdentityRegistry\(store\)/);
+ assert.match(server,/ownerWorkerRegistry:workflowTools\?\.ownerWorkerRegistry\?\?null/);
+ assert.doesNotMatch(server,/ownerWorkerRegistry:\s*config\./);
+ assert.doesNotMatch(server,/new\s+V2GrantRegistry/);
+});
+
 test('no-grant owner native canary uses the EXACT checkout Core runtime, never installed dev.12',()=>{
   assert.equal(typeof createV012PrivateCoreRuntime,'function');
   const src=fs.readFileSync(core,'utf8');

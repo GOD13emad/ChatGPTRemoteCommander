@@ -29,6 +29,7 @@ function fixture(options={}){
       controlPlanePollOk:true,healthzStatus:200,readyzStatus:200,
       lastPollAtMs:1_799_999_999_000,expiresAtMs:1_800_000_060_000,lastPollAtMsOverride:null
     },
+    transportTtlMs:60000,deviceTtlMs:300000,
     policyDigest:D,grantRevoked:false,grantRevision:1,grantMissingRevision:false,grantPolicyDigest:null,grantExpiresAtMs:null,
     allowedTools:new Set(['worker.register','worker.revoke','read_text']),
     onAuthorize:null
@@ -78,8 +79,8 @@ function fixture(options={}){
   };
   const authority=createWorkerIdentityAuthority({
     hostId:'aliemad-labtop',profileId:'emad',issuer:'commander.local',audience:'remote-commander',
-    resolveDeviceIdentity:async()=>{const {attestedAtMsOverride,...device}=state.device;return{...device,attestedAtMs:attestedAtMsOverride??state.now-1000,expiresAtMs:state.now+300000};},
-    resolveTransportIdentity:async()=>{const {lastPollAtMsOverride,...transport}=state.transport;return{...transport,lastPollAtMs:lastPollAtMsOverride??state.now-1000,expiresAtMs:state.now+60000};},
+    resolveDeviceIdentity:async()=>{const {attestedAtMsOverride,...device}=state.device;return{...device,attestedAtMs:attestedAtMsOverride??state.now-1000,expiresAtMs:state.now+state.deviceTtlMs};},
+    resolveTransportIdentity:async()=>{const {lastPollAtMsOverride,...transport}=state.transport;return{...transport,lastPollAtMs:lastPollAtMsOverride??state.now-1000,expiresAtMs:state.now+state.transportTtlMs};},
     resolveOwnerContext:async()=>({...state.context}),
     resolveOwnerGrant:async request=>ownerGrant(request),
     resolveCapabilityPolicyDigest:async()=>state.policyDigest,
@@ -117,6 +118,57 @@ test('registers a stable Ed25519 worker identity without storing private or tunn
   assert.equal(JSON.stringify(envelope).includes('CONTROL_PLANE_API_KEY'),false);
   assert.equal(JSON.stringify(envelope).includes('tunnel_'),false);
   assert.equal(f.registry.inspect().records.size,1);
+});
+
+test('short-lived native Tunnel proof must be re-attested on each call, not expire the enrolled Worker',async()=>{
+ const f=fixture();
+ f.state.transportTtlMs=2000;
+ f.state.deviceTtlMs=2000;
+ const signed=await f.authority.registerWorker({privateKey:pair().privateKey});
+ assert.ok(signed.claims.expiresAtMs>f.state.now+15000,
+   'identity lifetime follows native owner J01 and grant, not one 2s attestation sample');
+ f.state.now+=3000;
+ const result=await f.authority.authorizeWorker({
+   workerId:signed.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ });
+ assert.equal(result.authorized,true);
+ f.state.transportTtlMs=0;
+ await assert.rejects(f.authority.authorizeWorker({
+   workerId:signed.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ }));
+});
+
+test('signed Worker enrollment from an independent key holder requires fresh native grant and current route',async()=>{
+ const original=fixture(),keys=pair();
+ const signed=await original.authority.registerWorker({privateKey:keys.privateKey});
+ const live=fixture();
+ const enrolled=await live.authority.registerSignedWorker({envelope:signed});
+ assert.equal(enrolled.signature,signed.signature);
+ assert.equal(live.registry.inspect().records.size,1);
+ const repeat=await live.authority.registerSignedWorker({envelope:signed});
+ assert.equal(repeat.signature,enrolled.signature);
+ assert.equal(live.registry.inspect().records.size,1);
+ const denied=fixture();
+ denied.state.allowedTools.delete('worker.register');
+ await rejectsCode(denied.authority.registerSignedWorker({envelope:signed}),
+   'WORKER_IDENTITY_REGISTER_NOT_AUTHORIZED');
+ assert.equal(denied.registry.inspect().records.size,0);
+ const changedOwner=fixture();
+ changedOwner.state.context={...changedOwner.state.context,ownerSidHash:E};
+ await assert.rejects(changedOwner.authority.registerSignedWorker({envelope:signed}));
+ assert.equal(changedOwner.registry.inspect().records.size,0);
+ const changedGrant=fixture();
+ changedGrant.state.grantRevision=2;
+ await rejectsCode(changedGrant.authority.registerSignedWorker({envelope:signed}),
+   'WORKER_IDENTITY_OWNER_GRANT_CHANGED');
+ assert.equal(changedGrant.registry.inspect().records.size,0);
+ const tampered=fixture();
+ await assert.rejects(tampered.authority.registerSignedWorker({
+   envelope:{...signed,signature:'A'.repeat(86)}
+ }));
+ assert.equal(tampered.registry.inspect().records.size,0);
 });
 
 test('workerId is stable across chat grants but changes with key, device, profile or OS owner',()=>{

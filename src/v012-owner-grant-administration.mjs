@@ -123,7 +123,11 @@ export function createV012OwnerGrantAdministration({
       capabilityPolicyDigest:key.capabilityPolicyDigest
     });
     return Object.freeze({workerContext,route,
-      expiresAtMs:Math.min(after.expiresAtMs,key.expiresAtMs,updated+60000)});
+      // A 4s signed Tunnel witness attests key identity at THIS instant.
+      // It is not the lifetime of the owner-approved grant: a human native
+      // confirmation may last longer than the attestation TTL. Every later
+      // Worker action must freshly re-attest this exact owner+Tunnel+key.
+      expiresAtMs:Math.min(after.expiresAtMs,updated+60000)});
   }
   function sameWorkerGrant(grant,c,t){
     return grant?.status==='ACTIVE'&&grant.bindingId===c.bindingId
@@ -149,6 +153,18 @@ export function createV012OwnerGrantAdministration({
         actor:identity.principalId,reason:'Owner-requested read-only Core migration canary',
         expiresAtMs:e.expiresAtMs
       });
+      // The visible native dialog may outlast the initial short-lived
+      // transport proof. Re-sample exactly the SAME owner, Worker and scope
+      // before reporting approval as available.
+      const after=await evidence();
+      if(after.workerContext.workerId!==e.workerContext.workerId
+        ||after.workerContext.bindingId!==e.workerContext.bindingId
+        ||after.workerContext.deviceIdHash!==e.workerContext.deviceIdHash
+        ||after.workerContext.capabilityPolicyDigest!==e.workerContext.capabilityPolicyDigest
+        ||after.route.operationId!==e.route.operationId
+        ||!sameWorkerGrant(registry.readWorkerGrant(after.workerContext),
+          after.workerContext,clock()))
+        fail('V012_OWNER_GRANT_POST_APPROVAL_UNVERIFIED');
       return Object.freeze({alreadyActive:false,revision:result.revision});
     },
     async approveReadOnlyCanary(){
@@ -172,6 +188,10 @@ export function createV012OwnerGrantAdministration({
       });
       const after=await evidence();
       if(after.workerContext.bindingId!==e.workerContext.bindingId
+        ||after.workerContext.workerId!==e.workerContext.workerId
+        ||after.workerContext.deviceIdHash!==e.workerContext.deviceIdHash
+        ||after.workerContext.capabilityPolicyDigest!==e.workerContext.capabilityPolicyDigest
+        ||after.route.operationId!==e.route.operationId
         ||registry.isWorkerAllowed(after.route,after.workerContext,'system_status')!==true)
         fail('V012_OWNER_GRANT_POST_APPROVAL_UNVERIFIED');
       return Object.freeze({canaryAllowed:true,expiresAtMs:e.expiresAtMs});

@@ -383,7 +383,11 @@ if(ownerBootstrapModule){
         {code:'V012_PRIVATE_BOOTSTRAP_FACTORY_REQUIRED'});
     const options=await provider.createOwnerPrivatePairBootstrap(Object.freeze({
       profileId:config.instance?.profile??'default',
-      configSha256,projectDir
+      configSha256,projectDir,
+      // Only the already-constructed Core WorkflowStore may register an
+      // owner-authorized signed Worker. Never accept a bootstrap-selected
+      // second registry or user-provided database.
+      ownerWorkerRegistry:workflowTools?.ownerWorkerRegistry??null
     }));
     if(!options||typeof options!=='object'||Array.isArray(options)
       ||!options.security||typeof options.security!=='object')

@@ -21,13 +21,15 @@ function fixture(){
     profileId:identity.profileId,expectedTunnelIdHash:TUNNEL,
     expectedOwnerSidHash:OWNER
   });
-  const state={now:Date.now(),bound:true,consent:true,prompts:[],keyId:KEY,
-    targetId:'system-status',ownerSidHash:OWNER};
+  const start=Date.now();
+  const state={now:start,bound:true,consent:true,prompts:[],keyId:KEY,
+    targetId:'system-status',ownerSidHash:OWNER,ownerExpiresAtMs:start+90000,
+    keyTtlMs:80000,approvalDelayMs:0,onConsent:null};
   const owner=()=>({
     source:'native-owner-attested',hostId:identity.hostId,
     profileId:identity.profileId,principalId:identity.principalId,
     conversationId:pair,bindingId:'f'.repeat(64),
-    ownerSidHash:OWNER,expiresAtMs:state.now+90000
+    ownerSidHash:OWNER,expiresAtMs:state.ownerExpiresAtMs
   });
   const snapshot=()=>({ownerSidHash:OWNER,osSessionId:'linux-logind-4',seatId:'seat0',
     displayId:':0',sessionType:'x11',leaderPid:3519});
@@ -49,6 +51,8 @@ function fixture(){
       getOwnerSessionSnapshot:async()=>snapshot(),
       requestConsent:async r=>{
         state.prompts.push(r);
+        state.now+=state.approvalDelayMs;
+        state.onConsent?.();
         return state.consent;
       }
     }
@@ -66,7 +70,7 @@ function fixture(){
     profileId:identity.profileId,ownerSidHash:OWNER,
     keyId:state.keyId,deviceProvider:'native-key-store',
     deviceIdHash:DEVICE,capabilityPolicyDigest:POLICY,
-    attestedAtMs:state.now-1000,expiresAtMs:state.now+80000,
+    attestedAtMs:state.now-1000,expiresAtMs:state.now+state.keyTtlMs,
     verified:true
   });
   let evidenceProvider=async()=>trusted();
@@ -116,6 +120,38 @@ test('live J01 and fresh native owner consent are required for exact read-only c
     f.state.bound=true;
     f.state.ownerSidHash='9'.repeat(64);
     await assert.rejects(f.controller.inspect(),{code:'V012_OWNER_GRANT_OWNER_CHANGED'});
+  }finally{f.close();}
+});
+
+test('human native approval can outlive ephemeral signed Tunnel witness but must re-attest same key',async()=>{
+  const f=fixture();
+  try{
+    f.state.keyTtlMs=4000;
+    f.state.approvalDelayMs=15000;
+    const response=await f.controller.approveWorker();
+    assert.equal(response.revision,1);
+    assert.equal(f.state.prompts.length,1);
+    const status=await f.controller.inspect();
+    assert.equal(status.workerActive,true,
+      'grant is bounded by the owner J01 epoch, not the 4s witness TTL');
+    f.state.approvalDelayMs=10000;
+    const canary=await f.controller.approveReadOnlyCanary();
+    assert.equal(canary.canaryAllowed,true);
+    assert.equal(f.state.prompts.length,3);
+  }finally{f.close();}
+});
+
+test('key rotation during native owner dialog denies positive post-approval acceptance',async()=>{
+  const f=fixture();
+  try{
+    f.state.keyTtlMs=4000;
+    f.state.onConsent=()=>{f.state.keyId='7'.repeat(64);};
+    await assert.rejects(f.controller.approveWorker(),
+      {code:'V012_OWNER_GRANT_POST_APPROVAL_UNVERIFIED'});
+    assert.equal(f.state.prompts.length,1);
+    const after=await f.controller.inspect();
+    assert.equal(after.workerActive,false,
+      'the changed trusted key never inherits the prior native grant');
   }finally{f.close();}
 });
 
