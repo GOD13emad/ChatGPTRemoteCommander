@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync } from 'node:crypto';
+import {signV012NativeWorkerEnrollment} from '../src/v012-native-worker-registration-signer.mjs';
 import {
   createWorkerIdentityAuthority, deriveWorkerId, verifyWorkerRegistration
 } from '../src/worker-identity-authority.mjs';
@@ -138,6 +139,35 @@ test('short-lived native Tunnel proof must be re-attested on each call, not expi
    workerId:signed.claims.workerId,
    invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
  }));
+});
+
+test('one-shot native signer envelope interoperates with current J01 and exact grant, without sending a private key to Core',async()=>{
+ const f=fixture(),keys=pair();
+ const now=f.state.now;
+ const intent={
+   hostId:'aliemad-labtop',profileId:'emad',
+   principalId:'owner-1',conversationId:'chat-1',
+   bindingId:bindingA,ownerSidHash:B,
+   deviceIdHash:A,tunnelIdHash:C,
+   capabilityPolicyDigest:D,grantRevision:1,
+   expiresAtMs:now+60000
+ };
+ const externalSigned=signV012NativeWorkerEnrollment({
+   intent,privateKey:keys.privateKey,now
+ });
+ const accepted=await f.authority.registerSignedWorker({envelope:externalSigned});
+ assert.equal(accepted.signature,externalSigned.signature);
+ assert.equal(Object.hasOwn(accepted,'privateKey'),false);
+ const permission=await f.authority.authorizeWorker({
+   workerId:accepted.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ });
+ assert.equal(permission.authorized,true);
+ f.state.allowedTools.delete('read_text');
+ await rejectsCode(f.authority.authorizeWorker({
+   workerId:accepted.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ }), 'WORKER_IDENTITY_ACTION_NOT_AUTHORIZED');
 });
 
 test('signed Worker enrollment from an independent key holder requires fresh native grant and current route',async()=>{

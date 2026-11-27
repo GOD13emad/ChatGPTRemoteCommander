@@ -13,7 +13,7 @@ import {createV012OwnerGrantAdministration}
 
 const OWNER='a'.repeat(64),TUNNEL='b'.repeat(64),KEY='c'.repeat(64),
   DEVICE='d'.repeat(64),POLICY='e'.repeat(64);
-function fixture(){
+function fixture({withSigner=false}={}){
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-owner-admin-fixture-'));
   const identity={hostId:'qa-host',profileId:'qa-profile',principalId:'qa-owner',
     expectedTunnelIdHash:TUNNEL,expectedOwnerSidHash:OWNER};
@@ -24,7 +24,7 @@ function fixture(){
   const start=Date.now();
   const state={now:start,bound:true,consent:true,prompts:[],keyId:KEY,
     targetId:'system-status',ownerSidHash:OWNER,ownerExpiresAtMs:start+90000,
-    keyTtlMs:80000,approvalDelayMs:0,onConsent:null};
+    keyTtlMs:80000,approvalDelayMs:0,onConsent:null,signerCalls:0,registrationCalls:0};
   const owner=()=>({
     source:'native-owner-attested',hostId:identity.hostId,
     profileId:identity.profileId,principalId:identity.principalId,
@@ -80,7 +80,22 @@ function fixture(){
     resolvePinnedCanaryRoute:async({nativeRoute})=>({
       ...nativeRoute,operationId:'system-status-canary',
       target:{kind:'host-shell',id:state.targetId}
-    })
+    }),
+    ...(withSigner?{
+      resolveSignedWorkerEnvelope:async({workerContext,grantRevision,expiresAtMs})=>{
+        state.signerCalls++;
+        return {claims:{
+          workerId:workerContext.workerId,bindingId:workerContext.bindingId,
+          grantRevision,expiresAtMs
+        }};
+      },
+      workerAuthority:{
+        registerSignedWorker:async({envelope})=>{
+          state.registrationCalls++;
+          return envelope;
+        }
+      }
+    }:{})
   });
   return {root,identity,state,controller,grants,
     setEvidence(fn){evidenceProvider=fn;},
@@ -153,6 +168,45 @@ test('key rotation during native owner dialog denies positive post-approval acce
     assert.equal(after.workerActive,false,
       'the changed trusted key never inherits the prior native grant');
   }finally{f.close();}
+});
+
+test('signed Worker registration requires separate native approval and exact current Worker epoch',async()=>{
+ const f=fixture({withSigner:true});
+ try{
+   await assert.rejects(f.controller.registerSignedWorker(),
+     {code:'V012_OWNER_GRANT_WORKER_REGISTER_APPROVAL_REQUIRED'});
+   assert.equal(f.state.signerCalls,0);
+   await f.controller.approveWorker();
+   await assert.rejects(f.controller.registerSignedWorker(),
+     {code:'V012_OWNER_GRANT_WORKER_REGISTER_APPROVAL_REQUIRED'});
+   assert.equal(f.state.signerCalls,0);
+   await f.controller.approveSignedRegistration();
+   assert.equal(f.state.prompts.length,3,
+     'one Worker, one base register tool and one exact worker.register approval');
+   const enrolled=await f.controller.registerSignedWorker();
+   assert.equal(enrolled.registered,true);
+   assert.equal(f.state.signerCalls,1);
+   assert.equal(f.state.registrationCalls,1);
+   assert.equal((await f.controller.inspect()).readOnlyCanaryAllowed,false,
+     'registering a Worker is not permission to run system_status');
+   f.state.keyId='7'.repeat(64);
+   await assert.rejects(f.controller.registerSignedWorker(),
+     {code:'V012_OWNER_GRANT_WORKER_REGISTER_APPROVAL_REQUIRED'});
+   assert.equal(f.state.registrationCalls,1);
+ }finally{f.close();}
+});
+
+test('native J01 key change during actual signing prevents registration side effects',async()=>{
+ const f=fixture({withSigner:true});
+ try{
+   await f.controller.approveWorker();
+   await f.controller.approveSignedRegistration();
+   f.state.signerCalls=0;f.state.registrationCalls=0;
+   f.state.keyId='7'.repeat(64);
+   await assert.rejects(f.controller.registerSignedWorker(),
+     {code:'V012_OWNER_GRANT_WORKER_REGISTER_APPROVAL_REQUIRED'});
+   assert.equal(f.state.registrationCalls,0);
+ }finally{f.close();}
 });
 
 test('wrong native device key, route target, missing J01 and stale key evidence never create grants',async()=>{

@@ -39,7 +39,8 @@ function ownerMatches(a,b){return OWNER_FIELDS.every(k=>a[k]===b[k]);}
  */
 export function createV012OwnerGrantAdministration({
   ownerStack,identity,resolveVerifiedWorkerKey,
-  resolvePinnedCanaryRoute,now=Date.now
+  resolvePinnedCanaryRoute,workerAuthority,resolveSignedWorkerEnvelope,
+  now=Date.now
 }={}){
   if(!identity||![identity.hostId,identity.profileId,identity.principalId].every(id)
     ||![identity.expectedTunnelIdHash,identity.expectedOwnerSidHash].every(sha)
@@ -54,6 +55,10 @@ export function createV012OwnerGrantAdministration({
     ||typeof ownerStack.grantRegistry.change!=='function'
     ||typeof ownerStack.grantRegistry.changeWorkerToolGrant!=='function')
     fail('V012_OWNER_GRANT_BOOTSTRAP_REQUIRED');
+  if((workerAuthority!==undefined||resolveSignedWorkerEnvelope!==undefined)
+    &&(typeof workerAuthority?.registerSignedWorker!=='function'
+      ||typeof resolveSignedWorkerEnvelope!=='function'))
+    fail('V012_OWNER_GRANT_SIGNED_REGISTRATION_AUTHORITY_REQUIRED');
   const pair=deriveV101PrivatePairSessionHandle({
     profileId:identity.profileId,expectedTunnelIdHash:identity.expectedTunnelIdHash,
     expectedOwnerSidHash:identity.expectedOwnerSidHash
@@ -134,6 +139,30 @@ export function createV012OwnerGrantAdministration({
       &&grant.workerId===c.workerId&&grant.keyId===c.keyId
       &&grant.expiresAtMs>t;
   }
+  const sameCanary=(before,after)=>after.workerContext.bindingId===before.workerContext.bindingId
+    &&after.workerContext.workerId===before.workerContext.workerId
+    &&after.workerContext.deviceIdHash===before.workerContext.deviceIdHash
+    &&after.workerContext.capabilityPolicyDigest===before.workerContext.capabilityPolicyDigest
+    &&after.route.operationId===before.route.operationId;
+  async function approveExactTool(e,tool){
+    const base=registry.read(e.route,tool);
+    if(base?.status!=='ENABLED')await registry.change({
+      route:e.route,tool,status:'ENABLED',
+      expectedRevision:base?.revision??0,actor:identity.principalId,
+      reason:'Owner-requested read-only Core migration canary'
+    });
+    const parent=registry.readWorkerGrant(e.workerContext);
+    if(!sameWorkerGrant(parent,e.workerContext,clock()))
+      fail('V012_OWNER_GRANT_PARENT_APPROVAL_REQUIRED');
+    const grant=registry.readWorkerToolGrant(e.route,e.workerContext,tool);
+    if(grant?.status!=='ENABLED'||grant.bindingId!==e.workerContext.bindingId
+      ||grant.expiresAtMs<=clock())await registry.changeWorkerToolGrant({
+      route:e.route,workerContext:e.workerContext,tool,status:'ENABLED',
+      expectedRevision:grant?.revision??0,actor:identity.principalId,
+      reason:'Owner-requested read-only Core migration canary',
+      expiresAtMs:Math.min(e.expiresAtMs,parent.expiresAtMs)
+    });
+  }
   return Object.freeze({
     async inspect(){
       const e=await evidence();
@@ -172,20 +201,7 @@ export function createV012OwnerGrantAdministration({
       const parent=registry.readWorkerGrant(e.workerContext);
       if(!sameWorkerGrant(parent,e.workerContext,clock()))
         fail('V012_OWNER_GRANT_PARENT_APPROVAL_REQUIRED');
-      const base=registry.read(e.route,'system_status');
-      if(base?.status!=='ENABLED')await registry.change({
-        route:e.route,tool:'system_status',status:'ENABLED',
-        expectedRevision:base?.revision??0,actor:identity.principalId,
-        reason:'Owner-requested read-only Core migration canary'
-      });
-      const grant=registry.readWorkerToolGrant(e.route,e.workerContext,'system_status');
-      if(grant?.status!=='ENABLED'||grant.bindingId!==e.workerContext.bindingId
-        ||grant.expiresAtMs<=clock())await registry.changeWorkerToolGrant({
-        route:e.route,workerContext:e.workerContext,tool:'system_status',status:'ENABLED',
-        expectedRevision:grant?.revision??0,actor:identity.principalId,
-        reason:'Owner-requested read-only Core migration canary',
-        expiresAtMs:Math.min(e.expiresAtMs,parent.expiresAtMs)
-      });
+      await approveExactTool(e,'system_status');
       const after=await evidence();
       if(after.workerContext.bindingId!==e.workerContext.bindingId
         ||after.workerContext.workerId!==e.workerContext.workerId
@@ -195,6 +211,44 @@ export function createV012OwnerGrantAdministration({
         ||registry.isWorkerAllowed(after.route,after.workerContext,'system_status')!==true)
         fail('V012_OWNER_GRANT_POST_APPROVAL_UNVERIFIED');
       return Object.freeze({canaryAllowed:true,expiresAtMs:e.expiresAtMs});
+    },
+    async approveSignedRegistration(){
+      if(!workerAuthority||!resolveSignedWorkerEnvelope)
+        fail('V012_OWNER_GRANT_SIGNED_REGISTRATION_AUTHORITY_REQUIRED');
+      const e=await evidence();
+      const parent=registry.readWorkerGrant(e.workerContext);
+      if(!sameWorkerGrant(parent,e.workerContext,clock()))
+        fail('V012_OWNER_GRANT_PARENT_APPROVAL_REQUIRED');
+      await approveExactTool(e,'worker.register');
+      const after=await evidence();
+      if(!sameCanary(e,after)
+        ||registry.isWorkerAllowed(after.route,after.workerContext,'worker.register')!==true)
+        fail('V012_OWNER_GRANT_POST_APPROVAL_UNVERIFIED');
+      return Object.freeze({registrationAllowed:true});
+    },
+    async registerSignedWorker(){
+      if(!workerAuthority||!resolveSignedWorkerEnvelope)
+        fail('V012_OWNER_GRANT_SIGNED_REGISTRATION_AUTHORITY_REQUIRED');
+      const e=await evidence();
+      const parent=registry.readWorkerGrant(e.workerContext);
+      if(!sameWorkerGrant(parent,e.workerContext,clock())
+        ||registry.isWorkerAllowed(e.route,e.workerContext,'worker.register')!==true)
+        fail('V012_OWNER_GRANT_WORKER_REGISTER_APPROVAL_REQUIRED');
+      const envelope=await resolveSignedWorkerEnvelope(Object.freeze({
+        workerContext:e.workerContext,grantRevision:parent.revision,
+        expiresAtMs:Math.min(e.expiresAtMs,parent.expiresAtMs)
+      }));
+      const after=await evidence();
+      if(!sameCanary(e,after)
+        ||registry.isWorkerAllowed(after.route,after.workerContext,'worker.register')!==true)
+        fail('V012_OWNER_GRANT_POST_APPROVAL_UNVERIFIED');
+      const stored=await workerAuthority.registerSignedWorker({envelope});
+      if(stored?.claims?.workerId!==e.workerContext.workerId
+        ||stored.claims.bindingId!==e.workerContext.bindingId
+        ||stored.claims.grantRevision!==parent.revision)
+        fail('V012_OWNER_GRANT_SIGNED_REGISTRATION_INVALID');
+      return Object.freeze({registered:true,
+        expiresAtMs:stored.claims.expiresAtMs});
     }
   });
 }

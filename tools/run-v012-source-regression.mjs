@@ -51,7 +51,9 @@ const files = [
   "test/v012-owner-grant-administration.test.mjs",
   "test/v012-owner-grant-admin-unix.test.mjs",
   "test/v012-owner-grant-admin-cli-linux.test.mjs",
-  "test/v012-owner-worker-key-evidence-linux.test.mjs"
+  "test/v012-owner-worker-key-evidence-linux.test.mjs",
+  "test/v012-native-worker-registration-signer.test.mjs",
+  "test/v012-native-worker-registration-signer-linux.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -96,7 +98,9 @@ const batches = [
   files.slice(46, 47), // Same native J01 owner grant administration
   files.slice(47, 48), // User-local Unix admin fixed-action gate
   files.slice(48, 49), // Native owner-bound CLI, no remote tool grants
-  files.slice(49, 50) // Existing encrypted native Worker key and pair proof
+  files.slice(49, 50), // Existing encrypted native Worker key and pair proof
+  files.slice(50, 51), // Fixed native Worker registration signer
+  files.slice(51, 52) // systemd signer denies unprovisioned credentials
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length

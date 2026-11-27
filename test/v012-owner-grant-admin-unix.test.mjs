@@ -33,7 +33,9 @@ test('owner-local Unix endpoint sends fixed actions to actual native approval ca
           exactBaseEnabled:false,exactWorkerToolEnabled:false,
           readOnlyCanaryAllowed:false,secret:'MUST_NOT_EXPOSE'}),
         approveWorker:async()=>{prompts++;return {revision:1,workerId:'SECRET_WORKER_ID'};},
-        approveReadOnlyCanary:async()=>{prompts++;return {canaryAllowed:true,token:'SECRET'};}
+        approveReadOnlyCanary:async()=>{prompts++;return {canaryAllowed:true,token:'SECRET'};},
+        approveSignedRegistration:async()=>{prompts++;return {registrationAllowed:true};},
+        registerSignedWorker:async()=>{prompts++;return {registered:true,privateKey:'NEVER_EXPOSE'};}
       }
     });
     const state=await controller.start();
@@ -47,6 +49,12 @@ test('owner-local Unix endpoint sends fixed actions to actual native approval ca
     assert.deepEqual(JSON.parse(await call(socketPath,request('approve_worker'))),{ok:true,approved:true});
     assert.deepEqual(JSON.parse(await call(socketPath,request('approve_system_status_canary'))),{ok:true,approved:true});
     assert.equal(prompts,2);
+    assert.deepEqual(JSON.parse(await call(socketPath,request('approve_worker_registration'))),
+      {ok:true,approved:true});
+    const enrolled=await call(socketPath,request('register_signed_worker'));
+    assert.deepEqual(JSON.parse(enrolled),{ok:true,registered:true});
+    assert.equal(enrolled.includes('NEVER_EXPOSE'),false);
+    assert.equal(prompts,4);
     for(const text of [
       '{"schema":1,"action":"approve_worker","tool":"run_shell"}\n',
       '{"schema":1,"action":"approve_worker","action":"approve_system_status_canary"}\n',
@@ -54,7 +62,7 @@ test('owner-local Unix endpoint sends fixed actions to actual native approval ca
       '{"schema":1,"action":"run_shell"}\n',
       '{"schema":1,"action":"approve_worker","workerId":"fake"}\n'
     ])assert.deepEqual(JSON.parse(await call(socketPath,text)),{ok:false,code:'INVALID'});
-    assert.equal(prompts,2);
+    assert.equal(prompts,4);
   }finally{await controller?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('existing socket, public runtime directory, alias and absent admin provider deny bind',

@@ -751,7 +751,7 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,50,'retain 49 previous suites and require pinned encrypted Worker key evidence');
+  assert.equal(files.length,52,'retain 50 previous suites and require native signed Worker enrollment');
   for(const required of [
     'test/v012-host-global-operation-lease.test.mjs',
     'test/v012-windows-host-global-operation-lease.test.mjs',
@@ -772,9 +772,11 @@ test('V012 source regression retains every pinned test exactly once with bounded
       'test/v012-owner-grant-administration.test.mjs',
       'test/v012-owner-grant-admin-unix.test.mjs',
       'test/v012-owner-grant-admin-cli-linux.test.mjs',
-      'test/v012-owner-worker-key-evidence-linux.test.mjs'
+      'test/v012-owner-worker-key-evidence-linux.test.mjs',
+      'test/v012-native-worker-registration-signer.test.mjs',
+      'test/v012-native-worker-registration-signer-linux.test.mjs'
   ])assert.ok(files.includes(required),'required source QA missing: '+required);
-  assert.deepEqual(ranges.slice(16),[[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42],[42,43],[43,44],[44,45],[45,46],[46,47],[47,48],[48,49],[49,50]],
+  assert.deepEqual(ranges.slice(16),[[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42],[42,43],[43,44],[44,45],[45,46],[46,47],[47,48],[48,49],[49,50],[50,51],[51,52]],
     'new native suites execute separately without changing the prior batch indices');
   assert.ok(files.includes('test/windows-owner-tunnel-host-resolution.test.mjs'),'native Windows read-only exact owner host regression must run in CI');
   assert.ok(files.includes('test/v012-owner-local-canary.test.mjs'),'real owner-local canary and failed-bootstrap quarantine must run in CI');

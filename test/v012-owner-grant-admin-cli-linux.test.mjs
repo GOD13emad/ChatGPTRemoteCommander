@@ -34,7 +34,9 @@ test('real child CLI uses one owner-local broker socket and fixed exact actions 
         exactBaseEnabled:false,exactWorkerToolEnabled:false,
         readOnlyCanaryAllowed:false}),
       approveWorker:async()=>{prompts++;return {revision:1};},
-      approveReadOnlyCanary:async()=>{prompts++;return {canaryAllowed:true};}
+      approveReadOnlyCanary:async()=>{prompts++;return {canaryAllowed:true};},
+      approveSignedRegistration:async()=>{prompts++;return {registrationAllowed:true};},
+      registerSignedWorker:async()=>{prompts++;return {registered:true};}
     }});
     await controller.start();
     const inspected=await child(profile);
@@ -45,10 +47,17 @@ test('real child CLI uses one owner-local broker socket and fixed exact actions 
     assert.equal(approved.code,0,approved.stderr);
     assert.equal(JSON.parse(approved.stdout).approved,true);
     assert.equal(prompts,1);
+    const approvedRegistration=await child(profile,'--approve-registration');
+    assert.equal(approvedRegistration.code,0,approvedRegistration.stderr);
+    assert.equal(JSON.parse(approvedRegistration.stdout).approved,true);
+    const enrolled=await child(profile,'--register-signed-worker');
+    assert.equal(enrolled.code,0,enrolled.stderr);
+    assert.equal(JSON.parse(enrolled.stdout).registered,true);
+    assert.equal(prompts,3);
     await assert.rejects(runCli(['--grant-full-access','--profile',profile]),
       {code:'RC012_OWNER_ADMIN_CLI_ARGS_INVALID'});
     await assert.rejects(runCli(['--inspect','--profile','../other']),
       {code:'RC012_OWNER_ADMIN_CLI_ARGS_INVALID'});
-    assert.equal(prompts,1);
+    assert.equal(prompts,3);
   }finally{await controller?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });

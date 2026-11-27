@@ -9,7 +9,9 @@ import {fileURLToPath} from 'node:url';
 const MODES=Object.freeze({
   '--inspect':'inspect',
   '--approve-worker':'approve_worker',
-  '--approve-system-status':'approve_system_status_canary'
+  '--approve-system-status':'approve_system_status_canary',
+  '--approve-registration':'approve_worker_registration',
+  '--register-signed-worker':'register_signed_worker'
 });
 const ID=/^[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
@@ -75,7 +77,10 @@ export async function runCli(argv){
       ||fields.slice(1).some(k=>typeof result[k]!=='boolean'))
       fail('RC012_OWNER_ADMIN_CLI_RESPONSE_INVALID');
   }else if(Object.keys(result).length!==2
-    ||result.approved!==true)fail('RC012_OWNER_ADMIN_CLI_RESPONSE_INVALID');
+    ||(action==='register_signed_worker'
+      ?result.registered!==true
+      :result.approved!==true))
+    fail('RC012_OWNER_ADMIN_CLI_RESPONSE_INVALID');
   return Object.freeze({...result,profile,action});
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
