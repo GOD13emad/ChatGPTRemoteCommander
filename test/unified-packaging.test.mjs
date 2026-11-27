@@ -16,6 +16,15 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const resource=path.join(repo,'packaging/unified/.stage/core');
 const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
+test('the patched packager matcher preserves the callable legacy dir-compare dependency',()=>{
+  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
+  const lock=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package-lock.json'),'utf8'));
+  assert.deepEqual(gui.overrides,{'minimatch@>=7.0.0 <11.0.1':'11.0.9'});
+  assert.equal(lock.packages['node_modules/minimatch'].version,'11.0.9');
+  assert.match(lock.packages['node_modules/dir-compare/node_modules/minimatch'].version,/^3\./);
+  assert.match(lock.packages['node_modules/glob/node_modules/minimatch'].version,/^3\./);
+});
+
 test('native Linux and Electron builder derive one exact prerelease version from Core, GUI, and release train',()=>{
  const core=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
@@ -49,6 +58,19 @@ test('native Linux and Electron builder derive one exact prerelease version from
  for(const program of [native,prepare,merged,upgrade])
    assert.doesNotMatch(program,/[\x22\x27]0\.12\.0-dev\.1[\x22\x27]/,
      'native build and delivery must not pin one stale candidate revision');
+});
+
+test('Linux native package uses the shared positive runtime Core allowlist, never the entire repo',()=>{
+ const native=fs.readFileSync(path.join(repo,'tools/build-native-linux-package.sh'),'utf8');
+ const shared='src tools vendor assets config.json package.json';
+ assert.ok(native.includes('git -C "$ROOT" archive --format=tar "$HEAD" -- '+shared+' | tar -xf - -C "$APP"'));
+ assert.doesNotMatch(native,/git -C "\$ROOT" archive --format=tar "\$HEAD" \|/);
+ const prepare=fs.readFileSync(path.join(repo,'packaging/unified/prepare.mjs'),'utf8');
+ assert.ok(prepare.includes("'src','tools','vendor','assets','config.json','package.json'"));
+ const hosted=fs.readFileSync(path.join(repo,'test/unified-native-upgrade-smoke.sh'),'utf8');
+ assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED/);
+ assert.match(hosted,/RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS/);
+ assert.ok(hosted.includes('python3 - "$OLD" "$NEW"'));
 });
 
 test('one installer definition uses Windows NSIS per user and Linux DEB, not old host repairs',()=>{

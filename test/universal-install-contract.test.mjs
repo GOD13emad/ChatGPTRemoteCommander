@@ -29,6 +29,12 @@ test('one package contract covers both operating systems and all nine accepted c
     assert.ok(fs.existsSync(path.join(root,p)),p);
 });
 
+test('immutable public Core tar omits optional extension bundle path',()=>{
+ const native=read('packaging/unified/prepare.mjs');
+ assert.match(native,/'archive','--format=tar','--output',tar,head,\s*'src','tools','vendor','assets','config\.json','package\.json'/u);
+ assert.doesNotMatch(native,/'archive','--format=tar','--output',tar,head,\s*'src','tools','vendor','assets','extensions'/u);
+});
+
 test('an exact-source installer QA pass cannot authorize v0.12 stable or all-account Full Power',()=>{
   assert.equal(release.publishApproved,false);
   assert.equal(release.installedPromotionApproved,false);
@@ -56,4 +62,14 @@ test('native Windows/Linux matrix requires exact-file equality before installer 
   assert.ok(y.includes('include-hidden-files: true'));
   const deps=read('package.json');
   assert.ok(deps.includes('test/universal-native-parity.test.mjs'));
+});
+
+test('source regression owner-recovery batches respect native test deadlines without dropping coverage',()=>{
+  const source=read('tools/run-v012-source-regression.mjs');
+  assert.match(source,/files\.slice\(20, 21\).*Protected Core/);
+  assert.match(source,/files\.slice\(21, 22\).*Windows DPAPI recovery/);
+  assert.match(source,/files\.slice\(22, 23\).*Linux encrypted recovery/);
+  assert.match(source,/index === 13 \? 100000/);
+  assert.match(source,/index === 14 \? \(part === 0 \? 55000 : 65000\)/);
+  assert.match(source,/new Set\(batches\.flat\(\)\)\.size!==files\.length/);
 });
