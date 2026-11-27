@@ -74,7 +74,13 @@ test('privileged MCP transfer tools reject anonymous and forged transport before
   await assert.rejects(fs.access(path.join(pilot,'pairs','Linux','transfers','http-denied-001','payload.bin')));
   await assert.rejects(fs.access(path.join(pilot,'pairs','Linux','transfers','http-denied-002','payload.bin')));
  }finally{
-  if(child){child.kill();await Promise.race([once(child,'exit').catch(()=>{}),wait(1500)]);}
-  await fs.rm(home,{recursive:true,force:true});
+  if(child&&child.exitCode===null&&child.signalCode===null){
+   const exited=once(child,'exit');
+   child.kill();
+   await Promise.race([exited,wait(5000)]);
+   assert.ok(child.exitCode!==null||child.signalCode!==null,'owned transfer HTTP fixture did not exit');
+  }
+  // Windows may retain transient cwd/file handles briefly after the owned child exits.
+  await fs.rm(home,{recursive:true,force:true,maxRetries:20,retryDelay:150});
  }
 });

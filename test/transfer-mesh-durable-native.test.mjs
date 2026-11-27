@@ -124,3 +124,66 @@ test('transient first backend capability check retries once without relaxing the
   assert.equal(fs.readFileSync(marker,'utf8'),'one');
  }finally{fs.rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
+
+test('five-peer durable staging admits MMZ both as sender and recipient',async()=>{
+ for(const [fromAlias,toAlias] of [['PC','MMZ'],['MMZ','PC']]){
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-durable-mmz-'));
+  try{
+   fs.copyFileSync(path.join(from,'pilot-cli.mjs'),path.join(root,'transfer.mjs'));
+   fs.copyFileSync(path.join(from,'durable-send.mjs'),path.join(root,'durable-send.mjs'));
+   fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:fromAlias}));
+   const allowed=path.join(root,'allowed');fs.mkdirSync(allowed);
+   const file=path.join(allowed,'source.dat');const payload=Buffer.from('synthetic five-peer contract');fs.writeFileSync(file,payload);
+   const tools=createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{enabled:true,durableEnabled:true,root,sourceRoots:[allowed],destinationRoots:[allowed]}}});
+   const id='mmz-contract-001';
+   assert.equal((await tools.execute('transfer_mesh_enqueue',{peer:toAlias,path:file,id})).status,'QUEUED');
+   let result;
+   for(let i=0;i<100;i++){
+    result=await tools.execute('transfer_mesh_job_status',{peer:toAlias,id});
+    if(result.status==='PUBLISHED')break;
+    assert.notEqual(result.status,'FAILED');await sleep(40);
+   }
+   assert.equal(result.status,'PUBLISHED');
+   const dst=path.join(root,'pairs',toAlias,'transfers',id);
+   assert.deepEqual(fs.readFileSync(path.join(dst,'payload.bin')),payload);
+   const manifest=JSON.parse(fs.readFileSync(path.join(dst,'manifest.json'),'utf8'));
+   assert.equal(manifest.from,fromAlias);assert.equal(manifest.to,toAlias);
+  }finally{await sleep(350);fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:150});}
+ }
+});
+
+test('legacy v2 peer contract rejects MMZ before receipt or backend effects',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-durable-legacy-peers-'));
+ try{
+  fs.copyFileSync(path.join(from,'pilot-cli.mjs'),path.join(root,'transfer.mjs'));
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  const file=path.join(root,'source.dat');fs.writeFileSync(file,'fixture');
+  const marker=path.join(root,'unexpected-effect');
+  fs.writeFileSync(path.join(root,'durable-send.mjs'),[
+   "import fs from 'node:fs';",
+   "if(process.argv[2]==='capabilities')console.log(JSON.stringify({schema:'ctmesh-durable-v1',contractVersion:2,admissionQuotas:true,supports:['enqueue','job-status','resume','cancel']}));",
+   "else {fs.writeFileSync("+JSON.stringify(marker)+",'unexpected');process.exit(1);}"
+  ].join('\n'));
+  let challenges=0;
+  const receiptAuthority={createChallenge:async()=>{challenges++;throw Error('UNEXPECTED_CHALLENGE');},validateIncomingChallenge:async()=>{},getIssuedReceipt:async()=>{},issueReceipt:async()=>{},verifyReceipt:async()=>{}};
+  const tools=createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{enabled:true,durableEnabled:true,receiptsEnabled:true,root,sourceRoots:[root],destinationRoots:[root]}},receiptAuthority});
+  await assert.rejects(tools.execute('transfer_mesh_enqueue',{peer:'MMZ',path:file,id:'legacy-mmz-001'}),/TRANSFER_DURABLE_PEER_UNSUPPORTED/);
+  assert.equal(challenges,0);assert.equal(fs.existsSync(marker),false);
+  const peers=tools.definitions.find(t=>t.name==='transfer_mesh_enqueue').inputSchema.properties.peer.enum;
+  assert.deepEqual(peers,['PC','Linux','EmadServer','Amirreza']);
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'MMZ'}));
+  await assert.rejects(tools.execute('transfer_mesh_enqueue',{peer:'PC',path:file,id:'legacy-mmz-002'}),/TRANSFER_DURABLE_LOCAL_PEER_UNSUPPORTED/);
+  assert.equal(challenges,0);assert.equal(fs.existsSync(marker),false);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('invalid advertised peer contract is refused instead of overclaiming capability',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-durable-invalid-peers-'));
+ try{
+  fs.copyFileSync(path.join(from,'pilot-cli.mjs'),path.join(root,'transfer.mjs'));
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  for(const supportedPeers of [['PC','MMZ','MMZ'],['PC','UNKNOWN'],[],null]){
+   fs.writeFileSync(path.join(root,'durable-send.mjs'),"console.log("+JSON.stringify(JSON.stringify({schema:'ctmesh-durable-v1',contractVersion:2,admissionQuotas:true,supports:['enqueue','job-status','resume','cancel'],supportedPeers}))+");");
+   assert.throws(()=>createTransferMeshTools({config:{powerMode:{enabled:true},transferMesh:{enabled:true,durableEnabled:true,root,sourceRoots:[root],destinationRoots:[root]}}}),/TRANSFER_DURABLE_BACKEND_INCOMPATIBLE/);
+  }
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
