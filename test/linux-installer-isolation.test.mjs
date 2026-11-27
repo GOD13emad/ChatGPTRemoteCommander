@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 const repository = process.cwd();
 const linuxOnly = { skip: process.platform !== 'linux' && 'Linux installer execution gate' };
@@ -27,6 +28,20 @@ function fixture(t) {
     write(path.join(source, name), fs.readFileSync(path.join(repository, name)));
   }
   write(path.join(source, 'tools/install-tunnel-client-linux.sh'), fs.readFileSync(path.join(repository, 'tools/install-tunnel-client-linux.sh')), true);
+  write(path.join(source, 'tools/install-cua-driver-linux.sh'), fs.readFileSync(path.join(repository, 'tools/install-cua-driver-linux.sh')), true);
+  const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+  const tunnelStub = '#!/bin/sh\nprintf "0.0.15+a390c168ff1b2d14e73a95991c186c6aba3ff5a0 (git sha: a390c168ff1b2d14e73a95991c186c6aba3ff5a0)\\n"\n';
+  const cloudStub = '#!/bin/sh\nexit 0\n';
+  const cuaStub = '#!/bin/sh\nprintf "cua-driver 0.38.0\\n"\n';
+  const digest = value => createHash('sha256').update(value).digest('hex');
+  // Synthetic pins exist ONLY in the fixture repository, never in the product.
+  const tunnelPin = JSON.parse(fs.readFileSync(path.join(source, 'tools/tunnel-client-pin.json')));
+  tunnelPin.assets['linux-'+arch].binarySha256 = digest(tunnelStub);
+  tunnelPin.assets['linux-'+arch].cloudflaredSha256 = digest(cloudStub);
+  write(path.join(source, 'tools/tunnel-client-pin.json'), JSON.stringify(tunnelPin));
+  const cuaPin = JSON.parse(fs.readFileSync(path.join(repository, 'tools/cua-driver-pin.json')));
+  cuaPin.assets['linux-'+arch].binarySha256 = digest(cuaStub);
+  write(path.join(source, 'tools/cua-driver-pin.json'), JSON.stringify(cuaPin));
   write(path.join(source, 'package.json'), '{"type":"module"}\n');
   write(path.join(source, '.gitignore'), 'config.local.json\nvar/\ntools/tunnel-client-v*/\n');
   const requiredScripts = ['install.sh', 'connect-chatgpt-account.sh', 'run-server.sh', 'autostart-linux.sh',
@@ -41,8 +56,13 @@ function fixture(t) {
   write(path.join(source, 'updated.txt'), 'new source revision\n');
   git('add', 'updated.txt'); git('commit', '-m', 'fixture update');
   const commit = git('rev-parse', 'HEAD');
-  const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-  write(path.join(target, `tools/tunnel-client-v0.0.15-linux-${arch}/tunnel-client`), '#!/bin/sh\nprintf "0.0.15+a390c168ff1b2d14e73a95991c186c6aba3ff5a0 (git sha: a390c168ff1b2d14e73a95991c186c6aba3ff5a0)\\n"\n', true);
+  const tunnelDir = path.join(target, 'tools', 'tunnel-client-v0.0.15-linux-'+arch);
+  write(path.join(tunnelDir, 'tunnel-client'), tunnelStub, true);
+  write(path.join(tunnelDir, 'cloudflared'), cloudStub, true);
+  const dataHome = path.join(root, 'data');
+  const cuaDir = path.join(dataHome, 'chatgpt-remote-commander/adapters/cua-driver/v0.38.0');
+  write(path.join(cuaDir, 'cua-driver'), cuaStub, true);
+  write(path.join(cuaDir, '.verified-archive-sha256'), cuaPin.assets['linux-'+arch].sha256+'\n');
   const bin = path.join(root, 'bin'), effects = path.join(root, 'unexpected-effects'), npmCalls = path.join(root, 'npm-calls');
   write(path.join(bin, 'npm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$RC_INSTALL_NPM_CALLS"\nexit 0\n', true);
   for (const name of ['curl', 'systemctl', 'nohup', 'gnome-extensions']) {
@@ -56,7 +76,7 @@ function fixture(t) {
   const installedScript = path.join(root, 'installer-under-test.sh');
   write(installedScript, fs.readFileSync(path.join(repository, 'install.sh')), true);
   const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH,
-    XDG_STATE_HOME: state, TMPDIR: root, REMOTE_COMMANDER_REPO_URL: source,
+    XDG_STATE_HOME: state, XDG_DATA_HOME: dataHome, TMPDIR: root, REMOTE_COMMANDER_REPO_URL: source,
     RC_INSTALL_EFFECTS: effects, RC_INSTALL_NPM_CALLS: npmCalls };
   return { root, target, commit, route, activeConfig, installedScript, env, effects, npmCalls };
 }
@@ -146,7 +166,7 @@ test('Linux custom no-start skip-tunnel-client fails closed when pinned client i
   });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1, `missing pinned client must reject installation: ${result.stdout}\n${result.stderr}`);
-  assert.match(result.stderr, /TUNNEL_CLIENT_REQUIRED_MISSING/);
+  assert.match(result.stderr, /TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID/);
   assert.doesNotMatch(result.stdout, /INSTALL_PASS/);
   assert.equal(fs.existsSync(f.effects), false, 'missing pinned client must not invoke curl or mutate production services');
   assert.deepEqual(fs.readFileSync(f.route), routeBefore, 'failed install must preserve routing');

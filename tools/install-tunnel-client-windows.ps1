@@ -45,12 +45,12 @@ function Test-ExistingTunnelClient {
   $meta = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
   $actual = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
   $receipt = (Get-Content -LiteralPath $receiptPath -Raw).Trim().ToLowerInvariant()
-  $versionText = (& $exe --version 2>&1 | Out-String).Trim()
-  return ($actual -ceq $binarySha -and $receipt -ceq $assetSha -and
+  if (-not ($actual -ceq $binarySha -and $receipt -ceq $assetSha -and
     [string]$meta.version -ceq $version -and [string]$meta.releaseTag -ceq $tag -and
     [string]$meta.upstreamCommit -ceq $commit -and [string]$meta.asset -ceq $asset -and
-    [string]$meta.assetSha256 -ceq $assetSha -and [string]$meta.binarySha256 -ceq $binarySha -and
-    $versionText -like ($version + '+' + $commit + '*'))
+    [string]$meta.assetSha256 -ceq $assetSha -and [string]$meta.binarySha256 -ceq $binarySha)) { return $false }
+  $versionText = (& $exe --version 2>&1 | Out-String).Trim()
+  return ($versionText -like ($version + '+' + $commit + '*'))
 }
 if ($SelfTest) {
   [ordered]@{ok=$true;version=$version;releaseTag=$tag;asset=$asset;assetSha256=$assetSha;binarySha256=$binarySha;target=$toolDir} | ConvertTo-Json -Compress

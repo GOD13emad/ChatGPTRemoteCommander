@@ -54,10 +54,11 @@ ARCHIVE_RECEIPT="$FINAL_DIR/.verified-archive-sha256"
 verify_payload() {
   [[ -d "$FINAL_DIR" && ! -L "$FINAL_DIR" && -f "$FINAL_EXE" && -x "$FINAL_EXE" && ! -L "$FINAL_EXE" && -f "$ARCHIVE_RECEIPT" && ! -L "$ARCHIVE_RECEIPT" ]] || return 1
   local actual_version actual_sha receipt_sha
-  actual_version="$("$FINAL_EXE" --version 2>/dev/null || true)"
   actual_sha="$(sha256sum "$FINAL_EXE" 2>/dev/null | awk '{print $1}')"
   receipt_sha="$(tr -d '\r\n ' < "$ARCHIVE_RECEIPT")"
-  [[ "$actual_version" == "cua-driver $VERSION" && "$actual_sha" == "$BINARY_SHA" && "$receipt_sha" == "$ASSET_SHA" ]]
+  [[ "$actual_sha" == "$BINARY_SHA" && "$receipt_sha" == "$ASSET_SHA" ]] || return 1
+  actual_version="$("$FINAL_EXE" --version 2>/dev/null || true)"
+  [[ "$actual_version" == "cua-driver $VERSION" ]]
 }
 
 verify_metadata() {

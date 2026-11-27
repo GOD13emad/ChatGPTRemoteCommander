@@ -57,10 +57,11 @@ BINARY_RECEIPT="$FINAL_DIR/.verified-binary-sha256"
 verify_binary_set() {
   [[ -d "$FINAL_DIR" && ! -L "$FINAL_DIR" && -x "$FINAL_EXE" && ! -L "$FINAL_EXE" && -x "$CLOUDFLARED_EXE" && ! -L "$CLOUDFLARED_EXE" ]] || return 1
   local actual_version actual_binary actual_cloudflared
-  actual_version="$("$FINAL_EXE" --version 2>/dev/null || true)"
   actual_binary="$(sha256sum "$FINAL_EXE" 2>/dev/null | awk '{print $1}')"
   actual_cloudflared="$(sha256sum "$CLOUDFLARED_EXE" 2>/dev/null | awk '{print $1}')"
-  [[ "$actual_version" == "$VERSION+$UPSTREAM_COMMIT"* && "$actual_binary" == "$BINARY_SHA" && "$actual_cloudflared" == "$CLOUDFLARED_SHA" ]]
+  [[ "$actual_binary" == "$BINARY_SHA" && "$actual_cloudflared" == "$CLOUDFLARED_SHA" ]] || return 1
+  actual_version="$("$FINAL_EXE" --version 2>/dev/null || true)"
+  [[ "$actual_version" == "$VERSION+$UPSTREAM_COMMIT"* ]]
 }
 
 legacy_metadata_matches() {
@@ -196,13 +197,14 @@ chmod +x "$STAGE/tunnel-client" "$STAGE/cloudflared" 2>/dev/null || true
 [[ -x "$STAGE/tunnel-client" && ! -L "$STAGE/tunnel-client" && -x "$STAGE/cloudflared" && ! -L "$STAGE/cloudflared" ]] || {
   echo 'Tunnel-client archive did not contain both executable tunnel-client and cloudflared.' >&2; exit 1;
 }
-VERSION_TEXT="$("$STAGE/tunnel-client" --version 2>&1)"
-[[ "$VERSION_TEXT" == "$VERSION+$UPSTREAM_COMMIT"* ]] || { echo "Tunnel-client binary provenance mismatch: $VERSION_TEXT" >&2; exit 1; }
 BINARY_ACTUAL_SHA="$(sha256sum "$STAGE/tunnel-client" | awk '{print $1}')"
 CLOUDFLARED_ACTUAL_SHA="$(sha256sum "$STAGE/cloudflared" | awk '{print $1}')"
 [[ "$BINARY_ACTUAL_SHA" == "$BINARY_SHA" && "$CLOUDFLARED_ACTUAL_SHA" == "$CLOUDFLARED_SHA" ]] || {
   echo 'Tunnel-client binary-set SHA-256 mismatch.' >&2; exit 1;
 }
+
+VERSION_TEXT="$("$STAGE/tunnel-client" --version 2>&1)"
+[[ "$VERSION_TEXT" == "$VERSION+$UPSTREAM_COMMIT"* ]] || { echo "Tunnel-client binary provenance mismatch: $VERSION_TEXT" >&2; exit 1; }
 
 printf '%s\n' "$ASSET_SHA" > "$STAGE/.verified-archive-sha256"
 mkdir -p "$VAR_DIR"

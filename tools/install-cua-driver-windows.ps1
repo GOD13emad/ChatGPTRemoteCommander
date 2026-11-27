@@ -46,9 +46,9 @@ function Test-ExistingCuaPayload {
   }
   $actual = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
   $receipt = (Get-Content -LiteralPath $receiptPath -Raw).Trim().ToLowerInvariant()
+  if (-not ($actual -ceq $binarySha -and $receipt -ceq $assetSha)) { return $false }
   $versionText = (& $exe --version 2>&1 | Out-String).Trim()
-  return ($actual -ceq $binarySha -and $receipt -ceq $assetSha -and
-    $versionText -ceq ('cua-driver ' + $version))
+  return ($versionText -ceq ('cua-driver ' + $version))
 }
 function Test-ExistingCuaMetadata {
   if (-not (Test-Path -LiteralPath $metaPath -PathType Leaf)) { return $false }
