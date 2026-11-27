@@ -326,7 +326,10 @@ EOF
 find "$DEB" -type d -exec chmod 755 {} +
 find "$DEB" -type f ! -path '*/DEBIAN/*' -exec chmod a+r {} +
 find "$DEB" -type f ! -path '*/DEBIAN/*' -perm /111 -exec chmod a+x {} +
+# dpkg root:root must NEVER install group/world writable Core or resources.
+find "$DEB" -type f -exec chmod go-w {} +
 SOURCE_DATE_EPOCH="$EPOCH" dpkg-deb --root-owner-group --build "$DEB" "$STAGE/Remote-Commander-Linux-amd64.deb" >/dev/null
+python3 "$ROOT/tools/verify-native-package-permissions.py" "$STAGE/Remote-Commander-Linux-amd64.deb"
 dpkg-deb --field "$STAGE/Remote-Commander-Linux-amd64.deb" Package Version Architecture
 dpkg-deb --contents "$STAGE/Remote-Commander-Linux-amd64.deb" |
   grep -E 'native-config-preflight.mjs|systemd/(system|user)/chatgpt-remote-commander.*service|app/src/server-v0.3.mjs|runtime/node$|tunnel/tunnel-client$|tunnel/LICENSE$'

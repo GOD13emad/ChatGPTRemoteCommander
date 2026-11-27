@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { resolveNativePackageOutput, verifyNativePackageOutput } from '../tools/native-package-output-guard.mjs';
 
@@ -241,4 +241,42 @@ linuxOnlyTest('optional native desktop dependencies survive unified DEB control 
   ].join('\n');
   const run=spawnSync('/usr/bin/python3',['-c',fixture],{encoding:'utf8',timeout:5000});
   assert.equal(run.status,0,run.stderr||run.stdout);
+});
+
+linuxOnlyTest('native and merged dpkg builders strip group-write bits and verify every installed file',()=>{
+  const merger=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  assert.match(source,/find "\$DEB" -type f -exec chmod go-w/);
+  assert.match(source,/verify-native-package-permissions\.py/);
+  assert.match(merger,/find "\$WORK\/native" -type d -exec chmod go-w/);
+  assert.match(merger,/find "\$WORK\/native" -type f -exec chmod go-w/);
+  assert.match(merger,/verify-native-package-permissions\.py/);
+  const verifier=path.join(root,'tools/verify-native-package-permissions.py');
+  assert.ok(fs.statSync(verifier).isFile());
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-deb-modes-fixture-'));
+  const pkg=path.join(tmp,'pkg'),files=path.join(pkg,'usr/share/rc012-fixture');
+  const output=path.join(tmp,'fixture.deb');
+  try{
+    fs.mkdirSync(files,{recursive:true,mode:0o755});
+    fs.mkdirSync(path.join(pkg,'DEBIAN'),{mode:0o755});
+    fs.writeFileSync(path.join(pkg,'DEBIAN/control'),
+      'Package: rc012-package-permission-fixture\nVersion: 1.0\nArchitecture: all\nMaintainer: QA fixture\nDescription: local permission test\n');
+    const weak=path.join(files,'0.bin');
+    for(let i=0;i<110;i++){
+      const target=path.join(files,String(i)+'.bin');
+      fs.writeFileSync(target,randomBytes(128));
+      fs.chmodSync(target,i===0?0o664:0o644);
+    }
+    const build=()=>spawnSync('dpkg-deb',['--root-owner-group','--build',pkg,output],{encoding:'utf8',timeout:12000});
+    let result=build();
+    assert.equal(result.status,0,result.stderr);
+    let verify=spawnSync('python3',[verifier,output],{encoding:'utf8',timeout:12000});
+    assert.equal(verify.status,4,verify.stderr);
+    assert.match(verify.stderr,/GROUP_OR_WORLD_WRITABLE/);
+    fs.chmodSync(weak,0o644);
+    result=build();
+    assert.equal(result.status,0,result.stderr);
+    verify=spawnSync('python3',[verifier,output],{encoding:'utf8',timeout:12000});
+    assert.equal(verify.status,0,verify.stderr);
+    assert.match(verify.stdout,/RC012_PACKAGE_CONTENT_PERMISSIONS_PASS/);
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });

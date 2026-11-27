@@ -74,13 +74,24 @@ function walk(root, rel=''){
   for(const e of fs.readdirSync(path.join(root,rel),{withFileTypes:true})){
     const current=rel?rel+'/'+e.name:e.name;
     if(e.isSymbolicLink())throw Error('UNIFIED_SOURCE_SYMLINK '+current);
-    if(e.isDirectory())walk(root,current);
+    if(e.isDirectory()){
+      const at=path.join(root,current);
+      fs.chmodSync(at,fs.lstatSync(at).mode&~0o022);
+      walk(root,current);
+    }
     else if(e.isFile())entries.push(current);
     else throw Error('UNIFIED_SOURCE_SPECIAL '+current);
   }
 }
 walk(core);
 entries.sort();
+// The SOURCE archive owns file bytes. Normalize derived staging permissions
+// before Electron / native dpkg packaging, independent of host umask.
+for(const rel of entries){
+  const at=path.join(core,rel),mode=fs.lstatSync(at).mode;
+  fs.chmodSync(at,mode&~0o022);
+}
+fs.chmodSync(core,fs.lstatSync(core).mode&~0o022);
 const required=['src/server-v0.3.mjs','package.json','config.json'];
 if(!required.every(p=>entries.includes(p)) ||
    !unifiedContract.requiredEmbeddedCoreFiles.every(p=>entries.includes(p)) ||
@@ -92,6 +103,7 @@ const manifest={schema:2,head,tree,count:entries.length,
   files:Object.fromEntries(entries.map(p=>[p,hash(p)])),
   packaging:'unified-pilot-no-promotion'};
 fs.writeFileSync(path.join(core,'source-manifest.json'),JSON.stringify(manifest,null,2)+'\n',{flag:'wx'});
+fs.chmodSync(path.join(core,'source-manifest.json'),0o644);
 const pkg=JSON.parse(fs.readFileSync(path.join(core,'package.json'),'utf8'));
 const guiPkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
 const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));

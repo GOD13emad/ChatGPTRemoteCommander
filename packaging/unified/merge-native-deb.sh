@@ -248,8 +248,13 @@ print('UNIFIED_NATIVE_CORE_TUNNEL_GUI_STAGED',
       json.dumps({'verifiedCoreFiles':manifest['count'],'nativeTunnel':True,
        'desktop':True,'controlDependencies':len(deps),'totalFiles':len(md5)}))
 PY
+# Every installed regular file and directory will become root-owned. Do not
+# carry the source checkout's collaborative-group write bits into the package.
+find "$WORK/native" -type d -exec chmod go-w {} +
+find "$WORK/native" -type f -exec chmod go-w {} +
 TARGET="$WORK/combined.deb"
 dpkg-deb --build --root-owner-group "$WORK/native" "$TARGET" >/dev/null
+python3 "$BASE/tools/verify-native-package-permissions.py" "$TARGET"
 for f in   'usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh'   'usr/lib/chatgpt-remote-commander/tunnel/tunnel-client'   'usr/lib/chatgpt-remote-commander/runtime/node'   'usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service'   'opt/Remote Commander/remote-commander-unified'; do
   dpkg-deb --contents "$TARGET" | grep -F "./$f" >/dev/null || {
     echo "RC012_MERGED_PACKAGE_MISSING $f" >&2; exit 5;
