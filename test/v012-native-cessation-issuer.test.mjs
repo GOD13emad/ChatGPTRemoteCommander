@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,createHash,randomUUID} from 'node:crypto';
+import {spawnSync} from 'node:child_process';
 import {runContainedProjectCommand,processContainmentAvailable,
   serializeProcessCessationProof} from '../src/process-containment.mjs';
 import {issueObservedNativeCessationCertificate as issue} from '../src/v012-native-cessation-issuer.mjs';
@@ -37,6 +38,29 @@ test('issuer accepts only observed native cessation and exact pinned admission, 
     const packet=issue(args);
     assert.ok(packet);
     assert.ok(verify({packet,expected,publicKeyPem:key.publicKey.export({format:'pem',type:'spki'})}));
+    // New OS process: only the public key, signed packet and exact synthetic
+    // admission survive. No original in-memory proof or private key is passed.
+    const recoveryFile=path.join(cwd,'public-recovery-fixture.json');
+    const recovery={packet,expected,publicKeyPem:key.publicKey.export({format:'pem',type:'spki'})};
+    const probe=()=>{
+      const child=spawnSync(process.execPath,['--input-type=module','-e',
+        "import fs from 'node:fs';import {verifyNativeCessationCertificate as verify} from './src/v012-native-cessation-certificate.mjs';"+
+        "const r=verify(JSON.parse(fs.readFileSync(process.argv[1],'utf8')));console.log(r?'RECOVERY_VERIFIED':'RECOVERY_DENIED');",
+        recoveryFile],{cwd:path.resolve(import.meta.dirname,'..'),encoding:'utf8',timeout:10000});
+      assert.equal(child.status,0,child.stderr);
+      return child.stdout.trim();
+    };
+    fs.writeFileSync(recoveryFile,JSON.stringify(recovery),{mode:0o600,flag:'wx'});
+    assert.equal(probe(),'RECOVERY_VERIFIED');
+    // A changed expected receipt or a changed certificate must still fail
+    // after restart, even though no in-memory state is available.
+    for(const modified of [
+      {...recovery,expected:{...expected,receiptSha256:'5'.repeat(64)}},
+      {...recovery,packet:{...packet,claims:{...packet.claims,inputHash:'5'.repeat(64)}}}
+    ]){
+      fs.writeFileSync(recoveryFile,JSON.stringify(modified),{mode:0o600});
+      assert.equal(probe(),'RECOVERY_DENIED');
+    }
     for(const [name,patch] of [
       ['serialized proof',{proof:serializeProcessCessationProof(proof)}],
       ['copied proof',{proof:{...proof}}],
