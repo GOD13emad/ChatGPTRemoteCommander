@@ -1,4 +1,5 @@
 import os from 'node:os';
+import {boundedCommandTimeout} from './command-timeout-limits.mjs';
 import { synchronousCommandInput } from './retry-guard.mjs';
 import { effectivePowerMode } from './effective-power-mode.mjs';
 import { assertNoCodexCommand, assertNoCodexShellDelegation, codexLaunchAuthorized, commanderChildEnv } from './no-codex-policy.mjs';
@@ -587,7 +588,7 @@ export async function prepareShellCommand(ctx, input) {
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const cfg = power(ctx);
-  const timeoutMs = Math.max(1000, Math.min(Number(input.timeoutMs ?? cfg.maxCommandMs ?? 300000), Number(cfg.maxCommandMs ?? 300000)));
+  const timeoutMs = boundedCommandTimeout(input.timeoutMs, cfg.maxCommandMs ?? 300000);
   const outputLimit = Math.max(4096, Math.min(Number(cfg.maxOutputBytes ?? 1048576), 8388608));
   const spec = shellSpec(command);
   return { file: spec.file, args: spec.args, cwd, timeoutMs, outputLimit, allowCodex };
