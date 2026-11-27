@@ -83,7 +83,6 @@ $cuaAssetPin = $cuaPin.assets.PSObject.Properties[('windows-' + $cuaArch)].Value
 $cuaMeta = Get-Content -LiteralPath $cuaMetaPath -Raw | ConvertFrom-Json
 $cuaHash = (Get-FileHash -LiteralPath $cua -Algorithm SHA256).Hash.ToLowerInvariant()
 $cuaReceipt = (Get-Content -LiteralPath $cuaReceiptPath -Raw).Trim().ToLowerInvariant()
-$cuaVersionText = (& $cua --version 2>&1 | Out-String).Trim()
 if ([string]$cuaPin.version -cne '0.38.0' -or
     [string]$cuaPin.releaseTag -cne 'cua-driver-rs-v0.38.0' -or
     [string]$cuaMeta.version -cne [string]$cuaPin.version -or
@@ -93,8 +92,11 @@ if ([string]$cuaPin.version -cne '0.38.0' -or
     [string]$cuaMeta.assetSha256 -cne [string]$cuaAssetPin.sha256 -or
     [string]$cuaMeta.binarySha256 -cne [string]$cuaAssetPin.binarySha256 -or
     $cuaReceipt -cne [string]$cuaAssetPin.sha256 -or
-    $cuaHash -cne [string]$cuaAssetPin.binarySha256 -or
-    $cuaVersionText -cne ('cua-driver ' + [string]$cuaPin.version)) {
+    $cuaHash -cne [string]$cuaAssetPin.binarySha256) {
+  throw 'OWNER_WORKSPACE_CANDIDATE_CUA_PROVENANCE_INVALID'
+}
+$cuaVersionText = (& $cua --version 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $cuaVersionText -cne ('cua-driver ' + [string]$cuaPin.version)) {
   throw 'OWNER_WORKSPACE_CANDIDATE_CUA_PROVENANCE_INVALID'
 }
 

@@ -45,12 +45,12 @@ function Test-ExistingTunnelClient {
   $meta = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
   $actual = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
   $receipt = (Get-Content -LiteralPath $receiptPath -Raw).Trim().ToLowerInvariant()
+  if ($actual -cne $binarySha -or $receipt -cne $assetSha -or
+    [string]$meta.version -cne $version -or [string]$meta.releaseTag -cne $tag -or
+    [string]$meta.upstreamCommit -cne $commit -or [string]$meta.asset -cne $asset -or
+    [string]$meta.assetSha256 -cne $assetSha -or [string]$meta.binarySha256 -cne $binarySha) { return $false }
   $versionText = (& $exe --version 2>&1 | Out-String).Trim()
-  return ($actual -ceq $binarySha -and $receipt -ceq $assetSha -and
-    [string]$meta.version -ceq $version -and [string]$meta.releaseTag -ceq $tag -and
-    [string]$meta.upstreamCommit -ceq $commit -and [string]$meta.asset -ceq $asset -and
-    [string]$meta.assetSha256 -ceq $assetSha -and [string]$meta.binarySha256 -ceq $binarySha -and
-    $versionText -like ($version + '+' + $commit + '*'))
+  return ($LASTEXITCODE -eq 0 -and $versionText -like ($version + '+' + $commit + '*'))
 }
 if ($SelfTest) {
   [ordered]@{ok=$true;version=$version;releaseTag=$tag;asset=$asset;assetSha256=$assetSha;binarySha256=$binarySha;target=$toolDir} | ConvertTo-Json -Compress
@@ -96,7 +96,7 @@ try {
   $stagedHash = (Get-FileHash -LiteralPath $stagedExe -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($stagedHash -cne $binarySha) { throw 'TUNNEL_CLIENT_BINARY_SHA_MISMATCH' }
   $versionText = (& $stagedExe --version 2>&1 | Out-String).Trim()
-  if ($versionText -notlike ($version + '+' + $commit + '*')) { throw 'TUNNEL_CLIENT_VERSION_MISMATCH' }
+  if ($LASTEXITCODE -ne 0 -or $versionText -notlike ($version + '+' + $commit + '*')) { throw 'TUNNEL_CLIENT_VERSION_MISMATCH' }
   Set-Content -LiteralPath (Join-Path $extract '.verified-archive-sha256') -Value $assetSha -NoNewline -Encoding ascii
   $meta = [ordered]@{schema=1;version=$version;releaseTag=$tag;upstreamCommit=$commit;asset=$asset;assetSha256=$assetSha;binarySha256=$binarySha}
   $meta | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stage 'tunnel-client-installed.json') -Encoding utf8
