@@ -7,6 +7,7 @@ import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
 import {verifyV012Publication,summarizeV012Readiness} from '../tools/verify-v012-publish-readiness.mjs';
+import {approvedRelease} from '../tools/universal-install/managed-updates.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const normalizeNewlines=text=>text.replace(/\r\n?/g,'\n');
 const workflow=normalizeNewlines(fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8'));
@@ -125,7 +126,7 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
  assert.match(current.stderr,/V108_V012_PUBLICATION_DENIED/);
  const ready={
    ...manifest,sourceVersion:'0.12.0',status:'RELEASE_APPROVED',
-   channel:'release',isStable:true,publishApproved:true,
+   channel:'stable',isStable:true,publishApproved:true,
    autoupdateApproved:true,installedPromotionApproved:true,releaseTag:'v0.12.0',
    components:manifest.components.map(x=>({...x,verified:true})),
    acceptance:Object.fromEntries(Object.keys(manifest.acceptance).map(k=>[k,true])),
@@ -136,6 +137,24 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
  };
  assert.equal(verifyV012Publication('0.12.0','v0.12.0',ready),
    'V108_V012_RELEASE_APPROVED_MANIFEST_PASS');
+ // Synthetic fixtures only: identical approved source train must satisfy publication and discovery.
+ const release=tag=>({tag_name:tag,draft:false,prerelease:false,assets:[]});
+ assert.equal(approvedRelease({current:manifest.sourceVersion,releases:[release('v0.12.0')],
+   trainFor:()=>ready})?.tag,'v0.12.0');
+ const successor={...ready,sourceVersion:'0.12.1',releaseTag:'v0.12.1'};
+ assert.equal(verifyV012Publication('0.12.1','v0.12.1',successor),
+   'V108_V012_RELEASE_APPROVED_MANIFEST_PASS');
+ assert.equal(approvedRelease({current:'0.12.0',releases:[release('v0.12.1')],
+   trainFor:()=>successor})?.tag,'v0.12.1');
+ assert.equal(summarizeV012Readiness(successor).targetVersion,'0.12.1');
+ assert.equal(summarizeV012Readiness(successor).manifestEligibilityOnly,true);
+ for(const version of ['0.13.0','0.12.01','0.12.1-dev.1','0.11.99'])
+   assert.throws(()=>verifyV012Publication(version,'v'+version,
+     {...successor,sourceVersion:version,releaseTag:'v'+version}),/V108_V012_RELEASE_APPROVAL_DENIED/);
+ assert.equal(approvedRelease({current:manifest.sourceVersion,releases:[release('v0.12.0')],
+   trainFor:()=>manifest}),null);
+ assert.throws(()=>verifyV012Publication('0.12.1','v0.12.1',
+   {...successor,channel:'release'}),/V108_V012_RELEASE_APPROVAL_DENIED/);
  for(const patch of [
    {publishApproved:false},{autoupdateApproved:false},
    {installedPromotionApproved:false},{status:'INTEGRATION_CANDIDATE_NOT_FINAL'},

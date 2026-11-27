@@ -30,7 +30,12 @@ async function startServer(serverRoot,configPath,fixturePort){
   }
   child.kill();throw new Error(`server did not become healthy within 30000ms: stderr=${stderr}`);
 }
-async function stop(child){if(child&&child.exitCode===null){child.kill();await Promise.race([once(child,'exit'),wait(2000)]);}}
+async function stop(child){if(child&&child.exitCode===null){
+ const closed=once(child,'close');
+ child.kill();
+ if(!(await Promise.race([closed.then(()=>true),wait(2000).then(()=>false)])))
+  throw Error('TRANSPORT_FIXTURE_CHILD_CLOSE_TIMEOUT');
+}}
 
 test('accepted tool audit maps forwarded transport request ID to durable correlation identity without raw arguments',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rc-transport-correlation-'));
@@ -110,7 +115,7 @@ test('accepted tool audit maps forwarded transport request ID to durable correla
     assert.equal(encoded.includes(authMarker),false,'tool_accept leaked Authorization');
   }finally{
     if(running)await stop(running.child);
-    await fs.rm(root,{recursive:true,force:true});
+    await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
 });
 

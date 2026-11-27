@@ -302,8 +302,10 @@ test('monitor writer matches native UTF-16, version, and safe-counter bounds',()
 
 
 test('owner-private workspace page is generation bound and cannot grant actions', async t=>{
-  const base=await mkdtemp(path.join(os.tmpdir(),'rc-workspace-sidecar-'));
-  t.after(()=>rm(base,{recursive:true,force:true}));
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-workspace-sidecar-'));
+  t.after(()=>rm(temp,{recursive:true,force:true,maxRetries:10,retryDelay:50}));
+  const base=path.join(temp,'private');
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base]);else await mkdir(base,{mode:0o700});
   const a={profile:'qa-a',port:51913}, b={profile:'qa-b',port:51923};
   const good={...instanceFixture(a.profile,a.port),relay:{enabled:true,ready:true,extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false},workspace:{hasMore:true,workflows:[
     {id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true,lastFailure:'private detail',root:'/never/export'}
@@ -338,8 +340,10 @@ test('native monitor schema stays closed when workspace and relay are present',(
 });
 
 test('project summary publishes only generation-bound recorded review and worker counts',async t=>{
-  const base=await mkdtemp(path.join(os.tmpdir(),'rc-project-summary-'));
-  t.after(()=>rm(base,{recursive:true,force:true}));
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-project-summary-'));
+  t.after(()=>rm(temp,{recursive:true,force:true,maxRetries:10,retryDelay:50}));
+  const base=path.join(temp,'private');
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base]);else await mkdir(base,{mode:0o700});
   const a={profile:'qa-summary',port:51913};
   const input={...instanceFixture(a.profile,a.port),workflows:{enabled:true,engineEnabled:true,runCount:3},
     projectRuns:[{verification:[{passed:true,path:'PRIVATE'}],pendingWorker:{status:'READY',artifact:'PRIVATE'}},

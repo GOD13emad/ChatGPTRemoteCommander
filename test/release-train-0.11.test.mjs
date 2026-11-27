@@ -60,16 +60,19 @@ test('server, plugin, npm package and Windows Control Center development identit
  assert.equal(JSON.parse(read('package.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/plugin.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/.codex-plugin/plugin.json')).version,ver);
- assert.ok(read('src/server-v0.3.mjs').includes("const VERSION = '"+ver+"';"));
+ assert.ok(read('src/server-v0.3.mjs').includes("import {CORE_VERSION as VERSION} from './runtime-version.mjs'"));
+ assert.ok(read('src/runtime-version.mjs').includes("export const CORE_VERSION='"+ver+"';"));
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  assert.ok(cs.includes('<Version>'+ver+'</Version>'));
  const numericVersion='0.12.0.'+ver.split('.').at(-1);
  assert.ok(cs.includes('<FileVersion>'+numericVersion+'</FileVersion>'));
  assert.ok(cs.includes('<AssemblyVersion>'+numericVersion+'</AssemblyVersion>'));
- assert.ok(read('src/v2-private-pair-mcp-http-ingress.mjs').includes("version:'"+ver+"'"),
-   'private MCP ingress identity must match canonical release train');
- assert.ok(read('tools/owner-pair-private-source-canary.mjs').includes("'"+ver+"'"),
-   'owner canary version must match source train');
+ const ingress=read('src/v2-private-pair-mcp-http-ingress.mjs');
+ assert.ok(ingress.includes("import {CORE_VERSION} from './runtime-version.mjs'"));
+ assert.ok(ingress.includes('version:CORE_VERSION'),'private MCP ingress identity must use canonical release train');
+ const canary=read('tools/owner-pair-private-source-canary.mjs');
+ assert.ok(canary.includes("import {CORE_VERSION} from '../src/runtime-version.mjs'"));
+ assert.ok(canary.includes('assert.equal(health.version,CORE_VERSION)'),'owner canary must verify canonical runtime version');
 
 });
 test('historical releases are not silently deleted or accepted as product stable',()=>{

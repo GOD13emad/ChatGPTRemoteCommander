@@ -16,13 +16,13 @@ const REQUIRED_COMPONENTS = [
 
 export function verifyV012Publication(version,tag,manifest) {
  const deny=()=>{throw Error('V108_V012_RELEASE_APPROVAL_DENIED');};
- if(version!=='0.12.0'||tag!=='v0.12.0')deny();
+ if(typeof version!=='string'||!/^0\.12\.(?:0|[1-9][0-9]*)$/.test(version)||tag!=='v'+version)deny();
  if(!manifest||manifest.schema!=='rc-suite-release-train-v1'||
     manifest.train!=='0.12'||manifest.sourceVersion!==version||
     manifest.targetPrerelease!=='0.12.0'||
     manifest.firstStable!=='0.12.0'||manifest.majorTarget!=='1.0.0'||
     manifest.status!=='RELEASE_APPROVED'||
-    manifest.channel!=='release'||manifest.isStable!==true||
+    manifest.channel!=='stable'||manifest.isStable!==true||
     manifest.publishApproved!==true||
     manifest.autoupdateApproved!==true||
     manifest.installedPromotionApproved!==true||
@@ -74,10 +74,11 @@ export function summarizeV012Readiness(manifest) {
  const expected=Array.isArray(scope.expectedHostIds)?scope.expectedHostIds:[];
  const accepted=Array.isArray(scope.acceptedHostIds)?scope.acceptedHostIds:[];
  const missingHosts=expected.filter(id=>!accepted.includes(id));
+ const targetVersion=typeof manifest.sourceVersion==='string'&&/^0\.12\.(?:0|[1-9][0-9]*)$/.test(manifest.sourceVersion)?manifest.sourceVersion:'0.12.0';
  let eligibleByManifest=false;
- try{verifyV012Publication('0.12.0','v0.12.0',manifest);eligibleByManifest=true;}catch{}
+ try{verifyV012Publication(targetVersion,'v'+targetVersion,manifest);eligibleByManifest=true;}catch{}
  return {
-  schema:'rc-v012-readiness-report-v1',targetVersion:'0.12.0',
+  schema:'rc-v012-readiness-report-v1',targetVersion,
   sourceVersion:manifest.sourceVersion??null,manifestEligibilityOnly:eligibleByManifest,
   releasePromoted:manifest.isStable===true&&manifest.publishApproved===true,
   requiredComponents:REQUIRED_COMPONENTS.length,verifiedComponents:REQUIRED_COMPONENTS.length-missingComponents.length,
