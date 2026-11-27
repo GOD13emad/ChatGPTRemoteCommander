@@ -25,7 +25,7 @@ test('one cross-platform source refresh is atomic, rerunnable and retains one pr
  const source=path.join(tmp,'reviewed'),destination=path.join(tmp,'deployed');
  fs.mkdirSync(source,{mode:0o700});
  try{
-   const names=['managed-updates.mjs','signed-native-provenance.mjs'];
+   const names=['managed-updates.mjs','signed-native-provenance.mjs','release-admission-0.12.mjs'];
    for(const name of names)fs.writeFileSync(path.join(source,name),'initial-safe-source:'.repeat(15),
      {mode:0o600});
    const runner=deployManagedUpdaterSources({sourceDir:source,destinationDir:destination});

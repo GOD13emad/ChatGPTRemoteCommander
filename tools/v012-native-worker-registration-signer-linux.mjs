@@ -6,6 +6,7 @@
 // and exact per-worker owner approvals before storing this envelope.
 import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {createLinuxNativeOwnerSessionProvider}
   from '../src/native-owner-session-provider-linux.mjs';
 import {readLinuxOwnerTunnelPin,resolvePinnedOwnerTunnelDirectory}
@@ -95,7 +96,7 @@ async function main(){
   });
   process.stdout.write(JSON.stringify(envelope)+'\n');
 }
-if(process.argv[1]&&path.resolve(process.argv[1])===new URL(import.meta.url).pathname)
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))
   main().catch(error=>{
     console.error(String(error?.code??'RC012_NATIVE_SIGNER_DENIED'));
     process.exitCode=2;

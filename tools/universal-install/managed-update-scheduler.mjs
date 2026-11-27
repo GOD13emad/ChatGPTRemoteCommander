@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 
 const me=path.dirname(fileURLToPath(import.meta.url));
-const sourceNames=['managed-updates.mjs','signed-native-provenance.mjs'];
+const sourceNames=['release-admission-0.12.mjs','signed-native-provenance.mjs','managed-updates.mjs'];
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 function sha(data){return createHash('sha256').update(data).digest('hex');}
 function cp(binary,argv){

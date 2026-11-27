@@ -8,9 +8,10 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {verifyPublicSignedNativeRelease} from './signed-native-provenance.mjs';
+import {verifyV012Publication} from './release-admission-0.12.mjs';
 
 const REPO='GOD13emad/ChatGPTRemoteCommander';
-const TAG=/^v(\d+)\.(\d+)\.(\d+)$/;
+const TAG=/^v0\.12\.(?:0|[1-9][0-9]*)$/;
 const COMMIT=/^[a-f0-9]{40}$/;
 const SHA256=/^[a-f0-9]{64}$/;
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
@@ -52,6 +53,7 @@ export function approvedRelease({current,releases,trainFor}={}){
       ||train.publishApproved!==true||train.autoupdateApproved!==true
       ||train.installedPromotionApproved!==true||train.channel!=='stable')
       continue;
+    try{verifyV012Publication(version,tag,train);}catch{continue;}
     return {tag,version,release,train};
   }
   return null;

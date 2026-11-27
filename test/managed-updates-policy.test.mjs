@@ -2,7 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compareReleaseVersions,approvedRelease,expectedArtifact,discoverApprovedUpdate,publicGitHubJson,downloadPublicReleaseAsset}
  from '../tools/universal-install/managed-updates.mjs';
+import fs from 'node:fs';
+const base=JSON.parse(fs.readFileSync(new URL('../docs/release-train-0.12.json',import.meta.url)));
 const valid=(tag,extra={})=>({
+ ...base,status:'RELEASE_APPROVED',
+ components:base.components.map(x=>({...x,verified:true})),
+ acceptance:Object.fromEntries(Object.keys(base.acceptance).map(k=>[k,true])),
+ fleetCoverage:{...base.fleetCoverage,acceptedHostIds:[...base.fleetCoverage.expectedHostIds],mappingVerified:true,bootLoginAndRollbackVerified:true},
+ distribution:{...base.distribution,noPublicStableAccepted:false},
  schema:'rc-suite-release-train-v1',train:'0.12',sourceVersion:tag.slice(1),
  releaseTag:tag,isStable:true,publishApproved:true,
  autoupdateApproved:true,installedPromotionApproved:true,
@@ -156,4 +163,18 @@ test('stable asset downloader pins exact host, size, digest and cleans partial f
    assert.equal(fs.existsSync(falseDest),false);
    assert.deepEqual(fs.readdirSync(path.dirname(falseDest)),[]);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('0.12 updater does not discover or select a future train or a noncanonical tag',async()=>{
+ const releases=[r('v0.13.0'),r('v1.0.0'),r('v0.12.01'),r('v0.12.1')];
+ const selected=approvedRelease({current:'0.12.0',releases,trainFor:(tag)=>{
+   assert.equal(tag,'v0.12.1');
+   return valid(tag);
+ }});
+ assert.equal(selected.tag,'v0.12.1');
+ const result=await discoverApprovedUpdate({readInstalled:()=> '0.12.0',api:async route=>{
+   assert.equal(route,'releases?per_page=30');
+   return releases.slice(0,3);
+ }});
+ assert.equal(result.selected,null);
 });

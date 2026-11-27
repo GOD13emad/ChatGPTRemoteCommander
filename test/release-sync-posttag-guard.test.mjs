@@ -172,6 +172,8 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
  ]){
    assert.throws(()=>verifyV012Publication('0.12.0','v0.12.0',{...ready,...patch}),
      /V108_V012_RELEASE_APPROVAL_DENIED/);
+   assert.equal(approvedRelease({current:manifest.sourceVersion,releases:[release('v0.12.0')],
+     trainFor:()=>({...ready,...patch})}),null);
  }
  assert.throws(()=>verifyV012Publication('0.12.0','v0.12.1',ready),
    /V108_V012_RELEASE_APPROVAL_DENIED/);
@@ -194,6 +196,9 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
  fs.mkdirSync(path.join(repo,'tools'));
  fs.copyFileSync(path.join(root,'tools','verify-v012-publish-readiness.mjs'),
    path.join(repo,'tools','verify-v012-publish-readiness.mjs'));
+ fs.mkdirSync(path.join(repo,'tools','universal-install'));
+ fs.copyFileSync(path.join(root,'tools','universal-install','release-admission-0.12.mjs'),
+   path.join(repo,'tools','universal-install','release-admission-0.12.mjs'));
  const assets=path.join(repo,'dist','release');
  fs.mkdirSync(assets,{recursive:true});
  const sums=[];
