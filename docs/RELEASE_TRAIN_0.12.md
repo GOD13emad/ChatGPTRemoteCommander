@@ -1,4 +1,8 @@
-# Release Train 0.12 — `0.12.0-dev.15` source candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.16` source candidate (NoPromote)
+
+## Dev.16 integration candidate (27 November 2026)
+
+Source-only convergence of QA base `34ae9725a50e747799fdab471abde777a49090b7`, profile mapping PR #644 `6e3873974acb8f855486281c659b4745fe95c6f5`, and timeout guard PR #645 `e26b430769da3fb4664172524745bb6f67d97e64`. Both exact parent deltas are preserved. The eight-host / 19-profile map is historical identity evidence, not fleet acceptance. Dev.16 must receive fresh exact-head cross-OS CI, native package provenance and rollback qualification; native owner consent, current-chat Worker grants and operational private Tunnel cutover remain separate. No release, installed promotion, or live profile mutation is authorized by this source change.
 
 ## Dev.13 upgrade qualification candidate
 

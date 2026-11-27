@@ -59,6 +59,8 @@ jobs:
         run: npm run test:v1-07-worker-identity
       - name: Verify v0.12 owner-bound Worker admission and real DPAPI custody
         run: npm run test:v012-owner-worker-admission
+      - name: Verify bounded command timeout policy on all execution routes
+        run: npm run test:timeout-bounds
       # Keep R157's validated Windows qualification command grammar intact.
       # Run shared installer QA once per OS, as one independent CI step.
       - name: Verify Browser Core companion, packed byte integrity and extension pairing (NoPromote)
@@ -71,6 +73,9 @@ jobs:
       - name: Run qualification check with bounded Windows file concurrency
         if: runner.os == 'Windows'
         run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1
+      - name: Verify Linux owner Tunnel enrollment profile isolation
+        if: runner.os == 'Linux'
+        run: node --test test/linux-owner-tunnel-enrollment-directory.test.mjs
       - name: Run full check suite
         if: runner.os != 'Windows'
         run: npm run check
