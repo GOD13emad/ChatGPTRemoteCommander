@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
+import net from 'node:net';
 import {createHash,randomUUID} from 'node:crypto';
 import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -20,6 +21,7 @@ import {createV2PrivateSignedWorkerGrantAdapter} from '../src/v2-private-signed-
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 import {readText} from '../src/tools-v0.3.mjs';
 import {createV012PrivateCoreRuntime} from '../src/v012-private-core-runtime.mjs';
+import {createV012OwnerGrantAdministration} from '../src/v012-owner-grant-administration.mjs';
 import {createV012OwnerNativeHostLease}
   from '../src/v012-owner-native-host-lease-bootstrap.mjs';
 import {createV012SharedPhysicalRootFence}
@@ -800,6 +802,23 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     snapshotTimeoutMs:1000,dialogTimeoutMs:5000
   };
   let runtime,nativeLease,nativeRoot;
+  const adminDir=linux&&fs.existsSync('/run/user/'+process.getuid())
+    ?fs.mkdtempSync('/run/user/'+process.getuid()+'/rc012-owner-admin-e2e-'):null;
+  const adminSocket=adminDir?path.join(adminDir,'admin.sock'):null;
+  async function localAdmin(action){
+    if(!adminSocket)throw Error('OWNER_ADMIN_SOCKET_UNAVAILABLE');
+    return await new Promise((resolve,reject)=>{
+      const socket=net.createConnection(adminSocket);
+      let value='';
+      socket.setTimeout(8000,()=>socket.destroy(Error('OWNER_ADMIN_SOCKET_TIMEOUT')));
+      socket.once('connect',()=>{
+        socket.end(JSON.stringify({schema:1,action})+'\n');
+      });
+      socket.on('data',chunk=>{value+=chunk.toString('utf8');});
+      socket.once('error',reject);
+      socket.once('close',()=>resolve(JSON.parse(value)));
+    });
+  }
   try{
     // Windows and Linux both use a real OS-validated native host-global
     // SQLite lease, not a per-process mock, under a disposable owner path.
@@ -893,6 +912,25 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
             withLease:async(_resource,work)=>work(),receiptStore,
           };
         },
+        ...(adminSocket?{ownerAdminSocketPath:adminSocket}:{}),
+        createOwnerGrantAdministration:({ownerStack,identity:ownerIdentity})=>{
+          assert.equal(ownerIdentity.hostId,'host-1');
+          assert.equal(ownerIdentity.principalId,'account-1');
+          return createV012OwnerGrantAdministration({
+            ownerStack,identity:ownerIdentity,now:()=>now,
+            resolveVerifiedWorkerKey:async()=>({
+              source:'native-worker-key-attestor',hostId:'host-1',
+              profileId:'emad',ownerSidHash:ownerHash,keyId,
+              deviceProvider:'native-key-store',deviceIdHash:'d'.repeat(64),
+              capabilityPolicyDigest:policy,attestedAtMs:now-1000,
+              expiresAtMs:now+80000,verified:true
+            }),
+            resolvePinnedCanaryRoute:async({nativeRoute})=>({
+              ...nativeRoute,operationId:'system-status-canary',
+              target:{kind:'host-shell',id:'system-status'}
+            })
+          });
+        },
         ownerSessionOptions
       },
       core:{
@@ -916,6 +954,9 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       }
     });
     assert.equal(runtime.status.phase,'CONSTRUCTED');
+    assert.equal(typeof runtime.ownerAdministration.inspect,'function');
+    await assert.rejects(runtime.ownerAdministration.inspect(),
+      {code:'V2_SESSION_NOT_BOUND'});
     const live=await runtime.start();
     const send=(id,name,args)=>privatePairRequest(live.port,
       f.clientCert,f.clientKey,{jsonrpc:'2.0',id,method:'tools/call',
@@ -926,6 +967,31 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     const bound=await send(2,'v2_private_owner_bind',{});
     assert.equal(bound.status,200);
     assert.equal(state.consents,1);
+    if(adminSocket){
+      assert.deepEqual(await localAdmin('inspect'),{
+        ok:true,nativeOwnerBound:true,workerActive:false,
+        exactBaseEnabled:false,exactWorkerToolEnabled:false,
+        readOnlyCanaryAllowed:false
+      });
+    }
+    const pending=await runtime.ownerAdministration.inspect();
+    assert.equal(pending.nativeOwnerBound,true);
+    assert.equal(pending.readOnlyCanaryAllowed,false);
+    const ownerApproved=await runtime.ownerAdministration.approveWorker();
+    assert.equal(ownerApproved.revision,1);
+    const canaryApproved=await runtime.ownerAdministration.approveReadOnlyCanary();
+    assert.equal(canaryApproved.canaryAllowed,true);
+    assert.equal((await runtime.ownerAdministration.inspect()).readOnlyCanaryAllowed,true);
+    assert.equal(state.consents,4,'native J01 plus 3 separate exact grant approvals');
+    if(adminSocket){
+      assert.equal((await localAdmin('inspect')).readOnlyCanaryAllowed,true);
+      assert.deepEqual(await localAdmin('approve_worker'),{ok:true,approved:true},
+        'repeat owner request checks the same existing epoch without new approval');
+      assert.equal(state.consents,4,'no duplicate native owner dialog for active Worker');
+    }
+    const invisible=await send(22,'ownerAdministration',{});
+    assert.equal(invisible.body.result.isError,true,
+      'local owner admin MUST NOT become a remote MCP tool');
     if(nativeLease){
       // A distinct OS process, not just a second connection in this process,
       // holds the exact same canonical resource. Core must not dispatch.
@@ -995,6 +1061,7 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     receiptStore.close();
     nativeLease?.close();
     if(nativeRoot&&!linux)fs.rmSync(nativeRoot,{recursive:true,force:true});
+    if(adminDir)fs.rmSync(adminDir,{recursive:true,force:true});
     f.dispose();
     fs.rmSync(root,{recursive:true,force:true});
   }
