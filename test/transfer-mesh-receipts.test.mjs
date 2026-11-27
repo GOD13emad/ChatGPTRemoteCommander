@@ -61,6 +61,8 @@ function fixture({receiptsEnabled=true,durableEnabled=true,authority}={}){
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-transfer-mesh-receipts-')));
   const source=path.join(root,'source');const dest=path.join(root,'dest');
   fs.mkdirSync(source);fs.mkdirSync(dest);
+  // Match the real portable sender identity required by the durable peer contract.
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'Linux'}));
   const sourceFile=path.join(source,'payload.bin');fs.writeFileSync(sourceFile,'hello world');
   writeScript(path.join(root,'transfer.mjs'),transferScript);
   writeScript(path.join(root,'durable-send.mjs'),durableScript);

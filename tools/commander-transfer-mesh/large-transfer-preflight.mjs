@@ -6,7 +6,8 @@ import {execFileSync} from 'node:child_process';
 
 const G=1024n**3n;
 export const TEN_GIB=10n*G;
-const PEERS=new Set(['PC','Linux','EmadServer','Amirreza']);
+const PEERS=new Set(['PC','Linux','MMZ','EmadServer','Amirreza']);
+const LEGACY_DURABLE_PEERS=[...PEERS].filter(peer=>peer!=='MMZ');
 const str=v=>typeof v==='string'&&v.length>0;
 export function evaluateLargeTransfer({bytes,freeBytes,pendingBytes=0n,maxSourceBytes=16n*G,maxPendingBytes=64n*G,activeJobs=0,maxActiveJobs=3,role='send',backendCompatible=true}){
   if(typeof bytes!=='bigint'||bytes<=0n||!['send','receive'].includes(role))throw Error('INVALID_PREFLIGHT_REQUEST');
@@ -46,13 +47,16 @@ function readJournal(root){
   }
   return {pending,active};
 }
-function compatible(root){
+function compatible(root,alias,peer){
  const cli=path.join(root,'durable-send.mjs');
  if(!fs.existsSync(cli)||!fs.statSync(cli).isFile())return false;
  try{
    const out=execFileSync(process.execPath,[cli,'capabilities'],{env:{...process.env,COMMANDER_TRANSFER_HOME:root},encoding:'utf8',timeout:4000,maxBuffer:4096,windowsHide:true,stdio:['ignore','pipe','ignore']});
    const v=JSON.parse(out);
-   return v.schema==='ctmesh-durable-v1'&&v.contractVersion===2&&v.admissionQuotas===true;
+   if(!v||v.schema!=='ctmesh-durable-v1'||v.contractVersion!==2||v.admissionQuotas!==true) return false;
+   const peers=Object.hasOwn(v,'supportedPeers')?v.supportedPeers:LEGACY_DURABLE_PEERS;
+   return Array.isArray(peers)&&peers.length>0&&peers.length<=PEERS.size&&
+     peers.every(p=>PEERS.has(p))&&new Set(peers).size===peers.length&&peers.includes(alias)&&peers.includes(peer);
  }catch{return false;}
 }
 function main(){
@@ -70,7 +74,7 @@ function main(){
  const maxJobs=Number(opt(argv,'max-active-jobs','3'));
  const result=evaluateLargeTransfer({bytes,freeBytes:stat.bavail*stat.bsize,pendingBytes:j.pending,
   maxSourceBytes:configMax,maxPendingBytes:configPending,activeJobs:j.active,maxActiveJobs:maxJobs,role,
-  backendCompatible:compatible(root)});
+  backendCompatible:compatible(root,alias,peer)});
  const response={schema:'ctmesh-large-preflight-v1',alias,peer,root,bytes:bytes.toString(),
    freeBytes:(stat.bavail*stat.bsize).toString(),pendingBytes:j.pending.toString(),
    reservedBytes:result.reservedBytes.toString(),safeToAttempt:result.safeToAttempt,

@@ -11,7 +11,8 @@ const tool=path.join(path.dirname(fileURLToPath(import.meta.url)),'backend-updat
 const candidate=path.join(path.dirname(fileURLToPath(import.meta.url)),'durable-send.mjs');
 const shaFile=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 // Historical four-peer candidate: 3d7c740fcf8b43bfce4f3a470d286b0de6cc6c59b1aeeeef624381b74c1cca66.
-const expectedCandidate='a4374ccd34db6a75d2e0f68ff63093295473ff2d89746eb869d88e7b0d32a674';
+// Five-peer alias-only QA candidate: a4374ccd34db6a75d2e0f68ff63093295473ff2d89746eb869d88e7b0d32a674.
+const expectedCandidate='4572858d1138b3740c7aa91c177b76c60b1292b2542e6790fe414caa51871f06';
 const proc=(...args)=>spawnSync(process.execPath,[tool,...args],{encoding:'utf8',timeout:15000,windowsHide:true});
 function fixture(callback){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r16-backend-tx-'));

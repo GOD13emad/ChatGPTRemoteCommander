@@ -189,7 +189,7 @@ function inspect(p){
 try{
  if(command==='capabilities'){
   reply({schema:'ctmesh-durable-v1',contractVersion:2,admissionQuotas:true,
-    supports:['enqueue','job-status','resume','cancel'],workerPersistence:true,hashVerification:'sha256'});
+    supports:['enqueue','job-status','resume','cancel'],supportedPeers:[...peers],workerPersistence:true,hashVerification:'sha256'});
  }else{
  const peer=opt('peer'),id=opt('id'),p=safePaths(peer,id);
  if(command==='enqueue'){
