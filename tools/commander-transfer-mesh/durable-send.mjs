@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 process.umask(0o077);
 const root=path.resolve(process.env.COMMANDER_TRANSFER_HOME||(
  process.platform==='win32'?path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'CommanderTransferPilot'):path.join(os.homedir(),'.local','share','commander-transfer-pilot')));
-const peers=['PC','Linux','EmadServer','Amirreza'];
+const peers=['PC','Linux','MMZ','EmadServer','Amirreza'];
 const re=/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,90}$/;
 const [command,...args]=process.argv.slice(2);
 const opt=k=>{const i=args.indexOf('--'+k);return i<0?undefined:args[i+1];};

@@ -1,5 +1,15 @@
 # Project Brain — ChatGPT Remote Commander
 
+### RC012-CROSS-REPO-DURABLE-MMZ-20261127 — verified isolated QA correction, NoPromote
+
+Base: PR643 merge `34ae9725a50e747799fdab471abde777a49090b7`, tree `6791d6b8a633a5834672f9af622cf95df692521a`. An isolated detached Linux QA tree, not an active install or canonical writer, reproduced the current AgentOS/Browser/Companion/AI/Mesh integration baseline (129 PASS / 0 FAIL / 1 SKIP; operation `9b856ae8-2c11-4d82-acfc-77475d87c8ce`).
+
+Transfer Mesh contract drift: Core, pilot CLI and doctor include five peer aliases, but portable durable-send and backend-update retained four. New synthetic tests reproduced `INVALID_TRANSFER_ID_OR_PEER` and `R16_NODE_ALIAS_INVALID` (2 FAIL, operation `614e1608-bf61-4572-9cb4-a666ef979b65`). Added the missing MMZ alias to the two portable backends without changing execution authority, journal schema or transfer limits. New candidate durable-send SHA256 `a4374ccd34db6a75d2e0f68ff63093295473ff2d89746eb869d88e7b0d32a674`; historical four-peer hash preserved in test comment. Eleven focused Mesh suites including HTTP, signed receipt, quota, crash/recovery and updater fixtures: 64 PASS / 0 FAIL / 0 SKIP, op `1edbf72d-e495-4f66-a63e-49d2f98d98e3`, TAP SHA256 `918a5523dd5540108246562652d4afeac19984ccf7c1c73f2f7c123ae71a23df`; git diff --check clean. Local synthetic PC↔MMZ staging and MMZ updater apply/rollback proven; live Syncthing cross-host transport and signed production package NOT_RUN.
+
+Composition audit delta: browser-hybrid pins Playwright Core 1.65.0, Selenium WebDriver 4.51.0, Stagehand 4.4.0; unified Electron packaging pins 45.3.0, builder 26.18.1, Playwright Core 1.65.0. Hybrid CLI is standalone scoped QA; no proof all three are in the signed native payload. AgentOS selection is invoked by workspace-tools and is not execution authorization. Coucou remains optional via generic event relay/public release exclusion guard; no runtime notification acceptance inferred. Mixed legacy portable backends still require explicit peer capability/parity admission, shared contract regression and exact candidate propagation before fleet rollout. Keep existing upstream C01–C22 inventory authority and previous QA deltas; do not substitute this narrow repair for complete third-party review or claim all 87/91 candidate rows reconciled.
+
+Integration handoff: merge only via designated one-writer carrier after reconciling latest source and private strict-JSON/capability-gap QA changes. Windows, hosted CI, new package provenance, installed acceptance and peer-matrix E2E remain open; no release flags or live services changed.
+
 ## RC012-NATIVE-DEFERRED-LIFETIME-20261125 — source validation, migration open
 
 Owner's current accepted outcome: finish reviewed 0.12 migration with genuine enabled capabilities/FULL_ACCESS and one active installation per host; preserve native OS consent, accounts, working data and verified rollback. This is not yet achieved.

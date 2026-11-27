@@ -10,7 +10,8 @@ import {fileURLToPath} from 'node:url';
 const tool=path.join(path.dirname(fileURLToPath(import.meta.url)),'backend-update.mjs');
 const candidate=path.join(path.dirname(fileURLToPath(import.meta.url)),'durable-send.mjs');
 const shaFile=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const expectedCandidate='3d7c740fcf8b43bfce4f3a470d286b0de6cc6c59b1aeeeef624381b74c1cca66';
+// Historical four-peer candidate: 3d7c740fcf8b43bfce4f3a470d286b0de6cc6c59b1aeeeef624381b74c1cca66.
+const expectedCandidate='a4374ccd34db6a75d2e0f68ff63093295473ff2d89746eb869d88e7b0d32a674';
 const proc=(...args)=>spawnSync(process.execPath,[tool,...args],{encoding:'utf8',timeout:15000,windowsHide:true});
 function fixture(callback){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r16-backend-tx-'));
@@ -141,4 +142,15 @@ test('exact backup supports rollback even if apply receipt was not persisted',()
  assert.equal(shaFile(f.backup),f.oldSha);
  assert.equal(shaFile(f.journal),f.jobSha);
  assert.equal(shaFile(f.payload),f.payloadSha);
+}));
+
+test('fifth MMZ node supports the same planned atomic backend update and rollback',()=>fixture(f=>{
+ fs.writeFileSync(f.node,JSON.stringify({schema:'ctmesh-node-v1',alias:'MMZ'}));
+ const plan=f.runPlan();assert.equal(plan.status,0,message(plan));
+ assert.equal(JSON.parse(plan.stdout).alias,'MMZ');
+ const applied=f.apply();assert.equal(applied.status,0,message(applied));
+ assert.equal(shaFile(f.old),f.newSha);
+ const restored=f.rollback();assert.equal(restored.status,0,message(restored));
+ assert.equal(shaFile(f.old),f.oldSha);
+ assert.equal(shaFile(f.journal),f.jobSha);
 }));

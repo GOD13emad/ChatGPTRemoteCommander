@@ -62,7 +62,7 @@ function inspect(root){
  const backend=path.join(root,'durable-send.mjs'),node=path.join(root,'node.json');
  safeRegular(backend);safeRegular(node);
  const info=JSON.parse(fs.readFileSync(node,'utf8'));
- if(!['PC','Linux','EmadServer','Amirreza'].includes(info.alias))fail('NODE_ALIAS_INVALID');
+ if(!['PC','Linux','MMZ','EmadServer','Amirreza'].includes(info.alias))fail('NODE_ALIAS_INVALID');
  const jobs=fileTree(path.join(root,'jobs')),staging=fileTree(path.join(root,'staging'));
  if(staging.length)fail('ACTIVE_STAGING_FILES');
  const digests=[];
