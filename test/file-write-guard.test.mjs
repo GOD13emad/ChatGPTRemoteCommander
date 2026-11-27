@@ -24,6 +24,15 @@ test('authorized file and missing descendants retain full canonical-path validat
   const present=await guardFileWrite(target);
   assert.equal(present.leaf.nlink,1n);await guardFileWrite(target,present);
 });
+test('write snapshots are bound to their exact target even when both leaves are absent',async t=>{
+  const root=fixture(t),a=path.join(root,'first.txt'),b=path.join(root,'second.txt');
+  const snapshot=await guardFileWrite(a);
+  assert.equal(snapshot.leaf,null);
+  await assert.rejects(guardFileWrite(b,snapshot),{code:'FILE_WRITE_TARGET_CHANGED'});
+  assert.equal((await guardFileWrite(a,snapshot)).target,a);
+  assert.equal(fs.existsSync(a),false);
+  assert.equal(fs.existsSync(b),false);
+});
 test('restricted-environment authorized text write remains backed up and hash checked',async t=>{
   const root=fixture(t),target=path.join(root,'result.txt');
   const ctx={config:{maxWriteBytes:10000},roots:[root],auditLog:path.join(root,'audit.jsonl')};
