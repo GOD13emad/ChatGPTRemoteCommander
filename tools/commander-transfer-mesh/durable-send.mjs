@@ -21,12 +21,20 @@ function assertInternalDirectories(p){
  // The configured root is a caller-selected trust boundary, not an
  // authority to follow a preexisting directory alias. It must already
  // exist (the pilot node configuration is provisioned separately).
- const rootEntry=fs.lstatSync(root);
- assertion(rootEntry.isDirectory()&&!rootEntry.isSymbolicLink(),'TRANSFER_ROOT_UNSAFE');
- // A regular final component can still be reached through an aliased
- // ancestor. Require the provisioned root's canonical spelling; this
- // check does not replace owner/ACL custody or prevent concurrent races.
- assertion(path.relative(root,fs.realpathSync.native(root))==='','TRANSFER_ROOT_UNSAFE');
+ // Inspect each existing component, not the spelling returned by
+ // realpath: Windows short (8.3) names can denote regular directories.
+ // Walk from the filesystem root down, rejecting symlinks/junctions
+ // before touching a descendant. Owner/ACL custody and races remain
+ // separate concerns.
+ const ancestry=[];
+ for(let dir=root;;dir=path.dirname(dir)){
+  ancestry.push(dir);
+  if(path.dirname(dir)===dir)break;
+ }
+ for(const dir of ancestry.reverse()){
+  const entry=fs.lstatSync(dir);
+  assertion(entry.isDirectory()&&!entry.isSymbolicLink(),'TRANSFER_ROOT_UNSAFE');
+ }
  const directories=[
   path.join(root,'jobs'),p.jobDir,
   path.join(root,'staging'),p.stageDir,
