@@ -11,6 +11,13 @@ permission to invoke a tool, or installation of a specialty adapter. No
 specialty adapter is embedded by this GUI. Old monitor records without relay
 fields display Unknown; stale or changed selections clear the entire dashboard.
 
+The Profiles list shows local profile/port records observed during discovery;
+it is not a fleet inventory or account binding. Selection revalidates the
+exact instance. The Workflows panel groups persisted project-engine run states
+(completed, blocked/cancelled/exhausted, waiting/paused, other); it never
+reports them as live workers. Invalid or missing groups show Unknown and
+selection expiry clears them together with the rest of the dashboard.
+
 The Add-ons section consumes the same `installer/products.json` catalog as
 the native GTK Control Center. Preparation stages the committed catalog bytes
 and an exact head/tree/hash receipt; the packaged renderer receives only a

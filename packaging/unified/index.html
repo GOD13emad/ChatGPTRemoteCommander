@@ -11,6 +11,7 @@
 <a href="#preview-panel">Core preview</a>
 <a href="#browser-panel">Owned browser</a>
 <a href="#monitor-panel">CEF monitor</a>
+<a href="#workflows-panel">Workflows</a>
 <a href="#companion-panel">Browser companion</a>
 <a href="#addons-panel">Add-ons</a>
 </nav></aside><main>
@@ -26,6 +27,9 @@
 <pre id="chat-result" role="status"></pre></section>
 <section id="monitor-panel" aria-labelledby="monitor-panel-title"><h2 id="monitor-panel-title">Native CEF monitor — select a Core instance</h2>
 <p>Discover fresh local monitor records, choose the exact profile and port, and show the existing CEF root setting. No automatic launch, account binding, or permission grant.</p>
+<h3>Local profiles / instances</h3>
+<p id="profile-status" role="status">Discovering local records…</p>
+<ul id="profile-list" aria-label="Observed local profiles"></ul>
 <label for="monitor-instance">Core instance</label>
 <select id="monitor-instance"><option value="">Choose an instance</option></select>
 <button id="monitor-refresh" type="button">Refresh instances</button>
@@ -43,6 +47,14 @@
 </dl>
 <p id="dashboard-freshness" role="status">Select a local Core instance to inspect its snapshot.</p>
 <pre id="monitor-result" role="status" aria-live="polite"></pre></section>
+<section id="workflows-panel" aria-labelledby="workflows-panel-title"><h2 id="workflows-panel-title">Recorded workflow runs</h2>
+<p>For the same selected local Core instance. Persisted run states are not proof of live worker activity. Select or refresh the instance in <a href="#monitor-panel">Control Center</a>.</p>
+<dl class="monitor-grid" aria-label="Recorded run states">
+<div><dt>Completed</dt><dd id="dashboard-run-completed">Not selected</dd></div>
+<div><dt>Blocked / cancelled / exhausted</dt><dd id="dashboard-run-stopped">Not selected</dd></div>
+<div><dt>Waiting for input / paused</dt><dd id="dashboard-run-waiting">Not selected</dd></div>
+<div><dt>Other recorded states</dt><dd id="dashboard-run-other">Not selected</dd></div>
+</dl></section>
 <section id="companion-panel" aria-labelledby="companion-panel-title"><h2 id="companion-panel-title">Browser Companion (opt-in)</h2><p>Pair a browser extension through an owner-visible, expiring code. Chrome, Edge and Brave can load the packaged folder via their extensions page. Firefox needs separate qualification. No automated ChatGPT messages or privileged tools are enabled.</p>
 <button id="companion-start" type="button">Start companion</button>
 <button id="companion-stop" type="button">Stop companion</button>

@@ -71,12 +71,13 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
         configSha256:'a'.repeat(64),platform:process.platform},
         gui:{enabled:true,available:true,uncertain:false},
         browser:{enabled:true,available:true,uncertain:true},
-        workflows:{enabled:true,engineEnabled:true,runCount:7},
+        workflows:{enabled:true,engineEnabled:true,runCount:7,runStates:{completed:1,stopped:2,waiting:3,other:1}},
         extensions:{items:[{id:'qa-extension',version:'1'}]},eventRelay:{enabled:true,ready:true},operations:{active:2,lockedKeys:3}};
       const written=await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture);
       const scopeId=path.basename(path.dirname(written.target));
       await page.locator('#monitor-refresh').click();
       await page.locator('#monitor-instance option[value="'+scopeId+'"]').waitFor({state:'attached',timeout:8000});
+      assert.match(await page.locator('#profile-list').innerText(),/gui-qa-fixture/);
       await page.locator('#monitor-instance').selectOption(scopeId);
       await page.locator('#monitor-select').click();
       await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('CGWA_COMPANION_ROOT'),null,{timeout:8000});
@@ -87,12 +88,17 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       assert.equal(await page.locator('#dashboard-gui').innerText(),'Available (reported)');
       assert.equal(await page.locator('#dashboard-browser').innerText(),'Uncertain');
       assert.equal(await page.locator('#dashboard-runs').innerText(),'7');
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'Workflows'}).click();
+      assert.equal(await page.locator('#dashboard-run-waiting').innerText(),'3');
+      assert.equal(await page.locator('#dashboard-run-completed').innerText(),'1');
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'CEF monitor'}).click();
       assert.equal(await page.locator('#dashboard-active').innerText(),'2');
       assert.equal(await page.locator('#dashboard-relay').innerText(),'Ready (reported; delivery unverified)');
       await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture,{now:()=>1});
       await page.locator('#monitor-select').click();
       await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('Selection stale or invalid'),null,{timeout:8000});
       assert.notEqual(await page.locator('#dashboard-gui').innerText(),'Available (reported)');
+      assert.equal(await page.locator('#dashboard-run-waiting').textContent(),'Unknown');
       console.log('RC012_CEF_INSTANCE_PICKER_GUI_FIXTURE_PASS');
 
 

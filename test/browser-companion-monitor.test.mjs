@@ -211,7 +211,7 @@ test('fresh instance discovery and explicit revalidation refuse stale, mismatche
   const rich={...instanceFixture(a.profile,a.port),
     gui:{enabled:true,available:true,uncertain:false,capabilities:{screenshot:true,mouse:false}},
     browser:{enabled:true,available:true,uncertain:true},
-    workflows:{enabled:true,engineEnabled:true,runCount:7},
+    workflows:{enabled:true,engineEnabled:true,runCount:7,runStates:{completed:1,stopped:2,waiting:3,other:1}},
     extensions:{items:[{id:'fixture',version:'1',secret:'PRIVATE'}]},
     eventRelay:{enabled:true,ready:true,deliveryConfirmed:true,adapterPath:'PRIVATE',extensionId:'PRIVATE'},
     operations:{active:2,lockedKeys:3}};
@@ -225,13 +225,16 @@ test('fresh instance discovery and explicit revalidation refuse stale, mismatche
     observedAtEpochMs:1000,
     gui:{enabled:true,available:true,uncertain:false},
     browser:{enabled:true,available:true,uncertain:true},
-    workflows:{enabled:true,engineEnabled:true,runCount:7},
+    workflows:{enabled:true,engineEnabled:true,runCount:7,runStates:{completed:1,stopped:2,waiting:3,other:1}},
     extensionCount:1,
     eventRelay:{enabled:true,ready:true,deliveryConfirmed:false},
     operations:{active:null,lockedKeys:3}
   });
   assert.doesNotMatch(JSON.stringify(dashboard.summary),/PRIVATE|configSha256|capabilities/);
   assert.equal(dashboard.actionAuthorization,false);
+  raw.workflows.runStates.waiting=999;
+  await writeFile(updated.target,JSON.stringify(raw));
+  assert.equal((await selectBrowserCompanionInstance(aId,{base,now:10001})).summary.workflows.runStates,null);
   assert.ok((await listBrowserCompanionInstances({base,now:10001})).every(x=>!Object.hasOwn(x,'summary')));
   await assert.rejects(()=>selectBrowserCompanionInstance(aId,{base,now:11000}),/STALE_OR_MISMATCH/);
   await assert.rejects(()=>selectBrowserCompanionInstance('../escape',{base,now:10001}),/SELECTION_INVALID/);
@@ -261,4 +264,21 @@ test('Windows refuses pre-existing unsafe monitor ACL without modifying existing
     assert.deepEqual(await (await import('node:fs/promises')).readdir(base),['owner-marker']);
   }
   assert.equal(await readFile(marker,'utf8'),'preserve');
+});
+
+test('workflow monitor reports bounded persisted run states, not live workers or private workflow content',async()=>{
+  const {summarizeWorkflowRuns}=await import('../src/browser-companion-monitor.mjs');
+  const states=summarizeWorkflowRuns([
+    {status:'COMPLETED',workflowId:'PRIVATE'}, {status:'BLOCKED'}, {status:'CANCELLED'},
+    {status:'EXHAUSTED'}, {status:'WAITING_INPUT'}, {status:'PAUSED'}, {status:'RUNNING'},
+    {status:'PRIVATE_UNKNOWN'}]);
+  assert.deepEqual(states,{completed:1,stopped:3,waiting:2,other:2});
+  assert.equal(summarizeWorkflowRuns(null),null);
+  assert.equal(summarizeWorkflowRuns(Array(10001).fill({status:'RUNNING'})),null);
+  const sanitized=sanitizeMonitorSnapshot({workflows:{runCount:8,runStates:{...states,secret:'PRIVATE'}}});
+  assert.deepEqual(sanitized.workflows.runStates,states);
+  assert.equal(sanitizeMonitorSnapshot({workflows:{runCount:9,runStates:states}}).workflows.runStates,null);
+  assert.equal(sanitizeMonitorSnapshot({workflows:{runCount:8,runStates:{...states,other:-1}}}).workflows.runStates,null);
+  assert.equal(sanitizeMonitorSnapshot({workflows:{runCount:3}}).workflows.runStates,null);
+  assert.doesNotMatch(JSON.stringify(sanitized.workflows),/PRIVATE/);
 });

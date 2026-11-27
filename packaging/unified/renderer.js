@@ -67,7 +67,8 @@ const monitorSelect=document.getElementById('monitor-select');
 const monitorRefresh=document.getElementById('monitor-refresh');
 const monitorResult=document.getElementById('monitor-result');
 const dashboardFreshness=document.getElementById('dashboard-freshness');
-const dashboardKeys=['gui','browser','workflows','runs','extensions','relay','active','locks'];
+const dashboardKeys=['gui','browser','workflows','runs','extensions','relay','active','locks','run-completed','run-stopped','run-waiting','run-other'];
+const profileList=document.getElementById('profile-list'),profileStatus=document.getElementById('profile-status');
 let monitorGeneration=0, expirationTimer;
 const countLabel=v=>Number.isSafeInteger(v)&&v>=0?String(v):'Unknown';
 function readinessLabel(v){
@@ -102,6 +103,7 @@ function showDashboard(selected,generation){
     workflows:workflowLabel(summary.workflows),runs:countLabel(summary.workflows?.runCount),
     extensions:countLabel(summary.extensionCount),relay:relayLabel(summary.eventRelay),active:countLabel(summary.operations?.active),
     locks:countLabel(summary.operations?.lockedKeys)};
+  for(const key of ['completed','stopped','waiting','other'])values['run-'+key]=countLabel(summary.workflows?.runStates?.[key]);
   for(const key of dashboardKeys)show(document.getElementById('dashboard-'+key),values[key]);
   show(dashboardFreshness,'Read-only snapshot · expires automatically. Not an action grant.');
   expirationTimer=setTimeout(()=>{
@@ -115,6 +117,7 @@ async function refreshMonitors(){
   const generation=++monitorGeneration;
   clearDashboard();
   monitorRefresh.disabled=true;monitorSelect.disabled=true;monitorTarget.disabled=true;monitorTarget.replaceChildren();
+  profileList.replaceChildren();show(profileStatus,'Discovering local records…');
   const placeholder=document.createElement('option');
   placeholder.value='';placeholder.textContent='Choose an instance';monitorTarget.append(placeholder);
   try{
@@ -124,10 +127,12 @@ async function refreshMonitors(){
       const option=document.createElement('option');
       option.value=entry.scopeId;option.textContent=entry.profile+' : '+entry.port+' — '+entry.version;
       monitorTarget.append(option);
+      const row=document.createElement('li');show(row,option.textContent);profileList.append(row);
     }
     monitorTarget.value='';
+    show(profileStatus,entries.length+' local profile/port records observed at discovery; select to revalidate.');
     show(monitorResult,entries.length?'Select the exact Core profile and port.':'No fresh instance records.');
-  }catch{if(generation===monitorGeneration)show(monitorResult,'Monitor discovery unavailable. No fallback selected.');}
+  }catch{if(generation===monitorGeneration){profileList.replaceChildren();show(profileStatus,'Discovery unavailable.');show(monitorResult,'Monitor discovery unavailable. No fallback selected.');}}
   finally{if(generation===monitorGeneration){monitorRefresh.disabled=false;monitorTarget.disabled=false;}}
 }
 monitorRefresh.addEventListener('click',()=>void refreshMonitors());

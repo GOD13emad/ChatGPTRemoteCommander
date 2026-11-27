@@ -56,6 +56,27 @@ async function provePrivateRoot(root, { platform = process.platform } = {}) {
   return root;
 }
 
+const RUN_STATE_KEYS=['completed','stopped','waiting','other'];
+const boundedRunCount=n=>Number.isSafeInteger(n)&&n>=0&&n<=10000;
+function validateRunStates(value,total){
+  if(!boundedRunCount(total)||!value||typeof value!=='object'||Array.isArray(value)||
+     RUN_STATE_KEYS.some(key=>!boundedRunCount(value[key])))return null;
+  const result=Object.fromEntries(RUN_STATE_KEYS.map(key=>[key,value[key]]));
+  return Object.values(result).reduce((a,b)=>a+b,0)===total?result:null;
+}
+// Persisted run states are not a count of active workers. No IDs or run content.
+export function summarizeWorkflowRuns(runs){
+  if(!Array.isArray(runs)||!boundedRunCount(runs.length))return null;
+  const counts={completed:0,stopped:0,waiting:0,other:0};
+  for(const run of runs){
+    const status=run?.status;
+    const key=status==='COMPLETED'?'completed':
+      ['BLOCKED','CANCELLED','EXHAUSTED'].includes(status)?'stopped':
+      ['WAITING_INPUT','PAUSED'].includes(status)?'waiting':'other';
+    counts[key]++;
+  }
+  return counts;
+}
 export function sanitizeMonitorSnapshot(input, now = Date.now()) {
   const text = value => typeof value === 'string' ? value.slice(0, 160) : '';
   const optionalText = value => {
@@ -108,7 +129,8 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
     workflows: {
       enabled: truth(input?.workflows?.enabled),
       engineEnabled: truth(input?.workflows?.engineEnabled),
-      runCount: Number.isInteger(input?.workflows?.runCount) ? Math.max(0, Math.min(input.workflows.runCount, 10000)) : 0
+      runCount: Number.isInteger(input?.workflows?.runCount) ? Math.max(0, Math.min(input.workflows.runCount, 10000)) : 0,
+      runStates: validateRunStates(input?.workflows?.runStates,input?.workflows?.runCount)
     },
     extensions: { count: extensions.length, items: extensions },
     eventRelay: input?.eventRelay && typeof input.eventRelay==='object' ? {
@@ -186,7 +208,7 @@ function dashboardSummary(data) {
     gui:readiness(data.gui),
     browser:readiness(data.browser),
     workflows:{enabled:flag(data.workflows?.enabled),engineEnabled:flag(data.workflows?.engineEnabled),
-      runCount:count(data.workflows?.runCount,10000)},
+      runCount:count(data.workflows?.runCount,10000),runStates:validateRunStates(data.workflows?.runStates,data.workflows?.runCount)},
     extensionCount:Array.isArray(data.extensions?.items)?count(data.extensions.items.length,32):null,
     eventRelay:{enabled:flag(data.eventRelay?.enabled),ready:flag(data.eventRelay?.ready),deliveryConfirmed:false},
     operations:{active:count(data.operations?.active),lockedKeys:count(data.operations?.lockedKeys)}

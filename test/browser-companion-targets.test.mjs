@@ -121,7 +121,7 @@ test('dashboard clears stale and cross-selection responses without granting cont
   const timers=new Map();
   const result=(id,extra={})=>({scopeId:id,readOnly:true,actionAuthorization:false,
     expiresAtEpochMs:clock+10000,summary:{gui:{enabled:true,available:true,uncertain:false},
-    browser:{enabled:true,available:true,uncertain:true},workflows:{enabled:true,engineEnabled:true,runCount:7},
+    browser:{enabled:true,available:true,uncertain:true},workflows:{enabled:true,engineEnabled:true,runCount:7,runStates:{completed:1,stopped:2,waiting:3,other:1}},
     extensionCount:1,eventRelay:{enabled:true,ready:true,deliveryConfirmed:false},operations:{active:2,lockedKeys:3}},...extra});
   let catalogResponse={actionAuthorization:false,items:[{name:'Fixture add-on',state:'PLANNED',installable:false,platformSupported:true}]};
   const api={status:async()=>({preview:'stopped'}),preflight:async()=>({decision:'NO_PROMOTE'}),
@@ -136,6 +136,8 @@ test('dashboard clears stale and cross-selection responses without granting cont
   });
   await new Promise(setImmediate);
   assert.equal(get('addons-list').options.length,1);
+  assert.equal(get('profile-list').options.length,2);
+  assert.match(get('profile-status').textContent,/2.*observed/);
   assert.match(get('addons-status').textContent,/1 planned add-ons/);
   catalogResponse={actionAuthorization:true,items:[]};
   await get('addons-refresh').fire('click');await new Promise(setImmediate);
@@ -149,6 +151,10 @@ test('dashboard clears stale and cross-selection responses without granting cont
   assert.equal(get('dashboard-gui').textContent,'Available (reported)');
   assert.equal(get('dashboard-browser').textContent,'Uncertain');
   assert.equal(get('dashboard-runs').textContent,'7');
+  assert.equal(get('dashboard-run-completed').textContent,'1');
+  assert.equal(get('dashboard-run-stopped').textContent,'2');
+  assert.equal(get('dashboard-run-waiting').textContent,'3');
+  assert.equal(get('dashboard-run-other').textContent,'1');
   assert.equal(get('dashboard-active').textContent,'2');
   assert.equal(get('dashboard-relay').textContent,'Ready (reported; delivery unverified)');
   assert.equal(JSON.parse(get('monitor-result').textContent).scopeId,b);
@@ -156,6 +162,7 @@ test('dashboard clears stale and cross-selection responses without granting cont
   clock+=10000;[...timers.values()][0]();
   assert.equal(get('dashboard-gui').textContent,'Stale');
   assert.equal(get('dashboard-relay').textContent,'Stale');
+  assert.equal(get('dashboard-run-waiting').textContent,'Stale');
   assert.match(get('monitor-result').textContent,/stale/);
   choose(a);pending=button.fire('click');resolveSelection(result(b));await pending;
   assert.equal(get('dashboard-active').textContent,'Unknown');
@@ -166,6 +173,7 @@ test('dashboard clears stale and cross-selection responses without granting cont
   await get('monitor-refresh').fire('click');await new Promise(setImmediate);
   assert.equal(get('dashboard-gui').textContent,'Not selected');
   assert.equal(button.disabled,true);
+  assert.equal(get('dashboard-run-completed').textContent,'Not selected');
   assert.equal(timers.size,0);
 });
 

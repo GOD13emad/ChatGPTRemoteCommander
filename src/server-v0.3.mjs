@@ -33,7 +33,7 @@ import { compactToolSuccessPayload, serializeBoundedJsonResponse, synchronousCom
 import { MutationIdempotencyStore } from './mutation-idempotency.mjs';
 import { createAgentExtensionRegistry } from './agent-extensions.mjs';
 import { createOptionalEventHook } from './optional-event-hook.mjs';
-import { startBrowserCompanionMonitor } from './browser-companion-monitor.mjs';
+import { startBrowserCompanionMonitor, summarizeWorkflowRuns } from './browser-companion-monitor.mjs';
 import {
   NO_CODEX_POLICY, codexLaunchAuthorized, delegationRequirement, delegationStatus
 } from './no-codex-policy.mjs';
@@ -639,7 +639,8 @@ async function buildBrowserMonitorSnapshot() {
     workflows: {
       enabled: workflowStatus.enabled === true,
       engineEnabled: workflowStatus.engineEnabled === true,
-      runCount: runs.length
+      runCount: runs.length,
+      runStates: summarizeWorkflowRuns(runs)
     },
     extensions: { items:extensionItems },
     eventRelay: extensionEventRelay.status(),
