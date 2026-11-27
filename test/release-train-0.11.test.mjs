@@ -66,6 +66,11 @@ test('server, plugin, npm package and Windows Control Center development identit
  const numericVersion='0.12.0.'+ver.split('.').at(-1);
  assert.ok(cs.includes('<FileVersion>'+numericVersion+'</FileVersion>'));
  assert.ok(cs.includes('<AssemblyVersion>'+numericVersion+'</AssemblyVersion>'));
+ assert.ok(read('src/v2-private-pair-mcp-http-ingress.mjs').includes("version:'"+ver+"'"),
+   'private MCP ingress identity must match canonical release train');
+ assert.ok(read('tools/owner-pair-private-source-canary.mjs').includes("'"+ver+"'"),
+   'owner canary version must match source train');
+
 });
 test('historical releases are not silently deleted or accepted as product stable',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));
