@@ -1,0 +1,46 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #111722;
+  color: #edf0f6;
+  --muted: #abbacf;
+  --panel: #1b2534;
+  --line: #35445b;
+  --accent: #a6d4ff;
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 1rem; }
+body { margin: 0; }
+.shell { display: grid; grid-template-columns: 210px minmax(0,1fr); min-height: 100vh; }
+aside { position: sticky; top: 0; align-self: start; padding: 1.5rem 1rem; }
+.brand { display: block; font-weight: 750; font-size: 1rem; margin: 0 .4rem 1rem; }
+nav { display: grid; gap: .35rem; }
+nav a { color: var(--muted); text-decoration: none; padding: .7rem .8rem; border-radius: .55rem; border: 1px solid transparent; }
+nav a:hover, nav a:focus-visible { color: #fff; background: var(--panel); border-color: var(--line); }
+main { min-width: 0; padding: 1.5rem clamp(1rem,3vw,2rem) 2rem; max-width: 1100px; width: 100%; }
+h1 { font-size: 1.8rem; margin: .3rem 0; }
+h2 { font-size: 1.1rem; margin: 0 0 .75rem; }
+p { line-height: 1.5; }
+.sub, small, .eyebrow { color: var(--muted); }
+.eyebrow { font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem; margin-top: 1rem; min-width: 0; }
+section:target { border-color: var(--accent); }
+button, select { border-radius: 8px; padding: .65rem .85rem; font: inherit; margin: .2rem .3rem .2rem 0; max-width: 100%; }
+button { border: 1px solid transparent; font-weight: 650; cursor: pointer; background: var(--accent); color: #102235; }
+button:disabled { opacity: .5; cursor: default; }
+select { background: #121b29; color: #edf0f6; border: 1px solid var(--line); }
+:focus-visible { outline: 2px solid #d2e9ff; outline-offset: 3px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; background: #121b29; padding: .7rem; border-radius: .5rem; }
+pre:empty { display: none; }
+#result { min-height: 2rem; }
+@media (max-width: 740px) {
+  .shell { grid-template-columns: minmax(0,1fr); }
+  aside { position: static; padding: 1rem 1rem 0; }
+  nav { grid-template-columns: repeat(auto-fit,minmax(145px,1fr)); }
+  main { padding-top: .5rem; }
+}
+
+.monitor-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(135px,1fr)); gap: .6rem; margin: 1rem 0; }
+.monitor-grid > div { background: #121b29; border: 1px solid var(--line); border-radius: 8px; padding: .7rem; }
+.monitor-grid dt { font-size: .78rem; color: var(--muted); }
+.monitor-grid dd { margin: .35rem 0 0; font-weight: 650; overflow-wrap: anywhere; }

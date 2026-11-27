@@ -207,6 +207,30 @@ test('fresh instance discovery and explicit revalidation refuse stale, mismatche
   assert.equal(selected.root,browserCompanionInstanceRoot(base,a));
   assert.equal(selected.environmentVariable,'CGWA_COMPANION_ROOT');
   assert.equal(selected.actionAuthorization,false);assert.equal(selected.nativeValidationRequired,true);
+  // Dashboard data uses the same validated instance, never the shared root.
+  const rich={...instanceFixture(a.profile,a.port),
+    gui:{enabled:true,available:true,uncertain:false,capabilities:{screenshot:true,mouse:false}},
+    browser:{enabled:true,available:true,uncertain:true},
+    workflows:{enabled:true,engineEnabled:true,runCount:7},
+    extensions:{items:[{id:'fixture',version:'1',secret:'PRIVATE'}]},
+    operations:{active:2,lockedKeys:3}};
+  const updated=await writeBrowserCompanionInstanceMonitor(base,a,rich,{now:()=>1000});
+  const raw=JSON.parse(await readFile(updated.target,'utf8'));
+  raw.gui.reason='PRIVATE';raw.operations.active=Number.MAX_VALUE;
+  raw.extensions.items[0].id='PRIVATE';
+  await writeFile(updated.target,JSON.stringify(raw));
+  const dashboard=await selectBrowserCompanionInstance(aId,{base,now:10001});
+  assert.deepEqual(dashboard.summary,{
+    observedAtEpochMs:1000,
+    gui:{enabled:true,available:true,uncertain:false},
+    browser:{enabled:true,available:true,uncertain:true},
+    workflows:{enabled:true,engineEnabled:true,runCount:7},
+    extensionCount:1,
+    operations:{active:null,lockedKeys:3}
+  });
+  assert.doesNotMatch(JSON.stringify(dashboard.summary),/PRIVATE|configSha256|capabilities/);
+  assert.equal(dashboard.actionAuthorization,false);
+  assert.ok((await listBrowserCompanionInstances({base,now:10001})).every(x=>!Object.hasOwn(x,'summary')));
   await assert.rejects(()=>selectBrowserCompanionInstance(aId,{base,now:11000}),/STALE_OR_MISMATCH/);
   await assert.rejects(()=>selectBrowserCompanionInstance('../escape',{base,now:10001}),/SELECTION_INVALID/);
   const forged=JSON.parse(await readFile(old.target,'utf8'));forged.identity.profile=a.profile;forged.observedAtEpochMs=1000;forged.expiresAtEpochMs=11000;

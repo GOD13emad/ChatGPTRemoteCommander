@@ -168,7 +168,25 @@ async function inspectExistingPrivateDirectory(root) {
     (typeof process.getuid==='function'&&st.uid!==process.getuid())))
     throw Error('BROWSER_COMPANION_ROOT_NOT_PRIVATE');
 }
-async function readInstanceSelection(base,id,now) {
+// Only the selected, validated local instance may expose this read-only projection.
+// Do not relay backend labels, reason strings, extension identities, or policy grants.
+function dashboardSummary(data) {
+  const flag=value=>typeof value==='boolean'?value:null;
+  const count=(value,max=Number.MAX_SAFE_INTEGER)=>
+    Number.isSafeInteger(value)&&value>=0&&value<=max?value:null;
+  const readiness=value=>({enabled:flag(value?.enabled),available:flag(value?.available),
+    uncertain:flag(value?.uncertain)});
+  return {
+    observedAtEpochMs:data.observedAtEpochMs,
+    gui:readiness(data.gui),
+    browser:readiness(data.browser),
+    workflows:{enabled:flag(data.workflows?.enabled),engineEnabled:flag(data.workflows?.engineEnabled),
+      runCount:count(data.workflows?.runCount,10000)},
+    extensionCount:Array.isArray(data.extensions?.items)?count(data.extensions.items.length,32):null,
+    operations:{active:count(data.operations?.active),lockedKeys:count(data.operations?.lockedKeys)}
+  };
+}
+async function readInstanceSelection(base,id,now,includeSummary=false) {
   if(typeof id!=='string'||!SCOPE_ID.test(id))throw Error('BROWSER_COMPANION_SELECTION_INVALID');
   const instances=path.join(base,'instances'),root=path.join(instances,id);
   for(const dir of [base,instances,root])await inspectExistingPrivateDirectory(dir);
@@ -202,7 +220,7 @@ async function readInstanceSelection(base,id,now) {
     browserCompanionInstanceRoot(base,identity)!==root)
     throw Error('BROWSER_COMPANION_SELECTION_STALE_OR_MISMATCH');
   return {scopeId:id,profile:identity.profile,port:identity.port,version:identity.version,
-    expiresAtEpochMs:data.expiresAtEpochMs,root};
+    expiresAtEpochMs:data.expiresAtEpochMs,root,...(includeSummary?{summary:dashboardSummary(data)}:{})};
 }
 export async function listBrowserCompanionInstances({base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
   if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
@@ -219,7 +237,7 @@ export async function listBrowserCompanionInstances({base=defaultBrowserCompanio
 }
 export async function selectBrowserCompanionInstance(scopeId,{base=defaultBrowserCompanionRoot(),now=Date.now()}={}) {
   if(typeof base!=='string'||!path.isAbsolute(base))throw Error('BROWSER_COMPANION_ROOT_INVALID');
-  const selected=await readInstanceSelection(base,scopeId,now);
+  const selected=await readInstanceSelection(base,scopeId,now,true);
   if(process.platform==='win32')await ensureWindowsMonitorDirectories([base,path.join(base,'instances'),selected.root],{create:false});
   return {...selected,environmentVariable:'CGWA_COMPANION_ROOT',nativeValidationRequired:true,
     readOnly:true,actionAuthorization:false,ownerLaunchRequired:true};

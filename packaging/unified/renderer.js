@@ -64,13 +64,57 @@ void refreshBrowserTargets();
 
 const monitorTarget=document.getElementById('monitor-instance');
 const monitorSelect=document.getElementById('monitor-select');
+const monitorRefresh=document.getElementById('monitor-refresh');
 const monitorResult=document.getElementById('monitor-result');
+const dashboardFreshness=document.getElementById('dashboard-freshness');
+const dashboardKeys=['gui','browser','workflows','runs','extensions','active','locks'];
+let monitorGeneration=0, expirationTimer;
+const countLabel=v=>Number.isSafeInteger(v)&&v>=0?String(v):'Unknown';
+function readinessLabel(v){
+  if(v?.uncertain===true)return 'Uncertain';
+  if(v?.enabled===false)return 'Disabled';
+  if(v?.enabled!==true||v?.uncertain!==false)return 'Unknown';
+  return v.available===true?'Available (reported)':v.available===false?'Unavailable':'Unknown';
+}
+function workflowLabel(v){
+  if(v?.enabled===false||v?.engineEnabled===false)return 'Disabled';
+  return v?.enabled===true&&v?.engineEnabled===true?'Enabled (reported)':'Unknown';
+}
+function clearDashboard(message='Not selected',note='Select a local Core instance to inspect its snapshot.'){
+  clearTimeout(expirationTimer);
+  for(const key of dashboardKeys)show(document.getElementById('dashboard-'+key),message);
+  show(dashboardFreshness,note);
+}
+function showDashboard(selected,generation){
+  const summary=selected?.summary;
+  const ttl=selected?.expiresAtEpochMs-Date.now();
+  if(selected?.readOnly!==true||selected?.actionAuthorization!==false||
+    !summary||!Number.isFinite(ttl)||ttl<=0||ttl>30000){
+    clearDashboard('Unknown','Snapshot unavailable or stale. Select again.');
+    return false;
+  }
+  const values={gui:readinessLabel(summary.gui),browser:readinessLabel(summary.browser),
+    workflows:workflowLabel(summary.workflows),runs:countLabel(summary.workflows?.runCount),
+    extensions:countLabel(summary.extensionCount),active:countLabel(summary.operations?.active),
+    locks:countLabel(summary.operations?.lockedKeys)};
+  for(const key of dashboardKeys)show(document.getElementById('dashboard-'+key),values[key]);
+  show(dashboardFreshness,'Read-only snapshot · expires automatically. Not an action grant.');
+  expirationTimer=setTimeout(()=>{
+    if(generation!==monitorGeneration)return;
+    clearDashboard('Stale','Snapshot expired. Select again to refresh.');
+    show(monitorResult,'Selection stale or invalid. Refresh and select again.');
+  },ttl);
+  return true;
+}
 async function refreshMonitors(){
-  monitorSelect.disabled=true;monitorTarget.replaceChildren();
+  const generation=++monitorGeneration;
+  clearDashboard();
+  monitorRefresh.disabled=true;monitorSelect.disabled=true;monitorTarget.disabled=true;monitorTarget.replaceChildren();
   const placeholder=document.createElement('option');
   placeholder.value='';placeholder.textContent='Choose an instance';monitorTarget.append(placeholder);
   try{
     const entries=await window.commander.monitorInstances();
+    if(generation!==monitorGeneration)return;
     for(const entry of entries){
       const option=document.createElement('option');
       option.value=entry.scopeId;option.textContent=entry.profile+' : '+entry.port+' — '+entry.version;
@@ -78,16 +122,35 @@ async function refreshMonitors(){
     }
     monitorTarget.value='';
     show(monitorResult,entries.length?'Select the exact Core profile and port.':'No fresh instance records.');
-  }catch{show(monitorResult,'Monitor discovery unavailable. No fallback selected.');}
+  }catch{if(generation===monitorGeneration)show(monitorResult,'Monitor discovery unavailable. No fallback selected.');}
+  finally{if(generation===monitorGeneration){monitorRefresh.disabled=false;monitorTarget.disabled=false;}}
 }
-document.getElementById('monitor-refresh').addEventListener('click',()=>void refreshMonitors());
-monitorTarget.addEventListener('change',()=>{monitorSelect.disabled=!monitorTarget.value;show(monitorResult,'Selection not yet validated.');});
+monitorRefresh.addEventListener('click',()=>void refreshMonitors());
+monitorTarget.addEventListener('change',()=>{
+  ++monitorGeneration;clearDashboard();monitorSelect.disabled=!monitorTarget.value;
+  show(monitorResult,'Selection not yet validated.');
+});
 monitorSelect.addEventListener('click',async()=>{
+  const id=monitorTarget.value,generation=++monitorGeneration;
+  clearDashboard('Loading','Checking the selected local instance.');
   monitorSelect.disabled=true;
+  show(monitorResult,'Checking selection…');
   try{
-    const selected=await window.commander.monitorSelect(monitorTarget.value);
+    const selected=await window.commander.monitorSelect(id);
+    if(generation!==monitorGeneration||id!==monitorTarget.value)return;
+    if(selected?.scopeId!==id){
+      clearDashboard('Unknown','Selection did not match the requested instance.');
+      show(monitorResult,'Selection stale or invalid. Refresh and select again.');return;
+    }
+    if(!showDashboard(selected,generation)){
+      show(monitorResult,'Selection stale or invalid. Refresh and select again.');return;
+    }
     show(monitorResult,selected);
-  }catch{show(monitorResult,'Selection stale or invalid. Refresh and select again.');}
-  finally{monitorSelect.disabled=!monitorTarget.value;}
+  }catch{
+    if(generation!==monitorGeneration)return;
+    clearDashboard('Unknown','Snapshot unavailable or stale. Select again.');
+    show(monitorResult,'Selection stale or invalid. Refresh and select again.');
+  }
+  finally{if(generation===monitorGeneration)monitorSelect.disabled=!monitorTarget.value;}
 });
 void refreshMonitors();

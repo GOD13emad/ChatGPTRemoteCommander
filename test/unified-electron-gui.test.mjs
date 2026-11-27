@@ -28,6 +28,21 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
         env:launchEnv,timeout:25000});
       const page=await app.firstWindow({timeout:20000});
       assert.match(await page.title(),/Remote Commander/);
+      // The stylesheet must be loaded by the real packaged renderer under CSP,
+      // rather than merely be present in the source or the installer manifest.
+      const workspace=await page.locator('.shell').evaluate(el=>({
+        display:getComputedStyle(el).display,
+        localStyle:[...document.styleSheets].some(s=>s.href?.endsWith('/workspace.css')),
+        columns:getComputedStyle(el).gridTemplateColumns
+      }));
+      assert.equal(workspace.display,'grid');
+      assert.equal(workspace.localStyle,true);
+      assert.notEqual(workspace.columns,'none');
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'CEF monitor'}).click();
+      await page.waitForFunction(()=>location.hash==='#monitor-panel');
+      await page.locator('#monitor-panel').waitFor({state:'visible'});
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'Overview'}).click();
+      await page.waitForFunction(()=>location.hash==='#overview');
       await page.waitForFunction(()=>document.querySelector('#status')?.textContent?.includes('stopped'),
         null,{timeout:12000});
       // Selectable external-browser setup is part of the same native GUI,
@@ -47,7 +62,11 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       assert.ok(!path.relative(isolated,monitorBase).startsWith('..'));
       const instance={profile:'gui-qa-fixture',port:51913};
       const fixture={identity:{...instance,deviceName:'qa',version:'0.12.0-dev.13',
-        configSha256:'a'.repeat(64),platform:process.platform}};
+        configSha256:'a'.repeat(64),platform:process.platform},
+        gui:{enabled:true,available:true,uncertain:false},
+        browser:{enabled:true,available:true,uncertain:true},
+        workflows:{enabled:true,engineEnabled:true,runCount:7},
+        extensions:{items:[{id:'qa-extension',version:'1'}]},operations:{active:2,lockedKeys:3}};
       const written=await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture);
       const scopeId=path.basename(path.dirname(written.target));
       await page.locator('#monitor-refresh').click();
@@ -59,9 +78,14 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       assert.equal(selected.root,path.dirname(written.target));
       assert.equal(selected.actionAuthorization,false);
       assert.equal(selected.ownerLaunchRequired,true);
+      assert.equal(await page.locator('#dashboard-gui').innerText(),'Available (reported)');
+      assert.equal(await page.locator('#dashboard-browser').innerText(),'Uncertain');
+      assert.equal(await page.locator('#dashboard-runs').innerText(),'7');
+      assert.equal(await page.locator('#dashboard-active').innerText(),'2');
       await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture,{now:()=>1});
       await page.locator('#monitor-select').click();
       await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('Selection stale or invalid'),null,{timeout:8000});
+      assert.notEqual(await page.locator('#dashboard-gui').innerText(),'Available (reported)');
       console.log('RC012_CEF_INSTANCE_PICKER_GUI_FIXTURE_PASS');
 
 
