@@ -9,6 +9,8 @@ import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {verifyWorkerRegistration} from './worker-identity-authority.mjs';
+import {resolveLinuxNativeOwnerWitnessPaths}
+  from './linux-native-owner-witness-paths.mjs';
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,62}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
@@ -70,7 +72,7 @@ function boundedRun(args,input){
   });
 }
 export function createOwnerNativeSignedWorkerClient({
-  home=os.homedir(),profile
+  home=os.homedir(),profile,witnessSocketPath,witnessPublicKeyPath
 }={}){
   const uid=process.getuid?.();
   if(process.platform!=='linux'||!Number.isSafeInteger(uid)||uid<1
@@ -78,6 +80,10 @@ export function createOwnerNativeSignedWorkerClient({
     ||typeof profile!=='string'||!ID.test(profile)
     ||profile==='.'||profile==='..')
     fail('RC012_OWNER_SIGNER_PROFILE_INVALID');
+  const witness=resolveLinuxNativeOwnerWitnessPaths({
+    home,profile,uid,socketPath:witnessSocketPath,
+    publicKeyPath:witnessPublicKeyPath
+  });
   const credential=path.join(home,'.local/state/chatgpt-remote-commander',
     'private-pair-security-'+profile,'worker-identity','worker-ed25519-seed.cred');
   return Object.freeze({
@@ -93,6 +99,8 @@ export function createOwnerNativeSignedWorkerClient({
         '-p','NoNewPrivileges=yes','-p','RuntimeMaxSec=25s',
         '-p','LoadCredentialEncrypted=worker-ed25519-seed:'+credential,
         '-E','RC012_NATIVE_SIGNER_SCOPE=SIGNED_ENVELOPE_NO_GRANT',
+        '-E','RC012_OWNER_WITNESS_SOCKET_PATH='+witness.socketPath,
+        '-E','RC012_OWNER_WITNESS_PUBLIC_KEY_PATH='+witness.publicKeyPath,
         node,signer,profile
       ],input+'\n');
       let envelope;

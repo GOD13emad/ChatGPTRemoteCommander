@@ -148,7 +148,11 @@ export async function createOwnerPrivatePairBootstrap({
     resolveTransportIdentity:signedBroker.resolveTransportIdentity
   });
   const keyProof=await keyAttestor.resolveVerifiedWorkerKey();
-  const signer=createOwnerNativeSignedWorkerClient({home,profile:selected});
+  const signer=createOwnerNativeSignedWorkerClient({
+    home,profile:selected,
+    witnessSocketPath:process.env.RC012_OWNER_WITNESS_SOCKET_PATH,
+    witnessPublicKeyPath:process.env.RC012_OWNER_WITNESS_PUBLIC_KEY_PATH
+  });
   const securityDir=path.join(home,'.local/state/chatgpt-remote-commander/private-pair-security-'+selected);
   privateDir(securityDir,uid);
   const socketDir='/run/user/'+uid+'/rc012-owner-admin-'+selected;

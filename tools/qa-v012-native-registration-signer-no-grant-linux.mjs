@@ -17,12 +17,9 @@ import {createLinuxOwnerWorkerKeyEvidence}
   from '../src/v012-owner-worker-key-evidence-linux.mjs';
 import {verifyWorkerRegistration}
   from '../src/worker-identity-authority.mjs';
+import {resolveLinuxNativeOwnerWitnessPaths}
+  from '../src/linux-native-owner-witness-paths.mjs';
 const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
-const SOCKET_LABELS=Object.freeze({
-  'mmz-emad-laptop':'rc012-mmz-witness',
-  'saeed-emad-laptop':'rc012-saeed-witness',
-  'chatgpt-remote-commander':'rc012-default-witness'
-});
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 async function main(){
   const profile=process.argv[2],uid=process.getuid?.();
@@ -34,16 +31,19 @@ async function main(){
   const home=os.homedir(),owner=createLinuxNativeOwnerSessionProvider({ownerIdentityMode:'host-uid-v2'});
   const dir=resolvePinnedOwnerTunnelDirectory({home,profile,ownerUid:uid});
   const pin=readLinuxOwnerTunnelPin({directory:dir,ownerUid:uid});
-  const socketLabel=SOCKET_LABELS[profile]??'rc012-'+profile+'-witness';
+  const witness=resolveLinuxNativeOwnerWitnessPaths({
+    home,profile,uid,
+    socketPath:process.env.RC012_OWNER_WITNESS_SOCKET_PATH,
+    publicKeyPath:process.env.RC012_OWNER_WITNESS_PUBLIC_KEY_PATH
+  });
   const transport=await createLinuxSignedBrokerTransport({
     hostId:pin.hostId,profileId:profile,
     expectedOwnerSidHash:await owner.resolveOwnerSidHash(),
     expectedClientLeafDerSha256:pin.expectedClientLeafDerSha256,
     expectedExecutableSha256:pin.expectedExecutableSha256,
     pinFile:path.join(dir,'owner-tunnel-trust.json'),
-    socketPath:'/run/user/'+uid+'/'+socketLabel+'/proof.sock',
-    publicKeyPath:path.join(home,'.local/state/chatgpt-remote-commander',
-      'private-pair-security-'+profile,'native-witness','public.pem'),
+    socketPath:witness.socketPath,
+    publicKeyPath:witness.publicKeyPath,
     resolveOwnerSidHash:owner.resolveOwnerSidHash
   });
   const evidence=await createLinuxOwnerWorkerKeyEvidence({
@@ -72,6 +72,8 @@ async function main(){
     '-p','NoNewPrivileges=yes','-p','RuntimeMaxSec=25s',
     '-p','LoadCredentialEncrypted=worker-ed25519-seed:'+credential,
     '-E','RC012_NATIVE_SIGNER_SCOPE=SIGNED_ENVELOPE_NO_GRANT',
+    '-E','RC012_OWNER_WITNESS_SOCKET_PATH='+witness.socketPath,
+    '-E','RC012_OWNER_WITNESS_PUBLIC_KEY_PATH='+witness.publicKeyPath,
     exec,signer,profile
   ],{
     input:JSON.stringify(intent)+'\n',encoding:'utf8',

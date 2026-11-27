@@ -56,7 +56,8 @@ const files = [
   "test/v012-native-worker-registration-signer-linux.test.mjs",
   "test/v012-owner-worker-signer-client-linux.test.mjs",
   "test/rc012-owner-native-scoped-canary-bootstrap-linux.test.mjs",
-  "test/rc012-runtime-version-contract.test.mjs"
+  "test/rc012-runtime-version-contract.test.mjs",
+  "test/linux-native-owner-witness-paths.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -106,7 +107,8 @@ const batches = [
   files.slice(51, 52), // systemd signer denies unprovisioned credentials
   files.slice(52, 53), // One-shot native signer client source/credential denial
   files.slice(53, 54), // Explicit owner-scoped bootstrap, no auto grants
-  files.slice(54, 55) // Exact public/private runtime version and release identity
+  files.slice(54, 55), // Exact public/private runtime version and release identity
+  files.slice(55, 56) // Owner-pinned native witness paths are portable and explicit
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length

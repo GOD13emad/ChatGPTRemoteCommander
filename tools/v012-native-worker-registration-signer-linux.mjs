@@ -18,13 +18,10 @@ import {createSystemdWorkerKeyProvider}
   from '../src/native-worker-key-provider-linux.mjs';
 import {signV012NativeWorkerEnrollment}
   from '../src/v012-native-worker-registration-signer.mjs';
+import {resolveLinuxNativeOwnerWitnessPaths}
+  from '../src/linux-native-owner-witness-paths.mjs';
 
 const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
-const SOCKET_LABELS=Object.freeze({
-  'mmz-emad-laptop':'rc012-mmz-witness',
-  'saeed-emad-laptop':'rc012-saeed-witness',
-  'chatgpt-remote-commander':'rc012-default-witness'
-});
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 export async function oneShotNativeWorkerSigner({profile,readInput}={}){
   if(process.platform!=='linux'||process.getuid?.()<1
@@ -33,10 +30,12 @@ export async function oneShotNativeWorkerSigner({profile,readInput}={}){
     ||typeof process.env.CREDENTIALS_DIRECTORY!=='string'
     ||typeof readInput!=='function')
     fail('RC012_NATIVE_SIGNER_CREDENTIAL_SCOPE_REQUIRED');
-  const home=os.homedir(),uid=process.getuid(),runtime=SOCKET_LABELS[profile]??'rc012-'+profile+'-witness';
-  const socketPath='/run/user/'+uid+'/'+runtime+'/proof.sock';
-  if(Buffer.byteLength(socketPath)>100)
-    fail('RC012_NATIVE_SIGNER_SOCKET_UNSUPPORTED');
+  const home=os.homedir(),uid=process.getuid();
+  const witness=resolveLinuxNativeOwnerWitnessPaths({
+    home,profile,uid,
+    socketPath:process.env.RC012_OWNER_WITNESS_SOCKET_PATH,
+    publicKeyPath:process.env.RC012_OWNER_WITNESS_PUBLIC_KEY_PATH
+  });
   const owner=createLinuxNativeOwnerSessionProvider({ownerIdentityMode:'host-uid-v2'});
   const dir=resolvePinnedOwnerTunnelDirectory({home,profile,ownerUid:uid});
   const pin=readLinuxOwnerTunnelPin({directory:dir,ownerUid:uid});
@@ -46,9 +45,8 @@ export async function oneShotNativeWorkerSigner({profile,readInput}={}){
     expectedClientLeafDerSha256:pin.expectedClientLeafDerSha256,
     expectedExecutableSha256:pin.expectedExecutableSha256,
     pinFile:path.join(dir,'owner-tunnel-trust.json'),
-    socketPath,
-    publicKeyPath:path.join(home,'.local/state/chatgpt-remote-commander',
-      'private-pair-security-'+profile,'native-witness','public.pem'),
+    socketPath:witness.socketPath,
+    publicKeyPath:witness.publicKeyPath,
     resolveOwnerSidHash:owner.resolveOwnerSidHash
   });
   const keyEvidence=createLinuxOwnerWorkerKeyEvidence({
