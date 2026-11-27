@@ -45,7 +45,8 @@ const files = [
   "test/v012-native-deferred-lease.test.mjs",
   "test/v012-native-async-root-lifetime.test.mjs",
   "test/v012-native-deferred-proof-authenticity.test.mjs",
-  "test/v012-native-cessation-certificate.test.mjs"
+  "test/v012-native-cessation-certificate.test.mjs",
+  "test/v012-native-cessation-issuer.test.mjs"
 ];
 
 // Keep each test executable once. WorkflowStore's two slow process fixtures
@@ -84,7 +85,8 @@ const batches = [
   files.slice(40, 41), // Exact native cessation, restart and stale-proof denial
   files.slice(41, 42), // Native async tree, durable public completion and revoke
   files.slice(42, 43), // Same-owner completion authenticity (90s fixture deadline)
-  files.slice(43, 44) // Durable certificate verification (synthetic keys only)
+  files.slice(43, 44), // Durable certificate verification (synthetic keys only)
+  files.slice(44, 45) // Native observation issuer (isolated fixture only)
 ];
 if(batches.flat().length!==files.length
   ||new Set(batches.flat()).size!==files.length

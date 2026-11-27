@@ -55,13 +55,18 @@ function claimRecord(value){
 export function encodeNativeCessationCertificateClaims(value){
   return Buffer.from(JSON.stringify(claimRecord(value)),'utf8');
 }
+export function normalizeNativeCessationExpected(expected){
+  const e=exact(expected,EXPECTED);
+  e.binding=Object.freeze(bindingRecord(e.binding));
+  if(!safeId(e.hostId)||!safeId(e.brokerId)
+    ||![e.keySha256,e.inputHash,e.receiptSha256].every(x=>literal(x,HASH))
+    ||!time(e.admittedAtMs)||!PROVIDERS.has(e.provider))throw Error('INVALID_EXPECTED');
+  return Object.freeze(e);
+}
 export function verifyNativeCessationCertificate({packet,expected,publicKeyPem,now=Date.now()}={}){
   try{
-    const e=exact(expected,EXPECTED);
-    e.binding=bindingRecord(e.binding);
-    if(!safeId(e.hostId)||!safeId(e.brokerId)
-      ||![e.keySha256,e.inputHash,e.receiptSha256].every(x=>literal(x,HASH))
-      ||!time(e.admittedAtMs)||!time(now)||!PROVIDERS.has(e.provider))return null;
+    const e=normalizeNativeCessationExpected(expected);
+    if(!time(now))return null;
     const p=exact(packet,['claims','signature']);
     const c=claimRecord(p.claims);
     if(!literal(p.signature,/^[A-Za-z0-9+/]{86}==$/))return null;
