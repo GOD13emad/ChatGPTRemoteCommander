@@ -151,16 +151,20 @@ export function evaluateHarnessResult({stdout, exitCode, packageSha256}) {
 
 export async function runInstalledDenialPreflight(options) {
   const {installer, expectedSha256, harness, python} = options;
+  if (python !== 'python' && python !== 'python3')
+    throw new EvidenceError('PYTHON_COMMAND_INVALID');
   await validatePinnedRegularFile(installer, expectedSha256, MAX_PACKAGE_BYTES);
   await validatePinnedRegularFile(harness, PINNED_HARNESS_SHA256, MAX_HARNESS_BYTES);
   const stage = await stagePinnedInstaller(installer, expectedSha256);
   try {
-    const result = spawnSync(python,
-      [harness, '--installer', stage.path, '--sha256', expectedSha256],
-      {encoding:'utf8', cwd:path.dirname(harness),
-        env:privateHarnessEnvironment(), windowsHide:true,
-        timeout:240000, maxBuffer:MAX_RECEIPT_BYTES + 8192,
-        stdio:['ignore', 'pipe', 'pipe']});
+    const args = [harness, '--installer', stage.path, '--sha256', expectedSha256];
+    const childOptions = {encoding:'utf8', cwd:path.dirname(harness),
+      env:privateHarnessEnvironment(), windowsHide:true, shell:false,
+      timeout:240000, maxBuffer:MAX_RECEIPT_BYTES + 8192,
+      stdio:['ignore', 'pipe', 'pipe']};
+    const result = python === 'python'
+      ? spawnSync('python', args, childOptions)
+      : spawnSync('python3', args, childOptions);
     if (result.error || result.signal)
       return {...BASE,status:'BLOCKED',code:'HARNESS_EXECUTION_FAILED',
         denialCasesProved:0,requiredCases:10};
