@@ -10,10 +10,10 @@ test('legacy Emad Tunnel profile resolves to default pair only before canonical 
  try{
   const config=path.join(home,'.config','tunnel-client');
   fs.mkdirSync(config,{recursive:true});
-  fs.writeFileSync(path.join(config,'Emad.yaml'),'health:\n  listen_addr: "127.0.0.1:47832"\\n');
+  fs.writeFileSync(path.join(config,'Emad.yaml'),'health:\n  listen_addr: "127.0.0.1:47832"\n');
   const expected=path.join(home,'.config','chatgpt-remote-commander','private-pair','default');
   assert.equal(resolveLinuxOwnerPairEnrollmentDirectory({home,profileId:'Emad'}),expected);
-  fs.writeFileSync(path.join(config,'chatgpt-remote-commander.yaml'),'health:\n  listen_addr: "127.0.0.1:47833"\\n');
+  fs.writeFileSync(path.join(config,'chatgpt-remote-commander.yaml'),'health:\n  listen_addr: "127.0.0.1:47833"\n');
   assert.equal(resolveLinuxOwnerPairEnrollmentDirectory({home,profileId:'Emad'}),
    path.join(home,'.config','chatgpt-remote-commander','private-pair','Emad'));
  }finally{fs.rmSync(home,{recursive:true,force:true});}
