@@ -73,3 +73,13 @@ test('Windows helper and preparer guard ordering precedes version probes',()=>{
   assert.ok(g>=0&&p>g,file+' must verify before executing');
  }
 });
+
+test('native Windows tunnel companion, receipt and compatibility state qualification',
+ {skip:process.platform!=='win32',timeout:120000},()=>{
+ const result=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File',
+  path.join(repo,'test/windows-tunnel-client-provenance.ps1'),'-RepoRoot',repo],
+ {encoding:'utf8',timeout:110000,windowsHide:true});
+ assert.equal(result.error,undefined,result.error?.message);
+ assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
+ assert.match(result.stdout,/WINDOWS_TUNNEL_PROVENANCE passed=10 failed=0/);
+});
