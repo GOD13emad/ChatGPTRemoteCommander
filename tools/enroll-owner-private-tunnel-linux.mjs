@@ -41,7 +41,7 @@ function ownerFile(file,uid,size=65536){
  * canonical profile exists, Emad must use its own isolated pair directory.
  */
 export function resolveLinuxOwnerPairEnrollmentDirectory({home,profileId}={}){
-  if(typeof home!=='string'||!path.isAbsolute(home)||home.includes('\\0')
+  if(typeof home!=='string'||!path.isAbsolute(home)||home.includes('\0')
     ||home.length>4096||typeof profileId!=='string'
     ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileId)
     ||profileId==='.'||profileId==='..')
