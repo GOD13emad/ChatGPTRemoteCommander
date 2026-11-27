@@ -104,6 +104,28 @@ test('run-project preflight rejects scripts that launch Codex', async t => {
   await assert.doesNotReject(assertNoCodexDelegatingScript(process.platform==='win32'?'python.exe':'python',[good],dir));
 });
 
+test('script alias detection uses bounded literal identifiers without dynamic regex', async t => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-static-codex-alias-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const script=path.join(dir,'indirect.py');
+  const prefix='import subprocess\nRUNNER="codex.exe"\n';
+  const check=async (line, shouldDeny) => {
+    fs.writeFileSync(script,prefix+line+'\n');
+    const promise=assertNoCodexDelegatingScript(
+      process.platform==='win32'?'python.exe':'python',[script],dir);
+    if (shouldDeny) await assert.rejects(promise,error=>error?.code===POLICY_CODE);
+    else await assert.doesNotReject(promise);
+  };
+  await check('subprocess.Popen([RUNNER,"exec"])',true);
+  await check('subprocess.Popen([runner,"exec"])',true);
+  await check('spawn(other); subprocess.Popen([RUNNER])',true);
+  await check('subprocess.Popen(['+' '.repeat(699)+'RUNNER])',true);
+  await check('subprocess.Popen(['+' '.repeat(700)+'RUNNER])',false);
+  await check('subprocess.Popen(['+' '.repeat(699)+'RUNNER_EXTRA])',false);
+  await check('subprocess.Popen([RUNNER_EXTRA])',false);
+  await check('subprocess.Popen([\nRUNNER])',false);
+});
+
 test('shell preflight rejects script-mediated and package-manager Codex launches', async t => {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-no-codex-shell-'));
   t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
