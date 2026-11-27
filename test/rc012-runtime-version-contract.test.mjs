@@ -16,6 +16,15 @@ test('one committed runtime version matches source, unified GUI and NoPromote tr
  assert.equal(CORE_VERSION,lock.packages[''].version);
  assert.equal(CORE_VERSION,train.sourceVersion);
  assert.equal(CORE_VERSION,train.migration.targetVersion);
+ assert.equal(CORE_VERSION,read('plugin-template/plugin.json').version);
+ assert.equal(CORE_VERSION,read('plugin-template/.codex-plugin/plugin.json').version);
+ const numeric=CORE_VERSION.replace('-dev.','.');
+ const project=source('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
+ for(const [key,expected] of [['Version',CORE_VERSION],['FileVersion',numeric],['AssemblyVersion',numeric]]){
+  const values=[...project.matchAll(new RegExp('<'+key+'>([^<]+)</'+key+'>','g'))].map(m=>m[1]);
+  assert.deepEqual(values,[expected],key+' must match the common version exactly once');
+ }
+ assert.ok(source('docs/RELEASE_TRAIN_0.12.md').split('\n')[0].includes(CORE_VERSION));
  assert.equal(train.publishApproved,false);
  assert.equal(train.installedPromotionApproved,false);
  assert.equal(train.autoupdateApproved,false);

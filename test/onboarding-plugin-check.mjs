@@ -22,7 +22,11 @@ if (pkg.version !== '0.10.26') {
     fail('development candidate lacks explicit non-promotion release authority');
 }
 const serverSource = read('src/server-v0.3.mjs');
-const serverVersion = serverSource.match(/const VERSION = '([^']+)'/u)?.[1];
+const serverVersion = pkg.version.startsWith('0.12.')
+  ? (/^import \{CORE_VERSION as VERSION\} from '\.\/runtime-version\.mjs';$/mu.test(serverSource)
+      ? read('src/runtime-version.mjs').match(/^export const CORE_VERSION='([^']+)';$/mu)?.[1]
+      : undefined)
+  : serverSource.match(/const VERSION = '([^']+)'/u)?.[1];
 if (serverVersion !== pkg.version) fail(`server runtime version ${serverVersion ?? 'missing'} does not match package version ${pkg.version}`);
 
 for (const p of [

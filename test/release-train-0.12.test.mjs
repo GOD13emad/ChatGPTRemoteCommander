@@ -18,8 +18,8 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.equal(manifest.sourceVersion,corePkg.version);
  assert.equal(manifest.sourceVersion,guiPkg.version);
  assert.match(manifest.sourceVersion,/^0\.12\.0-dev\.[1-9][0-9]*$/);
- assert.equal(compareReleaseVersions(manifest.sourceVersion,'0.12.0-dev.20'),1,
-   'revocable canary candidate advances QA dev.20 and installed dev.16 without reusing a version');
+ assert.equal(compareReleaseVersions(manifest.sourceVersion,'0.12.0-dev.21'),1,
+   'qualified successor advances existing QA dev.21 without reusing its package identity');
  assert.equal(compareReleaseVersions('0.12.0',manifest.sourceVersion),1,'must remain development, never Stable');
  assert.equal(manifest.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
  assert.equal(manifest.sourceBaseSha,'40256873627780cc7b62359935e43bac5ef856b3');

@@ -97,3 +97,13 @@ test('Linux normal user install remains fail-closed after three apt failures', {
   assert.match(result.stderr,/APT_BOOTSTRAP_PREREQUISITES_FAILED_AFTER_3_ATTEMPTS/);
   assert.match(result.stdout,/USER_INSTALL_APT_BOUNDED_FAILURE_PASS/);
 });
+
+test('Debian/Ubuntu bootstrap installs the pinned CUA native runtime prerequisites',()=>{
+ for(const body of [functionBody,userFunctionBody]){
+  assert.ok(body);
+  const line=body.split('\n').find(x=>x.includes('apt-get -o Acquire::Retries=3 install -y '));
+  assert.ok(line);
+  const args=line.replace(/;.*$/,'').split(/\s+/);
+  for(const pkg of ['libx11-6','libxi6','libxkbcommon0']) assert.ok(args.includes(pkg),pkg);
+ }
+});

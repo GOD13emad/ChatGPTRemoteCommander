@@ -10,7 +10,7 @@ const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=p=>fs.readFileSync(path.join(repo,p),'utf8');
 const sha=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const linux={skip:process.platform!=='linux'};
-function fixture(t,kind){
+function fixture(t,kind,exitCode=0){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-dependency-order-'));
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const tools=path.join(root,'tools'), home=path.join(root,'home'), marker=path.join(root,'executed');
@@ -24,7 +24,7 @@ function fixture(t,kind){
  fs.mkdirSync(final,{recursive:true});
  const binary=path.join(final,prefix);
  const version=kind==='tunnel'?pin.version+'+'+pin.upstreamCommit:'cua-driver '+pin.version;
- const stub=()=>fs.writeFileSync(binary,'#!/bin/sh\nprintf invoked > "$RC_TEST_MARKER"\nprintf "%s\\n" "'+version+'"\n',{mode:0o700});
+ const stub=()=>fs.writeFileSync(binary,'#!/bin/sh\nprintf invoked > "$RC_TEST_MARKER"\nprintf "%s\\n" "'+version+'"\nexit '+exitCode+'\n',{mode:0o700});
  stub();
  asset.binarySha256=sha(binary);
  const companion=path.join(final,'cloudflared');
@@ -82,4 +82,11 @@ test('native Windows tunnel companion, receipt and compatibility state qualifica
  assert.equal(result.error,undefined,result.error?.message);
  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
  assert.match(result.stdout,/WINDOWS_TUNNEL_PROVENANCE passed=10 failed=0/);
+});
+
+test('pinned CUA version failure reports a bounded native runtime diagnostic and stays denied',linux,t=>{
+ const f=fixture(t,'cua',127);const r=f.run();
+ assert.notEqual(r.status,0);assert.ok(fs.existsSync(f.marker));
+ assert.match(r.stderr,/CUA_DRIVER_VERSION_PROBE_FAILED exit=127/);
+ assert.match(r.stderr,/CUA_DRIVER_EXISTING_PROVENANCE_INVALID/);
 });

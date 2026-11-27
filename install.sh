@@ -78,7 +78,7 @@ install_os_packages() {
     local attempt=1
     while (( attempt <= 3 )); do
       if $sudo_cmd apt-get -o Acquire::Retries=3 update &&
-         $sudo_cmd apt-get -o Acquire::Retries=3 install -y git curl unzip tar xz-utils ca-certificates python3; then
+         $sudo_cmd apt-get -o Acquire::Retries=3 install -y git curl unzip tar xz-utils ca-certificates python3 libx11-6 libxi6 libxkbcommon0; then
         return 0
       fi
       if (( attempt == 3 )); then

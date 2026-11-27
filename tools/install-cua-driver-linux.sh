@@ -57,7 +57,12 @@ verify_payload() {
   actual_sha="$(sha256sum "$FINAL_EXE" 2>/dev/null | awk '{print $1}')"
   receipt_sha="$(tr -d '\r\n ' < "$ARCHIVE_RECEIPT")"
   [[ "$actual_sha" == "$BINARY_SHA" && "$receipt_sha" == "$ASSET_SHA" ]] || return 1
-  actual_version="$("$FINAL_EXE" --version 2>/dev/null)" || return 1
+  if actual_version="$("$FINAL_EXE" --version 2>/dev/null)"; then
+    :
+  else
+    printf 'CUA_DRIVER_VERSION_PROBE_FAILED exit=%s; verify native runtime libraries (libX11, libXi, libxkbcommon)\n' "$?" >&2
+    return 1
+  fi
   [[ "$actual_version" == "cua-driver $VERSION" ]]
 }
 
@@ -143,7 +148,13 @@ EXTRACTED="$STAGE/extract/$BINARY"
 ACTUAL_BINARY_SHA="$(sha256sum "$EXTRACTED" | awk '{print $1}')"
 [[ "$ACTUAL_BINARY_SHA" == "$BINARY_SHA" ]] || { echo 'CUA_DRIVER_BINARY_SHA_MISMATCH' >&2; exit 1; }
 chmod 700 "$EXTRACTED"
-VERSION_TEXT="$("$EXTRACTED" --version 2>&1)"
+if VERSION_TEXT="$("$EXTRACTED" --version 2>&1)"; then
+  :
+else
+  probe_rc=$?
+  printf 'CUA_DRIVER_VERSION_PROBE_FAILED exit=%s; verify native runtime libraries (libX11, libXi, libxkbcommon)\n' "$probe_rc" >&2
+  exit "$probe_rc"
+fi
 [[ "$VERSION_TEXT" == "cua-driver $VERSION" ]] || { echo "CUA_DRIVER_VERSION_MISMATCH: $VERSION_TEXT" >&2; exit 1; }
 printf '%s\n' "$ASSET_SHA" > "$STAGE/extract/.verified-archive-sha256"
 cat > "$STAGE/extract/cua-driver-installed.json" <<EOF
