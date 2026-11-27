@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { migrateCapabilityConfig, FULL_WORKFLOW_EXECUTION_TOOLS, normalizeCapabilityProfile } from './capability-profile.mjs';
+import { applyProjectRunnerConfig } from './project-runner-config.mjs';
 
 const PROFILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const LOCAL_WIN = /^[A-Za-z]:[\\/]/;
@@ -88,14 +89,20 @@ export function buildProfileInstance({
     ...migrated.profile,
     id: profile
   }, config, { id: profile, legacyExplicit: true });
-  const json = JSON.stringify(config, null, 2) + '\n';
+  const hasLocalRunnerProvider = Boolean(config.durableWorkflows?.runner?.provider?.kind);
+  const engineExplicitlyDisabled = config.capabilityProfile.disabledCapabilities.includes('workflow.project_engine');
+  const runnerPolicy = hasLocalRunnerProvider || engineExplicitlyDisabled
+    ? applyProjectRunnerConfig(config)
+    : { config, status: config.durableWorkflows?.runner?.enabled === true ? 'NO_LOCAL_COMMAND_PROVIDER' : 'RUNNER_DISABLED' };
+  const effectiveConfig = runnerPolicy.config;
+  const json = JSON.stringify(effectiveConfig, null, 2) + '\n';
   const configSha256 = createHash('sha256').update(json).digest('hex');
   const record = {
     schema: 1, profile, enabled: true, mcpPort: port,
     configPath: path.join(stateDirectory, 'config.json'),
     configSha256, isolated: true
   };
-  return { config, json, configSha256, record };
+  return { config: effectiveConfig, json, configSha256, record, runnerPolicyStatus: runnerPolicy.status };
 }
 
 export function validateInstanceRecord(record) {

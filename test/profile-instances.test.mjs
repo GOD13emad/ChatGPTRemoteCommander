@@ -60,3 +60,82 @@ test('isolated Full Power preserves scheduler/continuation and records GUI opt-o
   assert.equal(out.config.capabilityProfile.grantedCapabilities.includes('workflow.scheduler'),true);
   assert.equal(out.config.capabilityProfile.grantedCapabilities.includes('gui.mouse'),false);
 });
+
+test('Standard profile disables inherited command runner while explicit Full Power preserves it', () => {
+  const runnerBase = {
+    ...base,
+    durableWorkflows: {
+      enabled: true,
+      directory: path.join(stateRoot, 'runner-workflows'),
+      executionTools: ['read_text'],
+      runner: {
+        enabled: true,
+        autoTick: false,
+        provider: { kind: 'command', executable: process.execPath, args: [], timeoutMs: 30000 },
+        allowedTools: ['read_text']
+      }
+    }
+  };
+  const existing = {
+    ...runnerBase,
+    capabilityProfile: {
+      id: 'owner',
+      tier: 'FULL_POWER',
+      explicitlyAuthorized: true,
+      persistAcrossUpdates: true,
+      autoEnableNewCapabilities: true,
+      disabledCapabilities: []
+    }
+  };
+  const standard = buildProfileInstance({
+    baseConfig: runnerBase,
+    existingConfig: existing,
+    profile: 'standard-runner',
+    port: 47838,
+    stateDirectory: stateDir('standard-runner'),
+    powerMode: false
+  });
+  assert.equal(standard.config.capabilityProfile.tier, 'STANDARD');
+  assert.equal(standard.config.durableWorkflows.runner.enabled, false);
+  assert.equal(standard.runnerPolicyStatus, 'AUTHORITY_DISABLED');
+
+  const fullPower = buildProfileInstance({
+    baseConfig: runnerBase,
+    profile: 'power-runner',
+    port: 47839,
+    stateDirectory: stateDir('power-runner'),
+    powerMode: true
+  });
+  assert.equal(fullPower.config.capabilityProfile.tier, 'FULL_POWER');
+  assert.equal(fullPower.config.durableWorkflows.runner.enabled, true);
+  assert.equal(fullPower.runnerPolicyStatus, 'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+});
+test('profile builder leaves an injected planner slot untouched when no local provider is configured', () => {
+  const injectedBase = {
+    ...base,
+    durableWorkflows: {
+      enabled: true,
+      directory: path.join(stateRoot, 'injected-workflows'),
+      executionTools: ['read_text'],
+      runner: { enabled: true, autoTick: false, allowedTools: ['read_text'] }
+    }
+  };
+  const standard = buildProfileInstance({
+    baseConfig: injectedBase,
+    profile: 'standard-injected',
+    port: 47840,
+    stateDirectory: stateDir('standard-injected'),
+    powerMode: false
+  });
+  assert.equal(standard.config.durableWorkflows.runner.enabled, true);
+  assert.equal(standard.runnerPolicyStatus, 'NO_LOCAL_COMMAND_PROVIDER');
+});
+
+test('explicit engine revocation disables providerless runner in profile builder',()=>{
+  const runnerBase={...base,durableWorkflows:{enabled:true,runner:{enabled:true,autoTick:true}}};
+  const out=buildProfileInstance({baseConfig:runnerBase,profile:'revoked-injected',port:47841,
+    stateDirectory:stateDir('revoked-injected'),powerMode:true,disableCapabilities:['workflow.project_engine']});
+  assert.equal(out.config.durableWorkflows.runner.enabled,false);
+  assert.equal(out.config.durableWorkflows.runner.autoTick,false);
+  assert.equal(out.runnerPolicyStatus,'EXPLICITLY_DISABLED');
+});

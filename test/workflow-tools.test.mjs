@@ -74,3 +74,131 @@ test('image observations preserve MCP content with durable receipt, never cache 
  const args={id:'x',stepId:'a',expectedRevision:1,tool:'gui_screenshot',arguments:{}};const a=await tool.execute('workflow_call',args);assert.equal(a.__mcpContent[0].type,'image');
  const b=await tool.execute('workflow_call',args);assert.equal(b.cachedReceipt,true);assert.equal(b.__mcpContent,undefined);
 }finally{tool?.close();f.dispose();}});
+
+test('runtime runner policy disables inherited command providers outside explicit Full Power', async () => {
+  const f = fixture();
+  let tool;
+  try {
+    const config = {
+      capabilityProfile: {
+        id: 'standard-runtime',
+        tier: 'STANDARD',
+        explicitlyAuthorized: false,
+        grantedCapabilities: [],
+        disabledCapabilities: []
+      },
+      powerMode: {
+        enabled: true,
+        fullFilesystem: true,
+        allowShell: true,
+        allowProcessControl: true,
+        allowPermanentDelete: false,
+        guiControl: { enabled: true }
+      },
+      durableWorkflows: {
+        ...f.base.config.durableWorkflows,
+        executionTools: ['read_text'],
+        runner: {
+          enabled: true,
+          autoTick: false,
+          provider: { kind: 'command', executable: process.execPath, args: [], timeoutMs: 30000 },
+          allowedTools: ['read_text']
+        }
+      }
+    };
+    tool = createWorkflowTools({ ...f.base, config });
+    const status = await tool.execute('workflow_status', {});
+    assert.equal(status.runnerConfigured, false);
+    assert.equal(status.runnerPolicyStatus, 'AUTHORITY_DISABLED');
+  } finally {
+    tool?.close();
+    f.dispose();
+  }
+});
+test('runtime runner policy preserves an explicitly authorized Full Power command provider', async () => {
+  const f = fixture();
+  let tool;
+  try {
+    const config = {
+      capabilityProfile: {
+        id: 'full-power-runtime',
+        tier: 'FULL_POWER',
+        explicitlyAuthorized: true,
+        grantedCapabilities: [],
+        disabledCapabilities: []
+      },
+      powerMode: {
+        enabled: true,
+        fullFilesystem: true,
+        allowShell: true,
+        allowProcessControl: true,
+        allowPermanentDelete: false,
+        guiControl: { enabled: true }
+      },
+      durableWorkflows: {
+        ...f.base.config.durableWorkflows,
+        executionTools: ['read_text'],
+        runner: {
+          enabled: true,
+          autoTick: false,
+          provider: { kind: 'command', executable: process.execPath, args: [], timeoutMs: 30000 },
+          allowedTools: ['read_text']
+        }
+      }
+    };
+    tool = createWorkflowTools({ ...f.base, config });
+    const status = await tool.execute('workflow_status', {});
+    assert.equal(status.runnerConfigured, true);
+    assert.equal(status.runnerPolicyStatus, 'PRESERVED_EXPLICIT_NON_CODEX_PROVIDER');
+  } finally {
+    tool?.close();
+    f.dispose();
+  }
+});
+test('runtime runner policy preserves a trusted injected planner independently of local command configuration', async () => {
+  const f = fixture();
+  let tool;
+  try {
+    const config = {
+      capabilityProfile: {
+        id: 'standard-injected-runtime',
+        tier: 'STANDARD',
+        explicitlyAuthorized: false,
+        grantedCapabilities: [],
+        disabledCapabilities: []
+      },
+      powerMode: { enabled: false, fullFilesystem: false, allowShell: false, allowProcessControl: false },
+      durableWorkflows: {
+        ...f.base.config.durableWorkflows,
+        executionTools: ['read_text'],
+        runner: { enabled: true, autoTick: false, allowedTools: ['read_text'] }
+      }
+    };
+    tool = createWorkflowTools({ ...f.base, config, planner: {
+      describe: () => ({ kind: 'fixture', available: true, model: 'model-a', reasoningEffort: 'high' }),
+      plan: async () => ({ actions: [] })
+    } });
+    const status = await tool.execute('workflow_status', {});
+    assert.equal(status.runnerConfigured, true);
+    assert.equal(status.runnerPolicyStatus, 'PRESERVED_INJECTED_PLANNER');
+  } finally {
+    tool?.close();
+    f.dispose();
+  }
+});
+
+test('explicit engine revocation disables trusted injected planner without dispatch',async()=>{
+  const f=fixture();let t;let calls=0;
+  try{
+    const config={capabilityProfile:{id:'fixture',tier:'STANDARD',explicitlyAuthorized:false,
+      disabledCapabilities:['workflow.project_engine']},powerMode:{enabled:false},
+      durableWorkflows:{...f.base.config.durableWorkflows,directory:path.join(f.root,'revoked'),
+      executionTools:['read_text'],runner:{enabled:true,autoTick:false,allowedTools:['read_text']}}};
+    t=createWorkflowTools({...f.base,config,dispatch:async()=>{calls++;throw Error('unexpected dispatch')},
+      planner:{describe:()=>({kind:'fixture',available:true}),plan:async()=>{calls++;throw Error('unexpected planner')}}});
+    const status=await t.execute('workflow_status',{});
+    assert.equal(status.runnerConfigured,false);assert.equal(status.runnerPolicyStatus,'EXPLICITLY_DISABLED');
+    await assert.rejects(t.execute('workflow_run_status',{runId:'disabled'}),/WORKFLOW_RUNNER_DISABLED/);
+    assert.equal(calls,0);
+  }finally{t?.close();f.dispose();}
+});

@@ -55,7 +55,7 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
   const serverRoot = path.join(root, 'server');
   const dataRoot = path.join(root, 'data');
   const port = await freePort();
-  let child;
+  let child, childClosed;
 
   try {
     await fs.mkdir(serverRoot, { recursive: true });
@@ -96,18 +96,31 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
       env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath },
       stdio: ['ignore', 'pipe', 'pipe']
     });
-    let stderr = '';
-    child.stderr.on('data', chunk => { stderr += chunk.toString('utf8'); });
+    let output = '', spawnError = null, lastHealth = 'not attempted';
+    childClosed = new Promise(resolve => child.once('close', resolve));
+    child.on('error', error => { spawnError = error.code ?? error.name; });
+    const capture = chunk => { output = (output + chunk.toString('utf8')).slice(-12000); };
+    child.stdout.on('data', capture);
+    child.stderr.on('data', capture);
 
+    // Reuse the bounded startup-only readiness contract from profile-instance-http
+    // and mcp-tasks-extension. This does not change any product operation deadline.
     let healthy = false;
-    for (let attempt = 0; attempt < 400; attempt += 1) {
+    const startupDeadline = Date.now() + 30000;
+    while (Date.now() < startupDeadline) {
+      if (spawnError || child.exitCode !== null || child.signalCode !== null) break;
       try {
-        const response = await fetch(`http://127.0.0.1:${port}/health`);
+        const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(300) });
+        lastHealth = 'HTTP ' + response.status;
+        await response.body?.cancel();
         if (response.ok) { healthy = true; break; }
-      } catch {}
-      await wait(25);
+      } catch (error) {
+        lastHealth = error.cause?.code ?? error.name;
+      }
+      await wait(50);
     }
-    assert.equal(healthy, true, stderr);
+    assert.equal(healthy, true,
+      `MCP_CONFORMANCE_FIXTURE_HEALTH_NOT_READY_WITHIN_30000MS exitCode=${child.exitCode} signal=${child.signalCode} spawnError=${spawnError} lastHealth=${lastHealth}; output=${output}`);
     if(!(await requireNonElevatedLegacyHttp(t,port)))return;
 
     const legacyInit = await post(port, {
@@ -238,9 +251,9 @@ test('dual-era MCP contract, tool validation, cache hints and risk annotations',
     assert.equal(missingCapabilities.body.error.code, -32021);
   } finally {
     if (child) {
-      child.kill();
-      await Promise.race([once(child, 'close'), wait(2000)]);
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      if (childClosed) await Promise.race([childClosed, wait(2000)]);
     }
-    await fs.rm(root, { recursive: true, force: true });
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

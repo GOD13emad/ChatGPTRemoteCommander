@@ -282,3 +282,18 @@ linuxOnlyTest('native and merged dpkg builders strip group-write bits and verify
     assert.match(verify.stdout,/RC012_PACKAGE_CONTENT_PERMISSIONS_PASS/);
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
+
+linuxOnlyTest('merged DEB Installed-Size is recomputed from final payload',()=>{
+  const merger=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  const iterStart=merger.indexOf('def iter_entries(path):');
+  const iterEnd=merger.indexOf('for src,rel in iter_entries(gui):',iterStart);
+  const sizeStart=merger.indexOf('def installed_size_kib(root):');
+  const sizeEnd=merger.indexOf('size_kib=installed_size_kib(native)',sizeStart);
+  assert.ok(iterStart>=0&&iterEnd>iterStart&&sizeStart>=0&&sizeEnd>sizeStart);
+  assert.ok(merger.includes("size_kib=installed_size_kib(native)\ngui_control=set_installed_size(gui_control,size_kib)\n(native/'DEBIAN/control').write_text(gui_control)"));
+  const fixture=['import os,pathlib,stat,subprocess,tempfile',
+    merger.slice(iterStart,iterEnd),merger.slice(sizeStart,sizeEnd),
+    "with tempfile.TemporaryDirectory(prefix=\"rc012-size-fixture-\") as tmp:\n    root=pathlib.Path(tmp)/\"pkg\"; root.mkdir()\n    control=root/\"DEBIAN\"; control.mkdir(mode=0o755); control.chmod(0o755)\n    (control/\"metadata\").write_bytes(b\"x\"*8192)\n    payload=root/\"usr\"; payload.mkdir()\n    (payload/\"core\").write_bytes(b\"x\"*1025)\n    os.link(payload/\"core\",payload/\"core-hardlink\")\n    (payload/\"gui\").write_bytes(b\"y\"*2049)\n    (payload/\"link\").symlink_to(\"core\")\n    (payload/\"empty\").mkdir()\n    size=installed_size_kib(root)\n    assert size==9,size\n    raw=\"Package: rc012-size-fixture\\nVersion: 1.0\\nArchitecture: all\\nMaintainer: QA fixture\\nInstalled-Size: 1\\nDescription: fixture\\n continuation\\n\"\n    assert \"Installed-Size: 9\\n\" in set_installed_size(raw,size)\n    assert set_installed_size(raw,size).count(\"Installed-Size:\")==1\n    assert \"Installed-Size: 9\\n\" in set_installed_size(raw.replace(\"Installed-Size: 1\\n\",\"\"),size)\n    assert \"Installed-Size: 9\\n\" in set_installed_size(raw.replace(\"Installed-Size: 1\",\"installed-size: 1\"),size)\n    assert \" continuation\\n\" in set_installed_size(raw,size)\n    try: set_installed_size(raw+\"installed-size: 2\\n\",size)\n    except SystemExit as error: assert str(error)==\"RC012_MERGE_DUPLICATE_CONTROL Installed-Size\"\n    else: raise AssertionError(\"duplicate size accepted\")\n    (control/\"metadata\").unlink()\n    (control/\"control\").write_text(set_installed_size(raw,size))\n    out=pathlib.Path(tmp)/\"fixture.deb\"\n    subprocess.run([\"dpkg-deb\",\"--root-owner-group\",\"--build\",str(root),str(out)],check=True,capture_output=True)\n    actual=subprocess.check_output([\"dpkg-deb\",\"--field\",str(out),\"Installed-Size\"],text=True).strip()\n    assert actual==\"9\",actual\n"].join('\n');
+  const run=spawnSync('/usr/bin/python3',['-c',fixture],{encoding:'utf8',timeout:12000});
+  assert.equal(run.status,0,run.stderr||run.stdout);
+});

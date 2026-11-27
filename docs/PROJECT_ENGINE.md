@@ -31,6 +31,8 @@ An enabled scheduler can tick enrolled runs only when `runner.autoTick=true`. Ex
 
 ## Operator configuration
 
+Local command-provider authority is normalized at profile creation and again before runtime construction. The effective profile must be explicitly authorized Full Power; an explicitly revoked engine stays disabled even with a host-injected planner. Missing or nonboolean autoTick, adaptive and worker flags never opt in to automation. Status reports runnerPolicyStatus. Host-injected planners remain a separate trusted in-process integration; existing physical-root fencing is unchanged.
+
 Merge this fragment into the existing, approved `durableWorkflows` configuration. Every runner tool must also exist in the containing workflow `executionTools` policy. A mismatch fails startup rather than broadening authority.
 
 ```json

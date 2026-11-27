@@ -90,7 +90,7 @@ mkdir "$WORK/native" "$WORK/gui"
 dpkg-deb --raw-extract "$NATIVE" "$WORK/native"
 dpkg-deb --raw-extract "$GUI" "$WORK/gui"
 python3 - "$WORK/native" "$WORK/gui" <<'PY'
-import hashlib, json, os, pathlib, shutil, sys
+import hashlib, json, os, pathlib, shutil, stat, sys
 native=pathlib.Path(sys.argv[1])
 gui=pathlib.Path(sys.argv[2])
 runtime=native/'usr/lib/chatgpt-remote-commander'
@@ -236,6 +236,43 @@ for p in sorted((gui/'DEBIAN').iterdir()):
 for p in (native/'DEBIAN').iterdir():
     if p.name not in allowed_control:
         raise SystemExit('RC012_MERGE_NATIVE_CONTROL_UNEXPECTED '+p.name)
+# Recalculate the final merged payload, not the input GUI DEB.
+# Debian Policy 5.6.20: per-file KiB rounding; count hardlinked data once.
+def installed_size_kib(root):
+    total=1  # package root directory
+    seen=set()
+    for entry,rel in iter_entries(root):
+        if rel.parts[0]=='DEBIAN':continue
+        info=entry.lstat()
+        if stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            key=(info.st_dev,info.st_ino)
+            if info.st_nlink>1:
+                if key in seen:continue
+                seen.add(key)
+            total+=(info.st_size+1023)//1024
+        else:
+            total+=1
+    return total
+
+def set_installed_size(control,size):
+    rows=control.splitlines()
+    matches=[]
+    for i,row in enumerate(rows):
+        if row.partition(':')[0].lower()=='installed-size':
+            j=i+1
+            while j<len(rows) and rows[j].startswith((' ','\t')):j+=1
+            matches.append((i,j))
+    if len(matches)>1:raise SystemExit('RC012_MERGE_DUPLICATE_CONTROL Installed-Size')
+    if matches:
+        i,j=matches[0]
+        rows[i:j]=[f'Installed-Size: {size}']
+    else:
+        i=next((i for i,row in enumerate(rows) if row.startswith('Description: ')),len(rows))
+        rows.insert(i,f'Installed-Size: {size}')
+    return '\n'.join(rows)+'\n'
+
+size_kib=installed_size_kib(native)
+gui_control=set_installed_size(gui_control,size_kib)
 (native/'DEBIAN/control').write_text(gui_control)
 # Build one truthful inventory of every installed regular file.
 md5=[]

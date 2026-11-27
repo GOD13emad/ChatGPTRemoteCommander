@@ -1,6 +1,6 @@
 {
   "name": "remote-commander-unified",
-  "version": "0.12.0-dev.28",
+  "version": "0.12.0-dev.29",
   "private": true,
   "productName": "Remote Commander",
   "main": "main.cjs",
