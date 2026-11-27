@@ -76,3 +76,17 @@ test('durable transfer rejects an aliased configured root before inspecting queu
   assert.deepEqual(fs.readdirSync(outside),[]);
  }finally{fs.rmSync(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
+
+
+test('durable transfer rejects an alias in the configured root ancestry',()=>{
+ const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-root-ancestor-')));
+ const outside=path.join(base,'outside'),alias=path.join(base,'alias');
+ try{
+  fs.mkdirSync(path.join(outside,'owner'),{recursive:true});
+  fs.symlinkSync(outside,alias,process.platform==='win32'?'junction':'dir');
+  const home=path.join(alias,'owner');
+  assert.equal(fs.lstatSync(home).isSymbolicLink(),false);
+  assert.throws(()=>call(home,'job-status','--peer','Linux','--id','ancestor-alias-001'),/TRANSFER_ROOT_UNSAFE/);
+  assert.deepEqual(fs.readdirSync(path.join(outside,'owner')),[]);
+ }finally{fs.rmSync(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});

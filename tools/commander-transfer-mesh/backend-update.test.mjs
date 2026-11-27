@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 const tool=path.join(path.dirname(fileURLToPath(import.meta.url)),'backend-update.mjs');
 const candidate=path.join(path.dirname(fileURLToPath(import.meta.url)),'durable-send.mjs');
 const shaFile=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const expectedCandidate='8a1adf567ba0c75acd4ae790b59e085ce51cf197ff5a66e235121c3ba2babf1f';
+const expectedCandidate='1132c561bca26215b081306b05bd3bbca0c7726e15f8a299ada1005e37303f1e';
 const proc=(...args)=>spawnSync(process.execPath,[tool,...args],{encoding:'utf8',timeout:15000,windowsHide:true});
 function fixture(callback){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r16-backend-tx-'));

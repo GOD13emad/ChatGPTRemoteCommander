@@ -23,6 +23,10 @@ function assertInternalDirectories(p){
  // exist (the pilot node configuration is provisioned separately).
  const rootEntry=fs.lstatSync(root);
  assertion(rootEntry.isDirectory()&&!rootEntry.isSymbolicLink(),'TRANSFER_ROOT_UNSAFE');
+ // A regular final component can still be reached through an aliased
+ // ancestor. Require the provisioned root's canonical spelling; this
+ // check does not replace owner/ACL custody or prevent concurrent races.
+ assertion(path.relative(root,fs.realpathSync.native(root))==='','TRANSFER_ROOT_UNSAFE');
  const directories=[
   path.join(root,'jobs'),p.jobDir,
   path.join(root,'staging'),p.stageDir,
