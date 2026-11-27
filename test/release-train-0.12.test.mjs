@@ -13,8 +13,8 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  assert.deepEqual(manifest.fleetCoverage.acceptedHostIds,[]);
  assert.equal(manifest.fleetCoverage.mappingVerified,false);
  assert.equal(manifest.fleetCoverage.bootLoginAndRollbackVerified,false);
- assert.equal(manifest.sourceVersion,'0.12.0-dev.15');
- assert.equal(compareReleaseVersions(manifest.sourceVersion,'0.12.0-dev.14'),1,'new candidate advances installed dev.14');
+ assert.equal(manifest.sourceVersion,'0.12.0-dev.16');
+ assert.equal(compareReleaseVersions(manifest.sourceVersion,'0.12.0-dev.15'),1,'new candidate advances installed dev.15');
  assert.equal(compareReleaseVersions('0.12.0',manifest.sourceVersion),1,'must remain development, never Stable');
  assert.equal(manifest.status,'INTEGRATION_CANDIDATE_NOT_FINAL');
  assert.equal(manifest.sourceBaseSha,'40256873627780cc7b62359935e43bac5ef856b3');
@@ -43,7 +43,7 @@ test('0.12.0-dev.9 advances every 0.11 release and rejects noncanonical leading 
  assert.throws(()=>parseReleaseVersion('0.12.0-dev.01'),/RC_VERSION_INVALID/);
 });
 
-test('0.12 dev.15 preserves the historically owner-confirmed eight-host / 19-profile identity map without promoting deployment',()=>{
+test('0.12 dev.16 preserves the historically owner-confirmed eight-host / 19-profile identity map without promoting deployment',()=>{
  const mapping=manifest.migration;
  assert.ok(mapping,'historically approved migration identity map must not disappear during branch integration');
  assert.equal(mapping.id,'V012-FLEET-ACCOUNT-MAPPING-20261110');
