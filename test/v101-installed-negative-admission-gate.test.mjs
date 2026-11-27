@@ -114,7 +114,7 @@ test('CLI fails closed for wrong args and mismatching hash',()=>{
 import {createHash} from 'node:crypto';
 import {
   parseArgs, privateHarnessEnvironment, validatePinnedRegularFile,
-  evaluateHarnessResult, PINNED_HARNESS_SHA256
+  evaluateHarnessResult, PINNED_HARNESS_SHA256, runInstalledDenialPreflight
 } from '../tools/v1-01/run-installed-denial-acceptance.mjs';
 
 test('single-command negative QA accepts all ten denials but never claims G1',()=>{
@@ -171,6 +171,14 @@ test('single-command CLI requires unique exact flags and pinned package',()=>{
     ['--installer=/tmp/a','--sha256='+SHA,'--privileged=true']
   ])assert.throws(()=>parseArgs(bad));
 });
+test('direct preflight rejects non-allowlisted Python before touching artifacts',async()=>{
+  for (const python of [undefined, null, '', 'not-an-approved-interpreter', 'python.exe', 'python3 -I']) {
+    await assert.rejects(runInstalledDenialPreflight({python,
+      installer:'', harness:'', expectedSha256:SHA}),
+      {code:'PYTHON_COMMAND_INVALID'});
+  }
+});
+
 test('single-command Python child gets no ambient service or provider secret',()=>{
   const env=privateHarnessEnvironment({
     PATH:'/usr/bin',HOME:'/home/test',
