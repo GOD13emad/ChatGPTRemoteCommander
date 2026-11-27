@@ -14,13 +14,31 @@ export function canonicalToolSchema(tools){
 export function hashToolSchema(tools){
   return createHash('sha256').update(JSON.stringify(canonicalToolSchema(tools))).digest('hex');
 }
-async function fetchJson(url,options){
-  const r=await fetch(url,{...options,signal:AbortSignal.timeout(5000)});
+export function validateLocalSchemaEndpoint(value,role=null){
+  if(typeof value!=='string'||value.length>256)throw new Error('SCHEMA_ENDPOINT_INVALID');
+  let u;
+  try{u=new URL(value);}catch{throw new Error('SCHEMA_ENDPOINT_INVALID');}
+  if(u.protocol!=='http:'||!['127.0.0.1','localhost','[::1]'].includes(u.hostname)
+    ||u.username||u.password||u.search||u.hash
+    ||!Number.isSafeInteger(Number(u.port))||Number(u.port)<1||Number(u.port)>65535
+    ||!['/mcp','/router/status'].includes(u.pathname)
+    ||(role==='mcp'&&u.pathname!=='/mcp')
+    ||(role==='router'&&u.pathname!=='/router/status'))
+    throw new Error('SCHEMA_ENDPOINT_LOOPBACK_REQUIRED');
+  // Do not send a hostname through DNS/hosts resolution. Preserve explicit
+  // IPv6 loopback; the localhost spelling means IPv4 loopback for this gate.
+  const host=u.hostname==='[::1]'?'[::1]':'127.0.0.1';
+  const route=u.pathname==='/mcp'?'/mcp':'/router/status';
+  return `http://${host}:${Number(u.port)}${route}`;
+}
+async function fetchJson(url,options,role){
+  const safeUrl=validateLocalSchemaEndpoint(url,role);
+  const r=await fetch(safeUrl,{...options,redirect:'error',signal:AbortSignal.timeout(5000)});
   if(!r.ok)throw new Error('SCHEMA_HTTP_'+r.status);
   return r.json();
 }
 export async function fetchToolSchema(url){
-  const body=await fetchJson(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})});
+  const body=await fetchJson(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})},'mcp');
   if(!Array.isArray(body?.result?.tools))throw new Error('SCHEMA_TOOLS_LIST_INVALID');
   return body.result.tools;
 }
@@ -103,13 +121,16 @@ export function classifyToolSchemaCompatibility(oldTools,candidateTools){
   return {compatible:reasons.length===0,reasons:reasons.slice(0,64)};
 }
 export async function evaluateSchemaContinuity({oldUrl,candidateUrl,routerUrl}){
+  oldUrl=validateLocalSchemaEndpoint(oldUrl,'mcp');
+  candidateUrl=validateLocalSchemaEndpoint(candidateUrl,'mcp');
+  routerUrl=validateLocalSchemaEndpoint(routerUrl,'router');
   const [oldTools,candidateTools]=await Promise.all([fetchToolSchema(oldUrl),fetchToolSchema(candidateUrl)]);
   const oldHash=hashToolSchema(oldTools),candidateHash=hashToolSchema(candidateTools);
   if(oldHash===candidateHash)return {ok:true,changed:false,backwardCompatible:true,oldHash,candidateHash,decision:'UNCHANGED_SCHEMA'};
   const compatibility=classifyToolSchemaCompatibility(oldTools,candidateTools);
   if(compatibility.compatible)return {ok:true,changed:true,backwardCompatible:true,oldHash,candidateHash,decision:'BACKWARD_COMPATIBLE_SCHEMA'};
   let status;
-  try{status=await fetchJson(routerUrl,{method:'GET'});}catch(error){
+  try{status=await fetchJson(routerUrl,{method:'GET'},'router');}catch(error){
     return {ok:false,changed:true,backwardCompatible:false,compatibilityReasons:compatibility.reasons,oldHash,candidateHash,decision:'ROUTER_CONTINUITY_UNAVAILABLE',error:error.message};
   }
   const c=status?.schemaContinuity;
