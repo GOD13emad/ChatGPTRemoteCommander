@@ -213,6 +213,7 @@ test('fresh instance discovery and explicit revalidation refuse stale, mismatche
     browser:{enabled:true,available:true,uncertain:true},
     workflows:{enabled:true,engineEnabled:true,runCount:7},
     extensions:{items:[{id:'fixture',version:'1',secret:'PRIVATE'}]},
+    eventRelay:{enabled:true,ready:true,deliveryConfirmed:true,adapterPath:'PRIVATE',extensionId:'PRIVATE'},
     operations:{active:2,lockedKeys:3}};
   const updated=await writeBrowserCompanionInstanceMonitor(base,a,rich,{now:()=>1000});
   const raw=JSON.parse(await readFile(updated.target,'utf8'));
@@ -226,6 +227,7 @@ test('fresh instance discovery and explicit revalidation refuse stale, mismatche
     browser:{enabled:true,available:true,uncertain:true},
     workflows:{enabled:true,engineEnabled:true,runCount:7},
     extensionCount:1,
+    eventRelay:{enabled:true,ready:true,deliveryConfirmed:false},
     operations:{active:null,lockedKeys:3}
   });
   assert.doesNotMatch(JSON.stringify(dashboard.summary),/PRIVATE|configSha256|capabilities/);

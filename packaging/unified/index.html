@@ -12,6 +12,7 @@
 <a href="#browser-panel">Owned browser</a>
 <a href="#monitor-panel">CEF monitor</a>
 <a href="#companion-panel">Browser companion</a>
+<a href="#addons-panel">Add-ons</a>
 </nav></aside><main>
 <p class="eyebrow">Engineering preview · No promotion</p>
 <h1>Commander workspace</h1><p class="sub">Unified Windows/Linux installer • source-pinned engineering pilot</p>
@@ -20,7 +21,7 @@
 <section id="preview-panel" aria-labelledby="preview-panel-title"><h2 id="preview-panel-title">Isolated Core preview</h2><p>Preview uses loopback-only transport, a temporary data root, and no privileged tools. It does not replace your active Commander.</p>
 <button id="start" type="button">Start isolated preview</button><button id="stop" type="button" disabled>Stop preview</button><pre id="result" role="status" aria-live="polite"></pre></section>
 <section id="browser-panel" aria-labelledby="browser-panel-title"><h2 id="browser-panel-title">ChatGPT in owned Browser Core (experimental)</h2>
-<p>Opens ChatGPT in a separate Commander-owned Chromium profile. Sign in normally; no existing browser cookies, passwords or profile are reused. A companion extension can observe tab presence, not issue commands.</p>
+<p>Opens ChatGPT in the isolated Electron Chromium preview, not the separate native CEF Glass runtime. Sign in normally; no existing browser cookies, passwords or profile are reused. A companion extension can observe tab presence, not issue commands.</p>
 <button id="chat-open" type="button">Open ChatGPT in Browser Core</button><button id="chat-popup" type="button">Pair internal extension</button>
 <pre id="chat-result" role="status"></pre></section>
 <section id="monitor-panel" aria-labelledby="monitor-panel-title"><h2 id="monitor-panel-title">Native CEF monitor — select a Core instance</h2>
@@ -36,6 +37,7 @@
 <div><dt>Workflow engine</dt><dd id="dashboard-workflows">Not selected</dd></div>
 <div><dt>Recorded workflow runs</dt><dd id="dashboard-runs">Not selected</dd></div>
 <div><dt>Reported extensions</dt><dd id="dashboard-extensions">Not selected</dd></div>
+<div><dt>Optional event relay</dt><dd id="dashboard-relay">Not selected</dd></div>
 <div><dt>Active operations</dt><dd id="dashboard-active">Not selected</dd></div>
 <div><dt>Locked keys</dt><dd id="dashboard-locks">Not selected</dd></div>
 </dl>
@@ -51,6 +53,11 @@
 <button id="companion-browser-open" type="button">Open selected browser extension manager</button></p>
 <p><small>In your chosen Chromium browser, enable Developer mode and choose Load unpacked. Select the extension folder bundled by this Installer. Enabling is always your choice. Firefox needs a separately tested and signed extension.</small></p>
 <pre id="companion-result" role="status" aria-live="polite"></pre></section>
+<section id="addons-panel" aria-labelledby="addons-panel-title"><h2 id="addons-panel-title">Control Center Add-ons</h2>
+<p>Catalog shared with the native Control Center. Planned availability is not installation, activation or owner authorization. Optional event-relay readiness is reported separately by the selected Core; it does not prove notification delivery.</p>
+<button id="addons-refresh" type="button">Refresh add-ons</button>
+<p id="addons-status" role="status">Inspecting committed catalog…</p>
+<dl id="addons-list" class="monitor-grid" aria-label="Planned add-ons"></dl></section>
 <p><small>Not a signed Stable release. Privileged access, ChatGPT account enrollment, MeshCentral and Playwright browser integration require separate acceptance.</small></p>
 </main></div>
 <script src="./renderer.js" defer></script></body></html>

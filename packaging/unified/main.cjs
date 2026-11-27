@@ -11,6 +11,7 @@ const {pathToFileURL}=require('node:url');
 const fs=require('node:fs');
 const {createHash}=require('node:crypto');
 const {validateCore,preparePreviewCore,previewConfig}=require('./pilot-runtime.cjs');
+const {readCatalog}=require('./workspace-catalog.cjs');
 
 let window=null, child=null, previewPort=null, starting=false, lastError=null;
 let chatWindow=null, chatStarting=null, chatExtensionId=null, chatExtensionError=null, companionPopup=null;
@@ -269,6 +270,12 @@ else{
     ipcMain.handle('commander:companion:browser-open',(event,id)=>{
       if(event.sender!==window?.webContents)throw Error('COMPANION_OWNER_WINDOW_REQUIRED');
       return openExtensionManager(id);
+    });
+    ipcMain.handle('commander:catalog:addons',event=>{
+      if(event.sender!==window?.webContents)throw Error('WORKSPACE_OWNER_WINDOW_REQUIRED');
+      const source=validateCore(packagedCore());
+      const root=path.join(__dirname,app.isPackaged?'catalog':'.stage/catalog');
+      return readCatalog(root,source,process.platform);
     });
     ipcMain.handle('commander:monitor:list',async event=>{
       if(event.sender!==window?.webContents)throw Error('COMPANION_OWNER_WINDOW_REQUIRED');

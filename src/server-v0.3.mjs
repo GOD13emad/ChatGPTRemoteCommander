@@ -642,6 +642,7 @@ async function buildBrowserMonitorSnapshot() {
       runCount: runs.length
     },
     extensions: { items:extensionItems },
+    eventRelay: extensionEventRelay.status(),
     operations: {
       active:Number(concurrency.activeOperations ?? 0),
       lockedKeys:Number(concurrency.lockedKeys ?? 0)

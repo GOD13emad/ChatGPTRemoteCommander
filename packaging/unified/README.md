@@ -2,6 +2,26 @@
 
 Builds **one native installer per OS** from a single pinned Git commit: electron-builder NSIS (Windows, per-user) or DEB (Linux). Electron embeds its own Node.js, while `extraResources/core` carries the unchanged Commander source. A compact per-user preview copy is the only mutable runtime tree; no system-wide Node/.NET SDK is required to launch this package.
 
+## Shared workspace surfaces
+
+The cross-platform shell uses the selected local Core's existing owner-private
+monitor for Control Center status, including generic optional event-relay
+readiness. A relay reporting ready is not evidence of notification delivery,
+permission to invoke a tool, or installation of a specialty adapter. No
+specialty adapter is embedded by this GUI. Old monitor records without relay
+fields display Unknown; stale or changed selections clear the entire dashboard.
+
+The Add-ons section consumes the same `installer/products.json` catalog as
+the native GTK Control Center. Preparation stages the committed catalog bytes
+and an exact head/tree/hash receipt; the packaged renderer receives only a
+bounded read-only projection. Planned entries never become install buttons.
+Catalog changes trigger both native package QA jobs.
+
+The owned Electron ChatGPT preview and native CEF Glass are different browser
+runtimes; the CEF monitor is a read-only binding, not proof of native CEF
+installation, verified binary launch, or signed-in browser acceptance.
+Do not represent the engineering pilot as a final unified product.
+
 ## Universal native transaction engine (one installation structure, two OS adapters)
 
 The cross-host installation authority is **not a list of Emad/MMZ/server

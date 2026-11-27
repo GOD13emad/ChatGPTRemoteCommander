@@ -67,7 +67,7 @@ const monitorSelect=document.getElementById('monitor-select');
 const monitorRefresh=document.getElementById('monitor-refresh');
 const monitorResult=document.getElementById('monitor-result');
 const dashboardFreshness=document.getElementById('dashboard-freshness');
-const dashboardKeys=['gui','browser','workflows','runs','extensions','active','locks'];
+const dashboardKeys=['gui','browser','workflows','runs','extensions','relay','active','locks'];
 let monitorGeneration=0, expirationTimer;
 const countLabel=v=>Number.isSafeInteger(v)&&v>=0?String(v):'Unknown';
 function readinessLabel(v){
@@ -79,6 +79,11 @@ function readinessLabel(v){
 function workflowLabel(v){
   if(v?.enabled===false||v?.engineEnabled===false)return 'Disabled';
   return v?.enabled===true&&v?.engineEnabled===true?'Enabled (reported)':'Unknown';
+}
+function relayLabel(v){
+  if(v?.enabled===false)return 'Disabled';
+  if(v?.enabled!==true)return 'Unknown';
+  return v.ready===true?'Ready (reported; delivery unverified)':v.ready===false?'Not ready':'Unknown';
 }
 function clearDashboard(message='Not selected',note='Select a local Core instance to inspect its snapshot.'){
   clearTimeout(expirationTimer);
@@ -95,7 +100,7 @@ function showDashboard(selected,generation){
   }
   const values={gui:readinessLabel(summary.gui),browser:readinessLabel(summary.browser),
     workflows:workflowLabel(summary.workflows),runs:countLabel(summary.workflows?.runCount),
-    extensions:countLabel(summary.extensionCount),active:countLabel(summary.operations?.active),
+    extensions:countLabel(summary.extensionCount),relay:relayLabel(summary.eventRelay),active:countLabel(summary.operations?.active),
     locks:countLabel(summary.operations?.lockedKeys)};
   for(const key of dashboardKeys)show(document.getElementById('dashboard-'+key),values[key]);
   show(dashboardFreshness,'Read-only snapshot · expires automatically. Not an action grant.');
@@ -154,3 +159,27 @@ monitorSelect.addEventListener('click',async()=>{
   finally{if(generation===monitorGeneration)monitorSelect.disabled=!monitorTarget.value;}
 });
 void refreshMonitors();
+
+const addonsList=document.getElementById('addons-list'),addonsStatus=document.getElementById('addons-status'),addonsRefresh=document.getElementById('addons-refresh');
+async function refreshAddons(){
+  addonsRefresh.disabled=true;
+  addonsList.replaceChildren();
+  show(addonsStatus,'Inspecting committed catalog…');
+  try{
+    const data=await window.commander.catalogAddons();
+    if(data?.actionAuthorization!==false||!Array.isArray(data.items)||data.items.length>64||
+       data.items.some(x=>x?.installable!==false||x.state!=='PLANNED'||typeof x.name!=='string'||
+       typeof x.platformSupported!=='boolean'))throw Error('WORKSPACE_CATALOG_INVALID');
+    for(const item of data.items){
+      const card=document.createElement('div'),name=document.createElement('dt'),state=document.createElement('dd');
+      show(name,item.name);
+      show(state,item.platformSupported?'Planned · not installable':'Planned · unsupported platform');
+      card.append(name);card.append(state);addonsList.append(card);
+    }
+    show(addonsStatus,data.items.length+' planned add-ons · read-only');
+  }catch{
+    addonsList.replaceChildren();show(addonsStatus,'Catalog unavailable or invalid. No actions enabled.');
+  }finally{addonsRefresh.disabled=false;}
+}
+addonsRefresh.addEventListener('click',()=>void refreshAddons());
+void refreshAddons();

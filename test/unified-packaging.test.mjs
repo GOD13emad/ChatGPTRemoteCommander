@@ -154,7 +154,7 @@ test('all staged Core, Companion, packaging and qualification inputs trigger bot
  const patterns=[...prPaths.matchAll(/^      - "([^"\n]+)"\s*$/gm)].map(m=>m[1]);
  for(const target of [
    'src/**','tools/**','vendor/**','assets/**','config.json','package.json','package-lock.json',
-   'extensions/chatgpt-companion/**','packaging/unified/**','installer/universal-install-contract.json',
+   'extensions/chatgpt-companion/**','packaging/unified/**','installer/universal-install-contract.json','installer/products.json',
    'docs/release-train-0.12.json','test/**','.github/workflows/unified-installer-pilot.yml'
  ])assert.ok(patterns.includes(target),'missing source-triggered installer QA: '+target);
  assert.ok(patterns.every(pattern=>!pattern.startsWith('!')),'no negation may exclude a shipped input');

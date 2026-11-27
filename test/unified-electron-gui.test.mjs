@@ -41,6 +41,12 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'CEF monitor'}).click();
       await page.waitForFunction(()=>location.hash==='#monitor-panel');
       await page.locator('#monitor-panel').waitFor({state:'visible'});
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'Add-ons'}).click();
+      await page.waitForFunction(()=>document.querySelector('#addons-status')?.textContent?.includes('planned add-ons'),null,{timeout:8000});
+      const addons=await page.evaluate(()=>window.commander.catalogAddons());
+      assert.equal(addons.actionAuthorization,false);
+      assert.ok(addons.items.length>0&&addons.items.every(x=>x.installable===false));
+      assert.equal(await page.locator('#addons-list dt').count(),addons.items.length);
       await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'Overview'}).click();
       await page.waitForFunction(()=>location.hash==='#overview');
       await page.waitForFunction(()=>document.querySelector('#status')?.textContent?.includes('stopped'),
@@ -66,7 +72,7 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
         gui:{enabled:true,available:true,uncertain:false},
         browser:{enabled:true,available:true,uncertain:true},
         workflows:{enabled:true,engineEnabled:true,runCount:7},
-        extensions:{items:[{id:'qa-extension',version:'1'}]},operations:{active:2,lockedKeys:3}};
+        extensions:{items:[{id:'qa-extension',version:'1'}]},eventRelay:{enabled:true,ready:true},operations:{active:2,lockedKeys:3}};
       const written=await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture);
       const scopeId=path.basename(path.dirname(written.target));
       await page.locator('#monitor-refresh').click();
@@ -82,6 +88,7 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       assert.equal(await page.locator('#dashboard-browser').innerText(),'Uncertain');
       assert.equal(await page.locator('#dashboard-runs').innerText(),'7');
       assert.equal(await page.locator('#dashboard-active').innerText(),'2');
+      assert.equal(await page.locator('#dashboard-relay').innerText(),'Ready (reported; delivery unverified)');
       await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture,{now:()=>1});
       await page.locator('#monitor-select').click();
       await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('Selection stale or invalid'),null,{timeout:8000});

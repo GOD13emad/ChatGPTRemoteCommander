@@ -111,6 +111,11 @@ export function sanitizeMonitorSnapshot(input, now = Date.now()) {
       runCount: Number.isInteger(input?.workflows?.runCount) ? Math.max(0, Math.min(input.workflows.runCount, 10000)) : 0
     },
     extensions: { count: extensions.length, items: extensions },
+    eventRelay: input?.eventRelay && typeof input.eventRelay==='object' ? {
+      enabled: typeof input.eventRelay.enabled==='boolean'?input.eventRelay.enabled:null,
+      ready: typeof input.eventRelay.ready==='boolean'?input.eventRelay.ready:null,
+      deliveryConfirmed: false
+    } : null,
     operations: {
       active: Number.isInteger(input?.operations?.active) ? Math.max(0, input.operations.active) : 0,
       lockedKeys: Number.isInteger(input?.operations?.lockedKeys) ? Math.max(0, input.operations.lockedKeys) : 0
@@ -183,6 +188,7 @@ function dashboardSummary(data) {
     workflows:{enabled:flag(data.workflows?.enabled),engineEnabled:flag(data.workflows?.engineEnabled),
       runCount:count(data.workflows?.runCount,10000)},
     extensionCount:Array.isArray(data.extensions?.items)?count(data.extensions.items.length,32):null,
+    eventRelay:{enabled:flag(data.eventRelay?.enabled),ready:flag(data.eventRelay?.ready),deliveryConfirmed:false},
     operations:{active:count(data.operations?.active),lockedKeys:count(data.operations?.lockedKeys)}
   };
 }

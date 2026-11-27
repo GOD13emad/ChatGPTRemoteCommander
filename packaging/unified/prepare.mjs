@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import catalogContract from './workspace-catalog.cjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const repo=path.resolve(dir,'../..');
@@ -44,7 +45,7 @@ if(touched)throw Error('UNIFIED_SOURCE_UNCOMMITTED: '+touched.slice(0,300));
 const versionIdentityDirty=runGit(['status','--porcelain=v1','--',
   'docs/release-train-0.12.json','packaging/unified/package.json',
   'packaging/unified/package-lock.json',
-  'installer/universal-install-contract.json']);
+  'installer/products.json','installer/universal-install-contract.json']);
 if(versionIdentityDirty)throw Error('UNIFIED_VERSION_IDENTITY_UNCOMMITTED');
 if(fs.existsSync(core)){
   const marker=path.join(core,'source-manifest.json');
@@ -103,6 +104,34 @@ if(!/^0\.12\.0-dev\.[1-9][0-9]*$/.test(pkg.version)
    ||train.releaseTag!==null)
   throw Error('UNIFIED_WRONG_CORE_OR_RELEASE_TRAIN_VERSION');
 console.log('UNIFIED_SOURCE_PREPARED',JSON.stringify({head,tree,count:entries.length,version:pkg.version}));
+
+// Same catalog consumed by native Control Centers; stage only committed bytes.
+// This is a GUI resource, not another Core authority or install permission.
+const catalogRaw=execFileSync('git',['show',head+':installer/products.json'],{
+  cwd:repo,timeout:20000,maxBuffer:16384,env:{...process.env,GIT_NO_LAZY_FETCH:'1'}
+});
+const catalogDoc=JSON.parse(catalogRaw.toString('utf8'));
+catalogContract.projectAddons(catalogDoc,'linux');
+catalogContract.projectAddons(catalogDoc,'win32');
+const catalogDir=path.join(stage,'catalog');
+if(!fs.existsSync(catalogDir))fs.mkdirSync(catalogDir);
+const catalogStat=fs.lstatSync(catalogDir);
+if(!catalogStat.isDirectory()||catalogStat.isSymbolicLink())throw Error('WORKSPACE_CATALOG_STAGE_UNSAFE');
+const catalogFile=path.join(catalogDir,'products.json');
+const catalogReceipt=path.join(catalogDir,'source.json');
+for(const target of [catalogFile,catalogReceipt]){
+  if(fs.existsSync(target)){
+    const st=fs.lstatSync(target);
+    if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)throw Error('WORKSPACE_CATALOG_STAGE_UNSAFE');
+  }
+}
+const catalogHash=createHash('sha256').update(catalogRaw).digest('hex');
+for(const [target,bytes] of [[catalogFile,catalogRaw],[catalogReceipt,JSON.stringify({head,tree,sha256:catalogHash})+'\n']]){
+  const pending=target+'.pending';
+  fs.writeFileSync(pending,bytes,{flag:'wx'});
+  fs.renameSync(pending,target);
+}
+console.log('WORKSPACE_CATALOG_PREPARED',JSON.stringify({head,sha256:catalogHash,readOnly:true}));
 
 // The companion is an OPTIONAL signed-installer resource, never part of the
 // authoritative public Core archive or its scope/capability manifest.

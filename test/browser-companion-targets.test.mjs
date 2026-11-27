@@ -122,8 +122,10 @@ test('dashboard clears stale and cross-selection responses without granting cont
   const result=(id,extra={})=>({scopeId:id,readOnly:true,actionAuthorization:false,
     expiresAtEpochMs:clock+10000,summary:{gui:{enabled:true,available:true,uncertain:false},
     browser:{enabled:true,available:true,uncertain:true},workflows:{enabled:true,engineEnabled:true,runCount:7},
-    extensionCount:1,operations:{active:2,lockedKeys:3}},...extra});
+    extensionCount:1,eventRelay:{enabled:true,ready:true,deliveryConfirmed:false},operations:{active:2,lockedKeys:3}},...extra});
+  let catalogResponse={actionAuthorization:false,items:[{name:'Fixture add-on',state:'PLANNED',installable:false,platformSupported:true}]};
   const api={status:async()=>({preview:'stopped'}),preflight:async()=>({decision:'NO_PROMOTE'}),
+    catalogAddons:async()=>catalogResponse,
     companionStatus:async()=>({}),companionBrowserList:async()=>[],
     monitorInstances:async()=>[{scopeId:a,profile:'qa-a',port:1,version:'dev'},{scopeId:b,profile:'qa-b',port:2,version:'dev'}],
     monitorSelect:()=>new Promise(resolve=>{resolveSelection=resolve})};
@@ -133,6 +135,12 @@ test('dashboard clears stale and cross-selection responses without granting cont
     clearTimeout:id=>timers.delete(id)
   });
   await new Promise(setImmediate);
+  assert.equal(get('addons-list').options.length,1);
+  assert.match(get('addons-status').textContent,/1 planned add-ons/);
+  catalogResponse={actionAuthorization:true,items:[]};
+  await get('addons-refresh').fire('click');await new Promise(setImmediate);
+  assert.equal(get('addons-list').options.length,0);
+  assert.match(get('addons-status').textContent,/unavailable or invalid/);
   const select=get('monitor-instance'),button=get('monitor-select');
   const choose=id=>{select.value=id;select.fire('change')};
   choose(a);let pending=button.fire('click');const oldResolve=resolveSelection;
@@ -142,10 +150,12 @@ test('dashboard clears stale and cross-selection responses without granting cont
   assert.equal(get('dashboard-browser').textContent,'Uncertain');
   assert.equal(get('dashboard-runs').textContent,'7');
   assert.equal(get('dashboard-active').textContent,'2');
+  assert.equal(get('dashboard-relay').textContent,'Ready (reported; delivery unverified)');
   assert.equal(JSON.parse(get('monitor-result').textContent).scopeId,b);
   assert.equal(timers.size,1);
   clock+=10000;[...timers.values()][0]();
   assert.equal(get('dashboard-gui').textContent,'Stale');
+  assert.equal(get('dashboard-relay').textContent,'Stale');
   assert.match(get('monitor-result').textContent,/stale/);
   choose(a);pending=button.fire('click');resolveSelection(result(b));await pending;
   assert.equal(get('dashboard-active').textContent,'Unknown');
@@ -157,4 +167,44 @@ test('dashboard clears stale and cross-selection responses without granting cont
   assert.equal(get('dashboard-gui').textContent,'Not selected');
   assert.equal(button.disabled,true);
   assert.equal(timers.size,0);
+});
+
+test('Unified add-ons reuse the native Control Center catalog and fail closed',()=>{
+  const {projectAddons}=require('../packaging/unified/workspace-catalog.cjs');
+  const doc=JSON.parse(file('installer/products.json'));
+  const lin=projectAddons(doc,'linux'),win=projectAddons(doc,'win32');
+  assert.equal(lin.items.length,doc.controlCenterAddons.items.length);
+  assert.equal(lin.items.find(x=>x.id==='ufo2').platformSupported,false);
+  assert.equal(win.items.find(x=>x.id==='vllm').platformSupported,false);
+  assert.ok(lin.items.every(x=>x.installable===false&&x.state==='PLANNED'));
+  assert.equal(lin.actionAuthorization,false);
+  assert.doesNotMatch(JSON.stringify(lin),/https:|adapterPath|sha256/);
+  for(const alter of [
+    a=>a.defaultAutoInstall=true,
+    a=>a.items[0].downloadDefault=true,
+    a=>a.items[0].admission='approved',
+    a=>a.items.push({...a.items[0]}),
+    a=>a.items[0].platforms=['darwin'],
+    a=>a.items[0].name='bad\\nname'.replace('\\n','\n')
+  ]){
+    const bad=structuredClone(doc);alter(bad.controlCenterAddons);
+    assert.throws(()=>projectAddons(bad,'linux'),/WORKSPACE_CATALOG_INVALID/);
+  }
+  assert.throws(()=>projectAddons(doc,'darwin'),/WORKSPACE_CATALOG_INVALID/);
+});
+
+test('catalog receipt binds the exact source and rejects tampering',async t=>{
+  const {readCatalog}=require('../packaging/unified/workspace-catalog.cjs');
+  const {tmpdir}=await import('node:os');
+  const {createHash}=await import('node:crypto');
+  const root=fs.mkdtempSync(path.join(tmpdir(),'rc-catalog-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const raw=file('installer/products.json'),source={head:'a'.repeat(40),tree:'b'.repeat(40)};
+  const receipt={...source,sha256:createHash('sha256').update(raw).digest('hex')};
+  const catalog=path.join(root,'products.json'),manifest=path.join(root,'source.json');
+  fs.writeFileSync(catalog,raw);fs.writeFileSync(manifest,JSON.stringify(receipt));
+  assert.equal(readCatalog(root,source,'linux').actionAuthorization,false);
+  assert.throws(()=>readCatalog(root,{...source,tree:'c'.repeat(40)},'linux'),/WORKSPACE_CATALOG_INVALID/);
+  fs.appendFileSync(catalog,' ');
+  assert.throws(()=>readCatalog(root,source,'linux'),/WORKSPACE_CATALOG_INVALID/);
 });

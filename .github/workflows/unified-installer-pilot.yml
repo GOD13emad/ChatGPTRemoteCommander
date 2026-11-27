@@ -15,6 +15,7 @@ on:
       - "extensions/chatgpt-companion/**"
       - "packaging/unified/**"
       - "installer/universal-install-contract.json"
+      - "installer/products.json"
       - "docs/release-train-0.12.json"
       - "test/**"
       - ".github/workflows/unified-installer-pilot.yml"

@@ -14,7 +14,13 @@ files:
   - owner-windows-legacy-migrate.ps1
   - index.html
   - workspace.css
+  - workspace-catalog.cjs
   - renderer.js
+  - from: .stage/catalog
+    to: catalog
+    filter:
+      - products.json
+      - source.json
 asar: true
 extraResources:
   - from: .stage/core
