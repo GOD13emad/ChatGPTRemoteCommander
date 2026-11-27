@@ -7,6 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { terminateProcessTree } from './platform.mjs';
 
 const trustedProofs = new WeakSet();
+// A caller-supplied timeout must never reach a native helper or JS timer as
+// NaN, Infinity, a truncated uint32, or an effectively unbounded duration.
+const MAX_CONTAINED_EXECUTION_MS = 3_600_000;
+const MAX_CONTAINED_HELPER_MS = MAX_CONTAINED_EXECUTION_MS + 12_000;
+function requireContainedTimeout(timeoutMs, maximum) {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > maximum)
+    throw commandError('PROCESS_CONTAINMENT_TIMEOUT_INVALID');
+  return timeoutMs;
+}
 const BINDING_FIELDS = Object.freeze([
   'workflowId', 'stepId', 'operationId', 'rootFingerprint', 'revision', 'leaseId', 'fencingToken'
 ]);
@@ -110,6 +119,9 @@ function captureProcess(file, args, {
   outputLimit = 32768,
   onTimeout = null
 } = {}) {
+  // Check again at the common timer sink: internal systemctl/pwsh calls must
+  // remain bounded independently of the public runContainedProjectCommand API.
+  requireContainedTimeout(timeoutMs, MAX_CONTAINED_HELPER_MS);
   return new Promise(resolve => {
     let child;
     try {
@@ -402,6 +414,8 @@ export async function processContainmentAvailable() {
 
 export async function runContainedProjectCommand({ program, args, cwd, timeoutMs, outputLimit, env, binding }) {
   if (!validBinding(binding)) throw commandError('PROCESS_CONTAINMENT_BINDING_REQUIRED');
+  // Deny malformed timeouts before probing a provider or spawning anything.
+  requireContainedTimeout(timeoutMs, MAX_CONTAINED_EXECUTION_MS);
   if (!(await processContainmentAvailable())) throw commandError('PROCESS_CONTAINMENT_UNAVAILABLE');
   if (process.platform === 'linux') {
     return runLinuxContained({ program, args, cwd, timeoutMs, outputLimit, env, binding });
