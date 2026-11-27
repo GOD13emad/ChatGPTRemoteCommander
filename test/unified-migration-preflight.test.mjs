@@ -952,3 +952,18 @@ test('native Linux executable inventory rejects path mentions and noncanonical s
  // systemctl includes live process metadata in the same brace-delimited record.
  assert.equal(classifyLinuxNativeExecStart({...core,execStart:core.execStart.replace(' ; }',' ; start_time=[Wed] ; pid=123 ; code=(null) ; status=0/0 }')}),'core');
 });
+
+test('observed 0.10.26 direct Windows Core is an existing legacy installation, never fresh',()=>{
+  const result=assessMigration({
+    platform:'win32',connectionMode:'private-tunnel',inventoryReliable:true,
+    legacyInnoPresent:false,nativeUnifiedNsisPresent:false,
+    ownerRegisteredInstallerFamily:'none',tunnelProfilePresent:true,
+    tunnelProfileValid:true,tunnelTargetPort:48931,tunnelTargetTls:false,
+    tunnelTargetVersion:'0.10.26',routerDetected:false
+  });
+  assert.equal(result.existingInstalled,true);
+  assert.equal(result.ownerTunnelTargetRuntimeVersion,'0.10.26');
+  assert.ok(result.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+  assert.ok(result.blocked.includes('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE'));
+  assert.equal(result.decision,'NO_PROMOTE');
+});

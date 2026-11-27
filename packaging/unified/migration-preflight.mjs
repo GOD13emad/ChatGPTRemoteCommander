@@ -379,7 +379,7 @@ const req=http.get({hostname:'127.0.0.1',port,path:'/health',timeout:1200},res=>
   res.on('data',chunk=>{body+=chunk;if(body.length>2048)req.destroy();});
   res.on('end',()=>{try{
     const obj=JSON.parse(body);
-    if(typeof obj.version==='string'&&/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(obj.version))
+    if(typeof obj.version==='string'&&/^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(obj.version))
       process.stdout.write(obj.version);
     else process.exitCode=2;
   }catch{process.exitCode=2;}});
@@ -389,7 +389,7 @@ req.on('error',()=>{process.exitCode=2;});
 `;
   const result=exec(process.execPath,['-e',script,String(port)]);
   const version=result.stdout.trim();
-  return result.ok && /^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(version)
+  return result.ok && /^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(version)
     ?version:null;
 }
 
@@ -415,7 +415,7 @@ export function assessMigration(facts){
     ||(facts.tunnelProfileValid===true
       &&facts.tunnelTargetTls!==true
       &&typeof facts.tunnelTargetVersion==='string'
-      &&/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(facts.tunnelTargetVersion));
+      &&/^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(facts.tunnelTargetVersion));
   const liveUnregisteredWindowsCore=facts.platform==='win32'
     &&liveOldWindowsCore
     &&facts.legacyInnoPresent!==true
@@ -710,7 +710,7 @@ export function classifyObservedRouterStatus(report,listenPort,backendHealthVers
     ||report.activePort<1024||report.activePort>65535
     ||report.activePort===listenPort
     ||typeof report.activeVersion!=='string'
-    ||!/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(report.activeVersion))
+    ||!/^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(report.activeVersion))
     return Object.freeze({detected:false,mappingMatches:false});
   const match=backendHealthVersion===report.activeVersion;
   return Object.freeze({detected:true,mappingMatches:match,
