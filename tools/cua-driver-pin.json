@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "version": "0.38.0",
+  "releaseTag": "cua-driver-rs-v0.38.0",
+  "upstreamCommit": "85e2b1318bd77ccf3cfa88ccdf875a4bb7eaed19",
+  "sha256sumsSha256": "a2c338d608ded32fe3e41918cc571a2769a38fc5a1316bab7d14a9b615590645",
+  "license": "MIT",
+  "assets": {
+    "linux-amd64": {
+      "file": "cua-driver-rs-0.38.0-linux-x86_64-binary.tar.gz",
+      "sha256": "31ab9709dd91ce73677e49b9f3e75c6f0d3e4d9625c286c9e58262bfbea698dd",
+      "binary": "cua-driver",
+      "binarySha256": "bf57b2f3778a0a7daa9388e241f20ce948b32a7a2f4dd102e497f34e54137934"
+    },
+    "linux-arm64": {
+      "file": "cua-driver-rs-0.38.0-linux-arm64-binary.tar.gz",
+      "sha256": "80c9ae66bc7322052dd426c6133c96086b33894bf06c972bca8215384400b33d",
+      "binary": "cua-driver",
+      "binarySha256": "26e9eee8165e9ce7b614b5e3d68e5d963231385a82b65236406718b5ce1ff936"
+    },
+    "windows-amd64": {
+      "file": "cua-driver-rs-0.38.0-windows-x86_64-binary.zip",
+      "sha256": "5edaa74d0afa1b55a9668dbc4f32736507bd2bd4d75b18ca1dc8881bb12402b5",
+      "binary": "cua-driver.exe",
+      "binarySha256": "ffa58d88779ee219304b0c307f4cfa970fe822f830c6ecf9254eda5c29e22bf2"
+    },
+    "windows-arm64": {
+      "file": "cua-driver-rs-0.38.0-windows-arm64-binary.zip",
+      "sha256": "d25c8ebfffb34e4c095ea170baf47b87c35dc0d1116f42e46b39df2bcbff8700",
+      "binary": "cua-driver.exe",
+      "binarySha256": "2d6a0822be887a8a51678f57682d7362d484d4049b769ef964f0c2dffda29de1"
+    }
+  }
+}

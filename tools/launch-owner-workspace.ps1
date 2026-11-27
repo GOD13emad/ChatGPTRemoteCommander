@@ -55,8 +55,17 @@ if (-not $releaseDir.StartsWith($releaseRoot + [IO.Path]::DirectorySeparatorChar
   throw 'OWNER_WORKSPACE_RELEASE_PATH_ESCAPE'
 }
 $releasePackage = Get-Content -LiteralPath (Join-Path $releaseDir 'package.json') -Raw | ConvertFrom-Json
-if ([string]$releasePackage.version -cne [string]$manifest.version) {
+if ([string]$releasePackage.version -cne [string]$manifest.version -or
+    [string]$releasePackage.version -notmatch '^0\.12\.0-dev\.[1-9][0-9]*$') {
   throw 'OWNER_WORKSPACE_RELEASE_VERSION_MISMATCH'
+}
+$trainPath = Join-Path $releaseDir 'docs\release-train-0.12.json'
+if (-not (Test-Path -LiteralPath $trainPath -PathType Leaf)) { throw 'OWNER_WORKSPACE_RELEASE_TRAIN_MISSING' }
+$train = Get-Content -LiteralPath $trainPath -Raw | ConvertFrom-Json
+if ([string]$train.sourceVersion -cne [string]$releasePackage.version -or
+    $train.publishApproved -ne $false -or $train.autoupdateApproved -ne $false -or
+    $train.installedPromotionApproved -ne $false) {
+  throw 'OWNER_WORKSPACE_RELEASE_TRAIN_NOT_NOPROMOTE'
 }
 $entry = Join-Path $releaseDir 'tools\workspace-owner-broker.mjs'
 if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw 'OWNER_WORKSPACE_BROKER_MISSING' }
@@ -76,7 +85,7 @@ $nodeVersion = (& $node --version).Trim()
 if ($nodeVersion -cne [string]$manifest.nodeVersion -or $nodeVersion -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
   throw 'OWNER_WORKSPACE_NODE_VERSION_MISMATCH'
 }
-if ([version]($nodeVersion.TrimStart('v')) -lt [version]'22.0.0') {
+if ([version]($nodeVersion.TrimStart('v')) -lt [version]'22.13.0') {
   throw 'OWNER_WORKSPACE_NODE_TOO_OLD'
 }
 
@@ -91,12 +100,35 @@ if ((Get-Content -LiteralPath $authFile -Raw).Trim() -notmatch '^[a-f0-9]{64}$')
 
 $cua = [IO.Path]::GetFullPath([string]$manifest.cuaDriverPath)
 $expectedCua = [IO.Path]::GetFullPath((Join-Path $StateRoot 'adapters\cua-driver\v0.38.0\cua-driver.exe'))
-if ($cua -cne $expectedCua -or -not (Test-Path -LiteralPath $cua -PathType Leaf)) {
-  throw 'OWNER_WORKSPACE_CUA_PATH_INVALID'
+$cuaPinPath = Join-Path $releaseDir 'tools\cua-driver-pin.json'
+$cuaMetaPath = Join-Path $StateRoot 'adapters\cua-driver\v0.38.0\cua-driver-installed.json'
+$cuaReceiptPath = Join-Path $StateRoot 'adapters\cua-driver\v0.38.0\.verified-archive-sha256'
+foreach ($file in @($cuaPinPath,$cuaMetaPath,$cuaReceiptPath,$cua)) {
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'OWNER_WORKSPACE_CUA_PROVENANCE_MISSING' }
 }
+$cuaPin = Get-Content -LiteralPath $cuaPinPath -Raw | ConvertFrom-Json
+$cuaArch = if ($env:PROCESSOR_ARCHITEW6432 -eq 'ARM64' -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+$cuaAssetPin = $cuaPin.assets.PSObject.Properties[('windows-' + $cuaArch)].Value
+$cuaMeta = Get-Content -LiteralPath $cuaMetaPath -Raw | ConvertFrom-Json
 $cuaHash = (Get-FileHash -LiteralPath $cua -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($cuaHash -cne ([string]$manifest.cuaDriverSha256).ToLowerInvariant()) {
-  throw 'OWNER_WORKSPACE_CUA_HASH_MISMATCH'
+$cuaReceipt = (Get-Content -LiteralPath $cuaReceiptPath -Raw).Trim().ToLowerInvariant()
+$cuaVersionText = (& $cua --version 2>&1 | Out-String).Trim()
+if ($cua -cne $expectedCua -or
+    [string]$cuaPin.version -cne '0.38.0' -or
+    [string]$cuaMeta.version -cne [string]$cuaPin.version -or
+    [string]$cuaMeta.releaseTag -cne [string]$cuaPin.releaseTag -or
+    [string]$cuaMeta.upstreamCommit -cne [string]$cuaPin.upstreamCommit -or
+    [string]$cuaMeta.asset -cne [string]$cuaAssetPin.file -or
+    [string]$cuaMeta.assetSha256 -cne [string]$cuaAssetPin.sha256 -or
+    [string]$cuaMeta.binarySha256 -cne [string]$cuaAssetPin.binarySha256 -or
+    $cuaReceipt -cne [string]$cuaAssetPin.sha256 -or
+    $cuaHash -cne [string]$cuaAssetPin.binarySha256 -or
+    $cuaHash -cne ([string]$manifest.cuaDriverSha256).ToLowerInvariant() -or
+    [string]$manifest.cuaDriverVersion -cne [string]$cuaPin.version -or
+    [string]$manifest.cuaDriverUpstreamCommit -cne [string]$cuaPin.upstreamCommit -or
+    [string]$manifest.cuaDriverAssetSha256 -cne [string]$cuaAssetPin.sha256 -or
+    $cuaVersionText -cne ('cua-driver ' + [string]$cuaPin.version)) {
+  throw 'OWNER_WORKSPACE_CUA_PROVENANCE_INVALID'
 }
 
 $listeners = @(Get-NetTCPConnection -State Listen -LocalPort ([int]$manifest.port) -ErrorAction SilentlyContinue)
@@ -109,6 +141,7 @@ $ownerStdout = Join-Path $OwnerRoot ('cua-' + [string]$manifest.channel + '.stdo
 $ownerStderr = Join-Path $OwnerRoot ('cua-' + [string]$manifest.channel + '.stderr.log')
 $parsed = $null
 $cuaPipeReady = $false
+$previousTelemetry = [Environment]::GetEnvironmentVariable('CUA_DRIVER_RS_TELEMETRY_ENABLED','Process')
 
 if (-not $SelfTest) {
   $existing = @(Get-CimInstance Win32_Process -Filter "Name='cua-driver.exe'" |
@@ -122,6 +155,7 @@ if (-not $SelfTest) {
     throw 'OWNER_WORKSPACE_CUA_PIPE_ORPHAN_REQUIRES_RECONCILIATION'
   }
   try {
+    $env:CUA_DRIVER_RS_TELEMETRY_ENABLED = '0'
     $driverProcess = Start-Process -FilePath $cua -ArgumentList @(
       'serve','--socket',$pipe,'--no-overlay','--permission-mode','standard','--grant','existing-profile'
     ) -WindowStyle Hidden -PassThru -RedirectStandardOutput $ownerStdout -RedirectStandardError $ownerStderr
@@ -186,5 +220,10 @@ try {
   Pop-Location
   if ($driverProcess -and -not $driverProcess.HasExited) {
     Stop-Process -Id $driverProcess.Id -Force -ErrorAction SilentlyContinue
+  }
+  if ($null -eq $previousTelemetry) {
+    Remove-Item Env:CUA_DRIVER_RS_TELEMETRY_ENABLED -ErrorAction SilentlyContinue
+  } else {
+    $env:CUA_DRIVER_RS_TELEMETRY_ENABLED = $previousTelemetry
   }
 }
