@@ -352,7 +352,7 @@ function Write-TunnelClientState([string]$ExePath) {
 }
 
 function Install-TunnelClient {
-  $helper=Join-Path $PSScriptRoot 'tools\install-tunnel-client-windows.ps1'
+  $helper=Join-Path $InstallDir 'tools\install-tunnel-client-windows.ps1'
   if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'TUNNEL_CLIENT_PINNED_INSTALLER_MISSING'}
   $args=@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$helper,
     '-InstallDir',$InstallDir,'-ExpectedVersion',$TunnelClientVersion)
@@ -372,6 +372,9 @@ function Install-CuaDriver {
   $helper=Join-Path $InstallDir 'tools\install-cua-driver-windows.ps1'
   if(-not(Test-Path -LiteralPath $helper -PathType Leaf)){throw 'CUA_DRIVER_PINNED_INSTALLER_MISSING'}
   $stateRoot=Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander'
+  if (-not $isCanonicalLiveInstall -and -not $StartServer) {
+    $stateRoot=Join-Path $InstallDir 'var\isolated\data'
+  }
   $args=@('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$helper,'-InstallRoot',$stateRoot)
   if($SkipCuaDriver){$args += '-VerifyOnly'}
   & pwsh.exe @args

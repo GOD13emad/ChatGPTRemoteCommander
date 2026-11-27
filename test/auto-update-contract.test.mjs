@@ -11,6 +11,7 @@ import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -1339,7 +1340,7 @@ test('Linux tunnel-client is required before release promotion and profile enrol
   assert.ok(sameCommit>0 && maintenanceStage>sameCommit && maintenanceControl>maintenanceStage,'existing-route maintenance must also block on unverified release-local tunnel');
   assert.ok(audit>0 && stage>audit && candidateStart>stage,'new candidate dependency must run after source audit and before candidate/cutover');
   assert.ok(updater.includes('/bin/bash "$helper" --install-dir "$project"'),'pinned installer must provision each staged release');
-  assert.ok(installer.includes('TUNNEL_CLIENT_REQUIRED_MISSING'),'--skip-tunnel-client must fail closed when binary is absent');
+  assert.ok(installer.includes('/bin/bash "$helper" --install-dir "$INSTALL_DIR" --verify-only') && read('tools/install-tunnel-client-linux.sh').includes('TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID'),'--skip-tunnel-client must delegate to the pinned fail-closed verifier');
   assert.ok(enrollment.includes('/bin/bash "$ROOT/tools/install-tunnel-client-linux.sh" --install-dir "$ROOT"'),'profile enrollment must provision release dependency');
 });
 
@@ -1362,20 +1363,29 @@ test('Linux installer skip mode rejects missing/wrong tunnel binaries and accept
     const invoke=()=>cp.spawnSync('bash',['-c','INSTALL_DIR="$1"; SKIP_TUNNEL_CLIENT=1; . "$2"; install_tunnel_client','_',tmp,fn],{encoding:'utf8'});
     const missing=invoke();
     assert.notEqual(missing.status,0,'absent executable must not be accepted');
-    assert.match(missing.stderr,/TUNNEL_CLIENT_REQUIRED_MISSING/);
+    assert.match(missing.stderr,/TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID/);
     const pin=JSON.parse(fs.readFileSync(path.join(toolsDir,'tunnel-client-pin.json'),'utf8'));
     const binDir=path.join(toolsDir,'tunnel-client-v'+pin.version+'-linux-'+(process.arch==='arm64'?'arm64':'amd64'));
     fs.mkdirSync(binDir);
     const exe=path.join(binDir,'tunnel-client');
     fs.writeFileSync(exe,'#!/bin/sh\necho \"'+pin.version+'+'+pin.upstreamCommit+'\"\n');
     fs.chmodSync(exe,0o755);
+    const arch=process.arch==='arm64'?'arm64':'amd64', asset=pin.assets['linux-'+arch];
+    const companion=path.join(binDir,'cloudflared');
+    fs.writeFileSync(companion,'#!/bin/sh\nexit 0\n',{mode:0o755});
+    const digest=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+    asset.binarySha256=digest(exe);asset.cloudflaredSha256=digest(companion);
+    fs.writeFileSync(path.join(toolsDir,'tunnel-client-pin.json'),JSON.stringify(pin));
+    fs.writeFileSync(path.join(binDir,'.verified-archive-sha256'),asset.sha256+'\n');
+    fs.mkdirSync(path.join(tmp,'var'));
+    fs.writeFileSync(path.join(tmp,'var','tunnel-client-installed.json'),JSON.stringify({schema:1,version:pin.version,releaseTag:pin.releaseTag,upstreamCommit:pin.upstreamCommit,asset:asset.file,assetSha256:asset.sha256,binarySha256:asset.binarySha256,cloudflaredSha256:asset.cloudflaredSha256,verification:'archive-and-binary-set-sha256'}));
     const verified=invoke();
     assert.equal(verified.status,0,verified.stderr);
-    assert.match(verified.stdout,/Reusing existing pinned tunnel-client/);
-    fs.writeFileSync(exe,'#!/bin/sh\necho \"wrong-version\"\n');
+    assert.match(verified.stdout,/TUNNEL_CLIENT_VERIFY_PASS/);
+    fs.appendFileSync(exe,'# tampered bytes, unchanged version\n');
     const invalid=invoke();
     assert.notEqual(invalid.status,0,'invalid provenance must be rejected');
-    assert.match(invalid.stderr,/provenance mismatch/);
+    assert.match(invalid.stderr,/TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID/);
   } finally {
     fs.rmSync(tmp,{recursive:true,force:true});
   }
