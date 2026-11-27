@@ -77,3 +77,27 @@ test('native UIA cannot be forwarded when owner credential or loopback transport
   explicitUserAuthorization:'Owner permits this exact write'
  },{requestId:'outer-native-failure-0001'}),/WORKSPACE_OWNER_AGENT_UNAVAILABLE/);
 });
+
+test('owner workspace rejects alternate loopback ports before any credential read or network send',()=>{
+ for(const port of [0,48837,48840,65535,'48838']){
+  let effects=0;
+  assert.throws(()=>createOwnerWorkspaceProxy({
+   config:{ownerWorkspaceDelegation:{enabled:true,port,authFile:'/owner/session/auth.key'}},
+   readFileImpl:async()=>{effects++;return secret;},
+   fetchImpl:async()=>{effects++;throw Error('unexpected fetch');}
+  }),/WORKSPACE_OWNER_PROXY_CONFIG_INVALID/);
+  assert.equal(effects,0);
+ }
+});
+
+test('candidate broker is routed only to reviewed literal port 48839',async()=>{
+ const candidate={ownerWorkspaceDelegation:{...config.ownerWorkspaceDelegation,port:48839}};
+ const calls=[];
+ const proxy=createOwnerWorkspaceProxy({config:candidate,readFileImpl:async()=>secret,
+  fetchImpl:async(url)=>{calls.push(url);return {status:200,text:async()=>JSON.stringify({
+   jsonrpc:'2.0',id:1,result:{structuredContent:{ok:true,mode:'OWNER_NATIVE_UIA'}}
+  })};}});
+ const result=await proxy.execute('workspace_native_ui_observe',{pid:123,windowId:456,application:'brave'});
+ assert.equal(result.handled,true);
+ assert.deepEqual(calls,['http://127.0.0.1:48839/mcp']);
+});
