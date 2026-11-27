@@ -33,6 +33,27 @@ function ownerFile(file,uid,size=65536){
     fail('RC012_OWNER_PAIR_FILE_NOT_PRIVATE');
   return fs.readFileSync(file);
 }
+
+/**
+ * Resolve the owner-local pair directory for the exact Tunnel profile.
+ * Historical single-profile Emad uses the default pair only while the
+ * canonical chatgpt-remote-commander profile YAML is absent. Once that
+ * canonical profile exists, Emad must use its own isolated pair directory.
+ */
+export function resolveLinuxOwnerPairEnrollmentDirectory({home,profileId}={}){
+  if(typeof home!=='string'||!path.isAbsolute(home)||home.includes('\\0')
+    ||home.length>4096||typeof profileId!=='string'
+    ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileId)
+    ||profileId==='.'||profileId==='..')
+    fail('RC012_LINUX_OWNER_PAIR_ENROLLMENT_SCOPE_REQUIRED');
+  const canonical=path.join(home,'.config','tunnel-client',
+    'chatgpt-remote-commander.yaml');
+  const pair=profileId==='chatgpt-remote-commander'
+    ||(profileId==='Emad'&&!fs.existsSync(canonical))
+    ?'default':profileId;
+  return path.join(home,'.config','chatgpt-remote-commander',
+    'private-pair',pair);
+}
 export function activeHealthPort(profile,uid,dir=path.join(os.homedir(),'.config','tunnel-client')){
   if(typeof profile!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profile))
     fail('RC012_SELECTED_OWNER_TUNNEL_PROFILE_REQUIRED');
@@ -85,9 +106,9 @@ async function main(){
     &&s!=='.'&&s!=='..'))
     fail('RC012_LINUX_TUNNEL_OWNER_ENROLL_ARGS_REQUIRED');
   const uid=process.getuid();
-  const directory=path.join(os.homedir(),
-    '.config','chatgpt-remote-commander','private-pair',
-    profileId==='chatgpt-remote-commander'?'default':profileId);
+  const directory=resolveLinuxOwnerPairEnrollmentDirectory({
+    home:os.homedir(),profileId
+  });
   ownerDirectory(directory,uid);
   const profile=activeHealthPort(profileId,uid);
   const executable=currentTunnelExecutable(profileId,uid);
