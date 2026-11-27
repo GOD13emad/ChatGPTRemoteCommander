@@ -258,6 +258,8 @@ linuxOnlyTest('native and merged dpkg builders strip group-write bits and verify
   try{
     fs.mkdirSync(files,{recursive:true,mode:0o755});
     fs.mkdirSync(path.join(pkg,'DEBIAN'),{mode:0o755});
+    // dpkg requires 0755+ even when the invoking QA worker uses umask 077.
+    fs.chmodSync(path.join(pkg,'DEBIAN'),0o755);
     fs.writeFileSync(path.join(pkg,'DEBIAN/control'),
       'Package: rc012-package-permission-fixture\nVersion: 1.0\nArchitecture: all\nMaintainer: QA fixture\nDescription: local permission test\n');
     const weak=path.join(files,'0.bin');

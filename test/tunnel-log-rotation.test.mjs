@@ -76,6 +76,21 @@ function run(args, options = {}) {
   });
 }
 
+test('tunnel log runner rejects nonabsolute or nonfile executable before log mutation', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'rc-tunnel-launch-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  for (const exe of [path.basename(process.execPath), dir, path.join(dir, 'missing-executable')]) {
+    const log = path.join(dir, 'tunnel.log');
+    const status = path.join(dir, 'status.json');
+    const pidFile = path.join(dir, 'child.pid');
+    const result = await run([runner, '--log-file', log, '--status-file', status,
+      '--', exe, fixture, pidFile, '1', '1024']);
+    assert.equal(result.code, 2, result.stderr);
+    assert.match(result.stderr, /child executable must be an absolute executable file/);
+    for (const target of [log, status, pidFile]) assert.equal(fs.existsSync(target), false);
+  }
+});
+
 test('tunnel log runner rotates without restarting child and preserves the complete stream', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'rc-tunnel-log-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
