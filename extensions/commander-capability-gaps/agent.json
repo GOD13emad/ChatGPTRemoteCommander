@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "id": "commander-capability-gaps",
-  "version": "0.2.0",
-  "displayName": "Commander Capability Gap Intake",
-  "description": "Discover and report missing Remote Commander capabilities and native permission blockers through the verified owner-scoped portable CLI; does not grant elevated access, install MCP methods or synchronize profiles.",
+  "version": "0.2.1-rc.1",
+  "displayName": "Commander Capability Gap Reporting",
+  "description": "Default owner-scoped capability-gap reporting and triage using the pinned portable CLI; historical V1 JSON registry is separately available for explicit legacy queries, with no implicit migration or credential access.",
   "capabilities": [
     "commander.capability-gap.report",
     "commander.capability-gap.triage",
@@ -20,7 +20,13 @@
     "ابزار کامندر موجود نیست",
     "مشکل دسترسی کامندر",
     "مجوز ادمین کامندر",
-    "ثبت مشکل کامندر"
+    "ثبت مشکل کامندر",
+    "missing Commander tool",
+    "Commander permission blocked",
+    "Full Access unavailable",
+    "قابلیت کامندر موجود نیست",
+    "محدودیت کامندر",
+    "مجوز کامندر"
   ],
   "skill": "SKILL.md",
   "safetyGates": [
