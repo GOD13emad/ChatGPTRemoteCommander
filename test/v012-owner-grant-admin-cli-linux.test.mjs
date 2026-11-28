@@ -30,10 +30,15 @@ test('real child CLI uses one owner-local broker socket and fixed exact actions 
   let controller,prompts=0;
   try{
     controller=createV012OwnerGrantAdminUnix({socketPath,administration:{
-      inspect:async()=>({nativeOwnerBound:true,workerActive:false,
-        exactBaseEnabled:false,exactWorkerToolEnabled:false,
-        readOnlyCanaryAllowed:false}),
-      approveWorker:async()=>{prompts++;return {revision:1};},
+      // Genuine owner evidence checks are asynchronous. The CLI must keep
+      // its request side open until the server sends the final response.
+      inspect:async()=>{
+        await new Promise(resolve=>setTimeout(resolve,60));
+        return {nativeOwnerBound:true,workerActive:false,
+          exactBaseEnabled:false,exactWorkerToolEnabled:false,
+          readOnlyCanaryAllowed:false};
+      },
+      approveWorker:async()=>{await new Promise(resolve=>setTimeout(resolve,60));prompts++;return {revision:1};},
       approveReadOnlyCanary:async()=>{prompts++;return {canaryAllowed:true};},
       approveSignedRegistration:async()=>{prompts++;return {registrationAllowed:true};},
       registerSignedWorker:async()=>{prompts++;return {registered:true};},

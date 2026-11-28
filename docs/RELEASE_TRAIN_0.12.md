@@ -1,4 +1,20 @@
-# Release Train 0.12 — `0.12.0-dev.34` source candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.35` source candidate (NoPromote)
+
+## Dev.35 asynchronous owner-admin Unix response (28 November 2026) — NoPromote
+
+The same-owner fixed-action CLI no longer sends an immediate write half-close:
+`socket.write(line)` retains the request socket until the broker replies after
+slow native owner evidence checks and explicit consent. The real Emad Laptop
+dev.26 owner-admin `inspect` returned empty bytes with the old CLI but correctly
+reported `nativeOwnerBound=true` with the delayed-response-safe transport.
+A new isolated child-process regression reproduced `RESPONSE_INVALID` (RED)
+under a 60 ms asynchronous inspect, and after the fix the exact inspect and
+slow native Worker approval tests plus fixed-action denial contracts passed.
+Native J01 was observed on the live dev.26 protected candidate for the exact
+owner pair; transient read-only Worker grant later expired before exact-tool
+grant acceptance, so no protected production cutover or Worker action is
+claimed. This is a new source candidate, not an authorized installed package;
+release metadata remains NoPromote and all fleet/migration gates remain open.
 
 ## Dev.34 graceful protected Core shutdown (28 November 2026) — NoPromote
 

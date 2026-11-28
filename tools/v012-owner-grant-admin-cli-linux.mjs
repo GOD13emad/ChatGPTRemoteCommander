@@ -51,7 +51,10 @@ export async function runCli(argv){
     socket.setTimeout(action==='inspect'?5000:140000,()=>{
       socket.destroy();reject(Error('RC012_OWNER_ADMIN_CLI_TIMEOUT'));
     });
-    socket.once('connect',()=>socket.end(line));
+    // The native grant evidence and owner dialogs are asynchronous. Do not
+    // half-close the request before the broker replies: an ordinary Node Unix
+    // server with allowHalfOpen:false may close without sending the result.
+    socket.once('connect',()=>socket.write(line));
     socket.on('data',chunk=>{
       response+=chunk.toString('utf8');
       if(Buffer.byteLength(response)>1024){
