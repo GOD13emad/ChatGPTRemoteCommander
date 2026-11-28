@@ -234,3 +234,14 @@ test('explicit runner without optional worker maxArtifactBytes preserves omissio
   assert.deepEqual(second.config.durableWorkflows.runner,result.config.durableWorkflows.runner);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('runner normalization never opts in absent or nonboolean automation flags', () => {
+  for (const enabled of [undefined, false, true, 'true', 1, null]) {
+    const runner={enabled:true,provider:{kind:'command',executable:process.execPath},
+      autoTick:enabled,adaptive:{enabled},worker:{enabled}};
+    const actual=applyProjectRunnerConfig(base({runner})).config.durableWorkflows.runner;
+    assert.equal(actual.autoTick,enabled===true);
+    assert.equal(actual.adaptive.enabled,enabled===true);
+    assert.equal(actual.worker.enabled,enabled===true);
+  }
+});

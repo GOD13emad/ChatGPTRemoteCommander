@@ -6,6 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { setTimeout as deadlineTimer } from 'node:timers/promises';
 import { probeWindowsAdministrator } from '../src/windows-admin-token.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,9 +57,12 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
   const stateRoot = path.join(root, 'operation-state');
   const port = await freePort();
   let child;
+  let childClosed;
   let stderr='';
   let stdoutBytes=0;
   let phase='fixture-setup';
+  const enterPhase=value=>{phase=value;console.log('R157_ASYNC_HTTP_LAST_PHASE='+value);};
+  enterPhase(phase);
 
   try {
     await fs.mkdir(serverRoot, { recursive: true });
@@ -104,10 +108,11 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
       env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath },
       stdio: ['ignore', 'pipe', 'pipe']
     });
+    childClosed=new Promise(resolve=>child.once('close',resolve));
     child.stderr.on('data', (chunk) => { if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0,8192-stderr.length); });
     child.stdout.on('data', (chunk) => { stdoutBytes += chunk.length; });
 
-    phase='server-startup';
+    enterPhase('server-startup');
     let healthy = false;
     // Release qualification runs test files in parallel. Keep startup bounded,
     // but give the copied fixture server 10s of process-start headroom; this is
@@ -122,7 +127,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     }
     assert.equal(healthy, true, stderr || `server failed to become healthy; exitCode=${child.exitCode}`);
 
-    phase='native-token-and-quarantine';
+    enterPhase('native-token-and-quarantine');
     const nativeToken = process.platform === 'win32'
       ? await probeWindowsAdministrator() : null;
     if(process.platform==='win32'){
@@ -160,22 +165,22 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
         timeoutMs: 5000
       }
     };
-    phase='operation-start';
+    enterPhase('operation-start');
     const startedAt = Date.now();
     const first = await post(port, 1, 'operation_start', request);
     const elapsed = Date.now() - startedAt;
     assert.ok(elapsed < 1000, `operation_start stayed open for ${elapsed}ms`);
-    phase='idempotent-retry';
+    enterPhase('idempotent-retry');
     const retry = await post(port, 2, 'operation_start', request);
     assert.equal(retry.operationId, first.operationId);
     assert.equal(retry.duplicate, true);
 
-    phase='operation-terminal';
+    enterPhase('operation-terminal');
     const final = await waitTerminal(port, first.operationId);
     assert.equal(final.status, 'SUCCEEDED');
     assert.equal(await fs.readFile(effect, 'utf8'), 'x');
 
-    phase='file-backed-result';
+    enterPhase('file-backed-result');
     const result = await post(port, 3, 'operation_result', { operationId: first.operationId, tailBytes: 1024 });
     assert.equal(result.state.status, 'SUCCEEDED');
     assert.equal(result.stdoutTail, 'effect-done');
@@ -185,7 +190,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     assert.equal(durableState.includes(effect), false);
     assert.equal(durableState.includes(fixture), false);
 
-    phase='large-output-start';
+    enterPhase('large-output-start');
     const large = await post(port, 4, 'operation_start', {
       requestId: 'http-large-1',
       tool: 'run_project_command',
@@ -196,9 +201,9 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
         timeoutMs: 5000
       }
     });
-    phase='large-output-terminal';
+    enterPhase('large-output-terminal');
     await waitTerminal(port, large.operationId);
-    phase='large-output-result';
+    enterPhase('large-output-result');
     const largeResult = await post(port, 5, 'operation_result', { operationId: large.operationId, tailBytes: 512 });
     assert.equal(largeResult.result.stdout.totalBytes, 200000);
     assert.equal(largeResult.result.stdout.capturedBytes, 65536);
@@ -209,7 +214,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     const safeName=typeof error?.name==='string' && /^[A-Za-z0-9_]{1,48}$/.test(error.name) ? error.name : 'Error';
     const safeCode=typeof error?.code==='string' && /^[A-Z0-9_]{1,64}$/.test(error.code) ? error.code : null;
     const safeScalar=value=>typeof value==='boolean'||(typeof value==='number'&&Number.isFinite(value))||
-      (typeof value==='string'&&/^[A-Za-z0-9_ .:-]{1,64}$/.test(value)) ? value : null;
+      (typeof value==='string'&&['QUEUED','RUNNING','SUCCEEDED','FAILED','TIMED_OUT','CANCELLED','UNCERTAIN','UNVERIFIED'].includes(value)) ? value : null;
     const assertion=error?.code==='ERR_ASSERTION' ? {
       operator:typeof error.operator==='string'&&/^[A-Za-z]{1,24}$/.test(error.operator)?error.operator:null,
       actual:safeScalar(error.actual),expected:safeScalar(error.expected)
@@ -228,10 +233,30 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     if(assertion)console.log('R157_ASYNC_HTTP_FAILURE_ASSERTION='+JSON.stringify(assertion));
     throw error;
   } finally {
-    if (child && child.exitCode === null) {
-      child.kill();
-      await Promise.race([once(child, 'exit'), wait(2000)]);
+    let cleanupPhase='server-stop';
+    try {
+      if (child) {
+        if(child.exitCode===null&&child.signalCode===null)child.kill();
+        const timer=new AbortController();
+        try{
+          const closed=await Promise.race([
+            childClosed.then(()=>true),
+            deadlineTimer(5000,false,{signal:timer.signal})
+          ]);
+          assert.equal(closed,true,'owned fixture server did not close');
+        }finally{timer.abort();}
+      }
+      cleanupPhase='fixture-remove';
+      // Windows can briefly retain handles after a child has exited.
+      // Node retries only transient removal errors and still throws on failure.
+      await fs.rm(root, { recursive: true, force: true,
+        maxRetries:8, retryDelay:100 });
+      await assert.rejects(fs.lstat(root),{code:'ENOENT'});
+    } catch (error) {
+      const code=['EPERM','EACCES','EBUSY','ENOTEMPTY','ENOENT'].includes(error?.code)?error.code:'UNCLASSIFIED';
+      console.log('R157_ASYNC_HTTP_CLEANUP_FAILURE_PHASE='+cleanupPhase);
+      console.log('R157_ASYNC_HTTP_CLEANUP_FAILURE_CODE='+code);
+      throw error;
     }
-    await fs.rm(root, { recursive: true, force: true });
   }
 });

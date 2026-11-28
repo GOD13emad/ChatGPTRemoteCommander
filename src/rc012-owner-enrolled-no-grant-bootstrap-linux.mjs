@@ -10,7 +10,7 @@ import path from 'node:path';
 import {createHash,X509Certificate} from 'node:crypto';
 import {createLinuxNativeOwnerSessionProvider}
   from './native-owner-session-provider-linux.mjs';
-import {readLinuxOwnerTunnelPin}
+import {readLinuxOwnerTunnelPin,resolvePinnedOwnerTunnelDirectory}
   from './linux-private-tunnel-owner-pin.mjs';
 import {createLinuxSignedBrokerTransport}
   from './linux-native-tunnel-broker-client.mjs';
@@ -66,6 +66,22 @@ export function createV012OwnerPairBindingRoute({
   });
 }
 
+// Owner config and enrolled private Tunnel are independent authorities.
+// Never substitute a device name for an enrolled host, or treat a pair
+// directory alias as proof of host identity.
+export function assertOwnerPairEnrollmentScope({
+  selectedProfile,configuredHostId,enrolledProfile,enrolledHostId
+}={}){
+  if(typeof selectedProfile!=='string'||!ID.test(selectedProfile)
+    ||typeof configuredHostId!=='string'||!ID.test(configuredHostId)
+    ||typeof enrolledProfile!=='string'||typeof enrolledHostId!=='string')
+    fail('RC012_OWNER_BOOTSTRAP_SCOPE_REQUIRED');
+  if(enrolledProfile!==selectedProfile)
+    fail('RC012_OWNER_BOOTSTRAP_TUNNEL_PROFILE_MISMATCH');
+  if(enrolledHostId!==configuredHostId)
+    fail('RC012_OWNER_BOOTSTRAP_TUNNEL_HOST_MISMATCH');
+}
+
 export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={}){
   if(process.platform!=='linux'
     ||process.env.RC012_OWNER_BOOTSTRAP_SCOPE!=='OWNER_ENROLLED_NO_GRANT'
@@ -90,12 +106,15 @@ export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={
   const config=JSON.parse(raw);
   if(config.instance?.profile!==profileId||config.host!=='127.0.0.1')
     fail('RC012_OWNER_BOOTSTRAP_CORE_PROFILE_MISMATCH');
-  const pairDir=path.join(home,'.config','chatgpt-remote-commander',
-    'private-pair',selected==='chatgpt-remote-commander'?'default':selected);
+  const pairDir=resolvePinnedOwnerTunnelDirectory({
+    home,profile:selected,ownerUid:uid
+  });
   privateDirectory(pairDir,uid);
   const enrolled=readLinuxOwnerTunnelPin({directory:pairDir});
-  if(enrolled.profileId!==selected||enrolled.hostId!==config.deviceName)
-    fail('RC012_OWNER_BOOTSTRAP_TUNNEL_PROFILE_MISMATCH');
+  assertOwnerPairEnrollmentScope({
+    selectedProfile:selected,configuredHostId:config.deviceName,
+    enrolledProfile:enrolled.profileId,enrolledHostId:enrolled.hostId
+  });
   const cert=privateFile(path.join(pairDir,'client.crt'),uid);
   const clientSha=createHash('sha256')
     .update(new X509Certificate(cert).raw).digest('hex');
@@ -148,7 +167,7 @@ export async function createOwnerPrivatePairBootstrap({profileId,configSha256}={
       resolveTrustedToolRoute:denied,
       resolveCurrentOwnerRoute:denied,resolveCurrentWorkerId:denied,
       workerAuthority:{authorizeWorker:denied},
-      workerRegistry:{get:denied},withLease:denied
+      workerRegistry:{get:denied,isRevoked:denied},withLease:denied
     }
   };
 }

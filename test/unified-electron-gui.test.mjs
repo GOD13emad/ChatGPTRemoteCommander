@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
+import {defaultBrowserCompanionRoot,writeBrowserCompanionInstanceMonitor} from '../src/browser-companion-monitor.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
@@ -20,15 +21,88 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
     assert.ok(fs.existsSync(exe),'native OS executable is missing');
     const {_electron}=require('playwright-core');
     const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-e2e-'));
-    const launchEnv={...process.env,APPDATA:isolated,XDG_CONFIG_HOME:isolated};
+    const launchEnv={...process.env,APPDATA:isolated,XDG_CONFIG_HOME:isolated,LOCALAPPDATA:isolated,XDG_STATE_HOME:isolated};
     let app=null;
     try{
-      app=await _electron.launch({executablePath:exe,args:[],
+      app=await _electron.launch({executablePath:exe,args:['--user-data-dir='+isolated],
         env:launchEnv,timeout:25000});
       const page=await app.firstWindow({timeout:20000});
       assert.match(await page.title(),/Remote Commander/);
+      // The stylesheet must be loaded by the real packaged renderer under CSP,
+      // rather than merely be present in the source or the installer manifest.
+      const workspace=await page.locator('.shell').evaluate(el=>({
+        display:getComputedStyle(el).display,
+        localStyle:[...document.styleSheets].some(s=>s.href?.endsWith('/workspace.css')),
+        columns:getComputedStyle(el).gridTemplateColumns
+      }));
+      assert.equal(workspace.display,'grid');
+      assert.equal(workspace.localStyle,true);
+      assert.notEqual(workspace.columns,'none');
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'CEF monitor'}).click();
+      await page.waitForFunction(()=>location.hash==='#monitor-panel');
+      await page.locator('#monitor-panel').waitFor({state:'visible'});
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'Add-ons'}).click();
+      await page.waitForFunction(()=>document.querySelector('#addons-status')?.textContent?.includes('planned add-ons'),null,{timeout:8000});
+      const addons=await page.evaluate(()=>window.commander.catalogAddons());
+      assert.equal(addons.actionAuthorization,false);
+      assert.ok(addons.items.length>0&&addons.items.every(x=>x.installable===false));
+      assert.equal(await page.locator('#addons-list dt').count(),addons.items.length);
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'Overview'}).click();
+      await page.waitForFunction(()=>location.hash==='#overview');
       await page.waitForFunction(()=>document.querySelector('#status')?.textContent?.includes('stopped'),
         null,{timeout:12000});
+      // Selectable external-browser setup is part of the same native GUI,
+      // but this test must never open or modify any host browser profile.
+      await page.locator('#companion-browser-target').waitFor({timeout:8000});
+      const known=await page.evaluate(()=>window.commander.companionBrowserList());
+      assert.deepEqual(known.map(x=>x.id),['chrome','edge','brave','chromium','firefox']);
+      assert.ok(known.every(x=>typeof x.installed==='boolean' && !Object.hasOwn(x,'executable')));
+      assert.ok(!known.find(x=>x.id==='firefox').supported);
+      await page.locator('#monitor-instance').waitFor({timeout:8000});
+      assert.equal(await page.evaluate(()=>typeof window.commander.monitorInstances==='function'),true);
+      await page.locator('#monitor-refresh').click();
+      await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.length>0);
+      assert.equal(await page.locator('#monitor-select').isDisabled(),true);
+      assert.equal(await page.evaluate(async()=>{try{await window.commander.monitorSelect('../escape');return false}catch{return true}}),true);
+      const monitorBase=defaultBrowserCompanionRoot({env:launchEnv});
+      assert.ok(!path.relative(isolated,monitorBase).startsWith('..'));
+      const instance={profile:'gui-qa-fixture',port:51913};
+      const fixture={identity:{...instance,deviceName:'qa',version:'0.12.0-dev.13',
+        configSha256:'a'.repeat(64),platform:process.platform},
+        gui:{enabled:true,available:true,uncertain:false},
+        browser:{enabled:true,available:true,uncertain:true},
+        workflows:{enabled:true,engineEnabled:true,runCount:7},
+        workspace:{hasMore:true,workflows:[{id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true}]},
+        extensions:{items:[{id:'qa-extension',version:'1'}]},relay:{enabled:true,ready:true,extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false},operations:{active:2,lockedKeys:3}};
+      const written=await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture);
+      const scopeId=path.basename(path.dirname(written.target));
+      await page.locator('#monitor-refresh').click();
+      await page.locator('#monitor-instance option[value="'+scopeId+'"]').waitFor({state:'attached',timeout:8000});
+      assert.match(await page.locator('#profile-list').innerText(),/gui-qa-fixture/);
+      await page.locator('#monitor-instance').selectOption(scopeId);
+      await page.locator('#monitor-select').click();
+      await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('CGWA_COMPANION_ROOT'),null,{timeout:8000});
+      const selected=JSON.parse(await page.locator('#monitor-result').innerText());
+      assert.equal(selected.root,path.dirname(written.target));
+      assert.equal(selected.actionAuthorization,false);
+      assert.equal(selected.ownerLaunchRequired,true);
+      assert.equal(await page.locator('#dashboard-gui').innerText(),'Available (reported)');
+      assert.equal(await page.locator('#dashboard-browser').innerText(),'Uncertain');
+      assert.equal(await page.locator('#dashboard-runs').innerText(),'7');
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'Workflows'}).click();
+      assert.match(await page.locator('#workspace-list').innerText(),/fixture-one/);
+      assert.match(await page.locator('#workspace-status').innerText(),/1 observed workflows/);
+      await page.getByRole('navigation',{name:'Workspace navigation'}).getByRole('link',{name:'CEF monitor'}).click();
+      assert.equal(await page.locator('#dashboard-active').innerText(),'2');
+      assert.equal(await page.locator('#dashboard-relay').innerText(),'Ready (reported; delivery unverified)');
+      await writeBrowserCompanionInstanceMonitor(monitorBase,instance,fixture,{now:()=>1});
+      await page.locator('#monitor-select').click();
+      await page.waitForFunction(()=>document.querySelector('#monitor-result')?.textContent?.includes('Selection stale or invalid'),null,{timeout:8000});
+      assert.notEqual(await page.locator('#dashboard-gui').innerText(),'Available (reported)');
+      assert.equal(await page.locator('#workspace-status').textContent(),'Unknown');
+      console.log('RC012_CEF_INSTANCE_PICKER_GUI_FIXTURE_PASS');
+
+
       const before=await page.locator('#status').innerText();
       assert.match(before,/source/);
       assert.match(before,/[0-9a-f]{40}/);
@@ -51,6 +125,96 @@ test('real packaged GUI: sandboxed renderer and preview Start/Stop, isolated fro
       await page.getByRole('button',{name:'Stop preview'}).click();
       await page.waitForFunction(()=>document.querySelector('#status')?.textContent?.includes('stopped'),
         null,{timeout:12000});
+    }finally{
+      try{if(app)await app.close();}finally{
+        fs.rmSync(isolated,{recursive:true,force:true,maxRetries:8,retryDelay:180});
+      }
+    }
+  });
+
+
+test('real packaged owned chat window: owner compose/send/answer/reopen on local fixture',
+  {skip:!enabled,timeout:75000},async()=>{
+    assert.ok(fs.existsSync(exe),'native OS executable is missing');
+    const {_electron}=require('playwright-core');
+    const isolated=fs.mkdtempSync(path.join(os.tmpdir(),'rc-unified-chat-fixture-'));
+    const launchEnv={...process.env,APPDATA:isolated,XDG_CONFIG_HOME:isolated};
+    const conversation='/c/11111111-1111-4111-8111-111111111111';
+    let app=null;
+    try{
+      app=await _electron.launch({executablePath:exe,args:['--user-data-dir='+isolated],env:launchEnv,timeout:25000});
+      const gui=await app.firstWindow({timeout:20000});
+      assert.match(await gui.title(),/Remote Commander/);
+      await gui.locator('#chat-open').waitFor({timeout:10000});
+      // Test process only: intercept HTTPS in the ACTUAL app-owned partition.
+      // Fail closed on all other HTTPS hosts. No production code, account,
+      // cookie, API credential, or live ChatGPT response is involved.
+      const partition='persist:commander-owned-chat';
+      const html=`<!doctype html><title>Commander synthetic chat fixture</title>
+      <label for="prompt">Synthetic message</label><textarea id="prompt"></textarea>
+      <button id="send">Send fixture</button><p id="answer" role="status"></p>
+      <script>
+      const answer=document.getElementById('answer');
+      const prompt=document.getElementById('prompt');
+      answer.textContent=localStorage.getItem('fixtureAnswer')||'';
+      document.getElementById('send').addEventListener('click',()=>{
+        if(prompt.value!=='Commander QA fixture')return;
+        const response='Synthetic answer receipt 012';
+        localStorage.setItem('fixtureAnswer',response);
+        answer.textContent=response;
+        history.pushState({},'', '/c/11111111-1111-4111-8111-111111111111');
+        prompt.value='';
+      });
+      </script>`;
+      const actualUserData=await app.evaluate(({app})=>app.getPath('userData'));
+      const relative=path.relative(isolated,actualUserData);
+      assert.ok(!relative.startsWith('..')&&!path.isAbsolute(relative),'Fixture must use a disposable userData root');
+      await app.evaluate(({session},{partition,html})=>{
+        const ses=session.fromPartition(partition);
+        ses.protocol.handle('https',request=>{
+          const u=new URL(request.url);
+          return new Response(u.origin==='https://chatgpt.com'&&
+            (u.pathname==='/'||u.pathname==='/c/11111111-1111-4111-8111-111111111111')?html:'Blocked fixture request',
+            {status:u.origin==='https://chatgpt.com'&&(u.pathname==='/'||u.pathname==='/c/11111111-1111-4111-8111-111111111111')?200:403,
+              headers:{'Content-Type':'text/html; charset=utf-8'}});
+        });
+        // Block plain HTTP except the dedicated unprivileged Companion bridge.
+        ses.webRequest.onBeforeRequest({urls:['http://*/*']},(details,callback)=>{
+          callback({cancel:!details.url.startsWith('http://127.0.0.1:41267/')});
+        });
+      },{partition,html});
+      await gui.locator('#companion-start').click();
+      await gui.waitForFunction(()=>document.querySelector('#companion-result')?.textContent?.includes('"listening": true'),
+        null,{timeout:10000});
+      const next=app.waitForEvent('window',{timeout:15000});
+      await gui.locator('#chat-open').click();
+      const chat=await next;
+      await chat.locator('#prompt').waitFor({timeout:15000});
+      assert.equal(new URL(chat.url()).origin,'https://chatgpt.com');
+      assert.equal(await chat.evaluate(()=>typeof require==='undefined'&&typeof process==='undefined'&&typeof window.commander==='undefined'),true);
+      await chat.getByLabel('Synthetic message').fill('Commander QA fixture');
+      await chat.getByRole('button',{name:'Send fixture'}).click();
+      await chat.waitForFunction(()=>document.querySelector('#answer')?.textContent==='Synthetic answer receipt 012',
+        null,{timeout:8000});
+      assert.equal(new URL(chat.url()).pathname,conversation);
+      await gui.waitForFunction(async()=>{
+        const s=await window.commander.companionStatus();
+        return s.ownedBrowser?.phase==='CHAT_OPEN'&&s.ownedBrowser?.chatAuthentication==='NOT_VERIFIED'
+          &&s.ownedBrowser?.actionAuthorization===false;
+      },null,{timeout:8000});
+      // Reload proves the exact isolated conversation's fixture receipt survives.
+      await chat.reload();
+      await chat.waitForFunction(()=>document.querySelector('#answer')?.textContent==='Synthetic answer receipt 012',
+        null,{timeout:8000});
+      await chat.close();
+      await gui.waitForFunction(async()=>(await window.commander.companionStatus()).ownedBrowser?.phase==='NO_CHAT',
+        null,{timeout:8000});
+      await gui.locator('#companion-stop').click();
+      await gui.waitForFunction(()=>document.querySelector('#companion-result')?.textContent?.includes('"listening": false'),
+        null,{timeout:8000});
+      console.log('RC012_OWNED_CHAT_FIXTURE_PASS '+JSON.stringify({actualPackagedWindow:true,
+        syntheticComposeSendAnswer:true,syntheticReloadReceipt:true,nativeObservation:true,
+        realChatGPTAccountTested:false,providerResponseTested:false,coreAuthorityGranted:false}));
     }finally{
       try{if(app)await app.close();}finally{
         fs.rmSync(isolated,{recursive:true,force:true,maxRetries:8,retryDelay:180});

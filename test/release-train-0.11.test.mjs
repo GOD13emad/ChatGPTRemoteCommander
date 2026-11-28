@@ -60,19 +60,33 @@ test('server, plugin, npm package and Windows Control Center development identit
  assert.equal(JSON.parse(read('package.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/plugin.json')).version,ver);
  assert.equal(JSON.parse(read('plugin-template/.codex-plugin/plugin.json')).version,ver);
- assert.ok(read('src/server-v0.3.mjs').includes("const VERSION = '"+ver+"';"));
+ assert.ok(read('src/server-v0.3.mjs').includes("import {CORE_VERSION as VERSION} from './runtime-version.mjs'"));
+ assert.ok(read('src/runtime-version.mjs').includes("export const CORE_VERSION='"+ver+"';"));
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  assert.ok(cs.includes('<Version>'+ver+'</Version>'));
  const numericVersion='0.12.0.'+ver.split('.').at(-1);
  assert.ok(cs.includes('<FileVersion>'+numericVersion+'</FileVersion>'));
  assert.ok(cs.includes('<AssemblyVersion>'+numericVersion+'</AssemblyVersion>'));
+ const ingress=read('src/v2-private-pair-mcp-http-ingress.mjs');
+ assert.ok(ingress.includes("import {CORE_VERSION} from './runtime-version.mjs'"));
+ assert.ok(ingress.includes('version:CORE_VERSION'),'private MCP ingress identity must use canonical release train');
+ const canary=read('tools/owner-pair-private-source-canary.mjs');
+ assert.ok(canary.includes("import {CORE_VERSION} from '../src/runtime-version.mjs'"));
+ assert.ok(canary.includes('assert.equal(health.version,CORE_VERSION)'),'owner canary must verify canonical runtime version');
+
 });
 test('historical releases are not silently deleted or accepted as product stable',()=>{
  const a=JSON.parse(read('docs/release-train-0.11.json'));
  assert.equal(a.distribution.keepAssetsAndTags,true);
  assert.equal(a.distribution.oldReleaseMetadataPending,true);
  assert.equal(a.distribution.noLatestChannelRetargetUntilUpdaterMigration,true);
- assert.match(read('README.md'),/no currently accepted Stable/);
+ const current=JSON.parse(read('docs/release-train-0.12.json'));
+ assert.equal(current.firstStable,'0.12.0');
+ assert.equal(current.publishApproved,false);
+ assert.equal(current.installedPromotionApproved,false);
+ const readme=read('README.md');
+ assert.match(readme,/No integrated Stable is accepted yet/);
+ assert.match(readme,/Historical GitHub releases and CI build artifacts are not interchangeable with an admitted public installer/);
 });
 
 

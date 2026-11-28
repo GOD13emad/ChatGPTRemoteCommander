@@ -8,6 +8,16 @@ import { readTransferReceiptSidecar, writeTransferReceiptSidecar } from './trans
 
 const execFileAsync = promisify(execFile);
 const PEERS = Object.freeze(['PC', 'Linux', 'MMZ', 'EmadServer', 'Amirreza']);
+// Older portable v2 workers predate MMZ; absent advertisement never implies five-peer support.
+const LEGACY_DURABLE_PEERS = Object.freeze(PEERS.filter(peer => peer !== 'MMZ'));
+function durablePeerContract(capability) {
+  if (!Object.hasOwn(capability, 'supportedPeers')) return LEGACY_DURABLE_PEERS;
+  const peers=capability.supportedPeers;
+  if (!Array.isArray(peers) || peers.length<1 || peers.length>PEERS.length ||
+      peers.some(peer=>!PEERS.includes(peer)) || new Set(peers).size!==peers.length)
+    throw new Error('TRANSFER_DURABLE_BACKEND_INCOMPATIBLE');
+  return Object.freeze(PEERS.filter(peer=>peers.includes(peer)));
+}
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{2,90}$/;
 const opts = { timeout: 14000, maxBuffer: 131072, windowsHide: true };
 const immutable = (name, description, properties, required = [], readOnly = false, destructiveHint = !readOnly, openWorldHint = !readOnly) => ({
@@ -112,6 +122,7 @@ export function createTransferMeshTools({ config = {}, receiptAuthority = null }
     throw new Error('TRANSFER_RECEIPT_AUTHORITY_REQUIRED');
   const durableCli = durableEnabled ? canonicalExisting(path.join(root,'durable-send.mjs')) : null;
   if(durableEnabled && (!within(durableCli,root) || !fs.lstatSync(durableCli).isFile() || fs.lstatSync(durableCli).isSymbolicLink())) throw new Error('TRANSFER_DURABLE_CLI_INVALID');
+  let durableSupportedPeers = Object.freeze([]);
   if(durableEnabled) {
     // Fail closed on mixed Core / older Portable CLI. Retry transient cold-start process
     // failures once; an explicit unsupported contract is rejected immediately.
@@ -128,10 +139,11 @@ export function createTransferMeshTools({ config = {}, receiptAuthority = null }
         if (attempt === 0) continue;
         throw new Error('TRANSFER_DURABLE_BACKEND_INCOMPATIBLE');
       }
-      if (capability.schema !== 'ctmesh-durable-v1' || capability.contractVersion !== 2 ||
+      if (!capability || typeof capability !== 'object' || Array.isArray(capability) || capability.schema !== 'ctmesh-durable-v1' || capability.contractVersion !== 2 ||
         capability.admissionQuotas !== true ||
         !['enqueue', 'job-status', 'resume', 'cancel'].every(n => capability.supports?.includes(n)))
         throw new Error('TRANSFER_DURABLE_BACKEND_INCOMPATIBLE');
+      durableSupportedPeers = durablePeerContract(capability);
       capabilityVerified = true;
       break;
     }
@@ -151,6 +163,11 @@ export function createTransferMeshTools({ config = {}, receiptAuthority = null }
     if (!definitions.some(t => t.name === name)) throw new Error('TRANSFER_UNKNOWN_TOOL');
     if (args.peer !== undefined && !PEERS.includes(args.peer)) throw new Error('TRANSFER_UNKNOWN_PEER');
     if (args.id !== undefined && !ID_PATTERN.test(args.id)) throw new Error('TRANSFER_ID_INVALID');
+    if (durableNames.some(t=>t.name===name)) {
+      if (!durableSupportedPeers.includes(args.peer)) throw new Error('TRANSFER_DURABLE_PEER_UNSUPPORTED');
+      const localAlias=readBoundedJson(path.join(root,'node.json'),65536)?.alias;
+      if (!durableSupportedPeers.includes(localAlias)) throw new Error('TRANSFER_DURABLE_LOCAL_PEER_UNSUPPORTED');
+    }
     let cmd;
     if (name === 'transfer_mesh_info') cmd = ['info'];
     if (name === 'transfer_mesh_send') {
@@ -264,7 +281,7 @@ export function createTransferMeshTools({ config = {}, receiptAuthority = null }
       const challenge=readTransferReceiptSidecar(root,args.peer,'challenges',args.id);
       result={...result,receiptRequired:true,receiptExpiresAtMs:challenge.expiresAtMs,executionAuthorityGranted:false};
     }
-    if (name === 'transfer_mesh_info') result={...result,receiptsEnabled};
+    if (name === 'transfer_mesh_info') result={...result,receiptsEnabled,durableSupportedPeers:[...durableSupportedPeers]};
     return result;
   }
   const renderedDefinitions=definitions.map(x=>({
@@ -274,7 +291,8 @@ export function createTransferMeshTools({ config = {}, receiptAuthority = null }
       : receiptsEnabled&&x.name==='transfer_mesh_enqueue'
         ? x.description+' A one-time challenge is recorded; after the recipient issues its signed receipt, verify it with transfer_mesh_receipt_verify.'
         : x.description,
-    inputSchema:{...x.inputSchema,properties:{...x.inputSchema.properties}}
+    inputSchema:{...x.inputSchema,properties:{...x.inputSchema.properties,
+      ...(durableNames.some(t=>t.name===x.name)?{peer:{...peerProperty,enum:[...durableSupportedPeers]}}:{})}}
   }));
   return { enabled:true, receiptsEnabled, definitions:renderedDefinitions, execute };
 }

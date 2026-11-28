@@ -13,14 +13,25 @@ TEMPBASE="$(realpath "$RUNNER_TEMP")"
 TARGET="$(git -C "$WORKSPACE" rev-parse HEAD)"
 EXPECTED="$1"
 BASELINE='362375c464948be3001b307650c13fc3353ed05b'
-# Preserve the legacy migration test; rollback must target a schema-compatible
-# accepted dev.23 predecessor, not the pre-Workspace immutable 0.10.20 tag.
-ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'
-ROLLBACK_VERSION='0.11.0-dev.23'
+# The migration upgrades the already-installed v0.12 Core dev12 package.
+# dev23 is a separate active legacy route and predates workspace_window_type;
+# it is not a schema-compatible rollback target for this v0.12 package update.
+ROLLBACK_BASELINE='46a8256186e09f3355b10f796717aefee29ed309'
+ROLLBACK_VERSION='0.12.0-dev.12'
+QUALIFICATION="${2:-historical-dev12}"
+DEV12_BASELINE="$ROLLBACK_BASELINE"
+case "$QUALIFICATION" in historical-dev12|same-schema-rc012) ;; *) echo R170_UNKNOWN_QUALIFICATION >&2; exit 62;; esac
 [[ "$TARGET" == "$EXPECTED" && "$TARGET" =~ ^[a-f0-9]{40}$ ]] || { echo R170_SOURCE_SHA_MISMATCH >&2; exit 62; }
 SOURCE_VERSION="$(node -p "require('$WORKSPACE/package.json').version")"
 node "$WORKSPACE/tools/isolated-qa-policy.mjs" || { echo R170_SOURCE_VERSION_NOT_QUALIFIED >&2; exit 63; }
 echo "R170_ISOLATED_SOURCE_VERSION=$SOURCE_VERSION releaseAuthorization=false"
+if [[ "$QUALIFICATION" == same-schema-rc012 ]]; then
+  PLAN="$(node "$WORKSPACE/test/rc012-same-schema-recovery-qa.mjs" plan "$SOURCE_VERSION" "$TARGET")"
+  ROLLBACK_BASELINE="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).recoveryHead)' "$PLAN")"
+  ROLLBACK_VERSION="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).recoveryVersion)' "$PLAN")"
+  RECOVERY_TREE="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).recoveryTree)' "$PLAN")"
+  [[ "$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).rejectedDev12Head)' "$PLAN")" == "$DEV12_BASELINE" ]] || exit 63
+fi
 ROOT="$TEMPBASE/remote-commander-rollback-r170"
 [[ "$ROOT" == "$TEMPBASE/"* && ! -e "$ROOT" ]] || { echo R170_SANDBOX_NOT_FRESH >&2; exit 64; }
 [[ ! -e "$HOME/.local/share/ChatGPTRemoteCommander" ]] || { echo R170_OWNER_INSTALL_DETECTED >&2; exit 65; }
@@ -105,6 +116,13 @@ assert r['active']['version']==sys.argv[3]
 print('R170_LINUX_PROMOTION_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_PROMOTED.json"
+RUNTIME="$ROOT/state/chatgpt-remote-commander/routing/default.runtime.json"
+[[ -f "$RUNTIME" ]] || { echo R170_NO_ROUTER_RUNTIME >&2; exit 73; }
+ROUTE_BEFORE_REFUSAL_SHA="$(sha256sum "$ROUTE" | cut -d' ' -f1)"
+RUNTIME_BEFORE_REFUSAL_SHA="$(sha256sum "$RUNTIME" | cut -d' ' -f1)"
+if [[ "$QUALIFICATION" == same-schema-rc012 ]]; then
+  node "$WORKSPACE/test/rc012-same-schema-recovery-qa.mjs" catalog > "$ROOT/CATALOG_PROMOTED.json"
+fi
 
 # A real rollback to pre-Workspace v0.10.20 MUST fail closed rather than silently
 # removing nine supported MCP tools. Keep the promoted route and contract intact.
@@ -121,6 +139,10 @@ if [[ "$INCOMPATIBLE_CODE" == 0 ]] ||
   exit 74
 fi
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$TARGET" ]] || { echo R170_INCOMPATIBLE_ATTEMPT_MUTATED_INSTALL >&2;exit 74; }
+[[ "$(sha256sum "$ROUTE" | cut -d' ' -f1)" == "$ROUTE_BEFORE_REFUSAL_SHA" ]] || { echo R170_REFUSAL_ROUTE_BYTES_CHANGED >&2; exit 74; }
+[[ "$(sha256sum "$RUNTIME" | cut -d' ' -f1)" == "$RUNTIME_BEFORE_REFUSAL_SHA" ]] || { echo R170_REFUSAL_ROUTER_REPLACED >&2; exit 74; }
+curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_AFTER_REFUSAL.json"
+echo R170_REFUSAL_ROUTER_AND_ROUTE_UNCHANGED
 node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_REJECTED_ROLLBACK.json"
 python3 - "$ROOT/ROUTE_AFTER_REJECTED_ROLLBACK.json" "$TARGET" <<'PY_CHECK'
 import json,sys
@@ -129,8 +151,26 @@ assert s['active']['commit']==sys.argv[2], 'legacy refusal altered promoted rout
 print('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY')
 PY_CHECK
 
-# Verify an actual rollback to a previously qualified, schema-compatible dev.23
-# predecessor without disabling the schema continuity gate.
+# The historical lane is unchanged. The explicit RC012 diagnostic separately
+# proves rejection of the now-incompatible dev12 and attempts a pinned same-version
+# source recovery. It is not acceptance of the historic downgrade or live rollout.
+if [[ "$QUALIFICATION" == same-schema-rc012 ]]; then
+  set +e
+  timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
+    --install-dir "$ROOT/install" --source-ref "$DEV12_BASELINE" --expected-commit "$DEV12_BASELINE" --force \
+    > "$ROOT/REJECTED_DEV12_ROLLBACK.log" 2>&1
+  DEV12_CODE=$?
+  set -e
+  [[ "$DEV12_CODE" != 0 ]] && grep -q '^SCHEMA_CONTINUITY_GATE_FAIL profile=default$' "$ROOT/REJECTED_DEV12_ROLLBACK.log" || { echo R170_EXPECTED_DEV12_SCHEMA_REFUSAL_MISSING >&2; exit 74; }
+  [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$TARGET" ]] || exit 74
+  [[ "$(sha256sum "$ROUTE" | cut -d' ' -f1)" == "$ROUTE_BEFORE_REFUSAL_SHA" ]] || exit 74
+  [[ "$(sha256sum "$RUNTIME" | cut -d' ' -f1)" == "$RUNTIME_BEFORE_REFUSAL_SHA" ]] || exit 74
+  curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_AFTER_DEV12_REFUSAL.json"
+  node "$WORKSPACE/test/rc012-same-schema-recovery-qa.mjs" catalog > "$ROOT/CATALOG_AFTER_DEV12_REFUSAL.json"
+  cmp -s "$ROOT/CATALOG_PROMOTED.json" "$ROOT/CATALOG_AFTER_DEV12_REFUSAL.json" || exit 74
+  echo R170_DEV12_INCOMPATIBLE_SCHEMA_REFUSED_WITHOUT_MUTATION
+fi
+# Actual rollback without disabling the continuity gate.
 set +e
 timeout --signal=TERM --kill-after=10s 800s bash "$WORKSPACE/auto-update-linux.sh" \
   --install-dir "$ROOT/install" --source-ref "$ROLLBACK_BASELINE" --expected-commit "$ROLLBACK_BASELINE" --force \
@@ -155,6 +195,8 @@ if [[ "$ROLLBACK_CODE" != 0 ]]; then
 fi
 [[ "$(git -C "$ROOT/install" rev-parse HEAD)" == "$ROLLBACK_BASELINE" ]] || { echo R170_ROLLBACK_CONTROL_SHA_FAIL >&2; exit 75; }
 grep -q "AUTO_UPDATE_PASS version=$ROLLBACK_VERSION" "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_NOT_ACCEPTED >&2; exit 76; }
+grep -Fq 'SCHEMA_CONTINUITY_GATE_PASS profile=default' "$ROOT/ROLLBACK_R170.log" || { echo R170_ROLLBACK_SCHEMA_CONTINUITY_NOT_ACCEPTED >&2; exit 76; }
+echo R170_ROLLBACK_SCHEMA_CONTINUITY_PASS
 node "$WORKSPACE/tools/router-state.mjs" --state "$ROUTE" > "$ROOT/ROUTE_AFTER_ROLLBACK.json"
 python3 - "$ROOT/ROUTE_AFTER_ROLLBACK.json" "$ROLLBACK_BASELINE" "$ROLLBACK_VERSION" <<'PY'
 import json,sys
@@ -164,6 +206,11 @@ assert r['active']['version']==sys.argv[3]
 print('R170_LINUX_ROLLBACK_ROUTE_PASS')
 PY
 curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:47831/health > "$ROOT/HEALTH_ROLLBACK.json"
+if [[ "$QUALIFICATION" == same-schema-rc012 ]]; then
+  [[ "$(git -C "$ROOT/install" rev-parse 'HEAD^{tree}')" == "$RECOVERY_TREE" ]] || exit 76
+  node "$WORKSPACE/test/rc012-same-schema-recovery-qa.mjs" catalog > "$ROOT/CATALOG_RECOVERY.json"
+  cmp -s "$ROOT/CATALOG_PROMOTED.json" "$ROOT/CATALOG_RECOVERY.json" || { echo R170_RECOVERY_CATALOG_CHANGED >&2; exit 76; }
+fi
 # Do not let an unrelated source mutation masquerade as an isolated rollback PASS.
 # Keep a sanitized pathname receipt for triage. A host checkout's declared PS1
 # CRLF attribute may cause a worktree-only EOL status; tolerate that only if
@@ -227,7 +274,7 @@ r=json.load(open(sys.argv[1]))
 assert r["status"]=="PASS_ZERO_OWNED_NODE_AFTER_ROLLBACK" and not r["ownedAfter"]
 print("R172_ROLLBACK_ZERO_OWNED_NODE_ACCEPTED")
 PY
-python3 - "$ROOT" "$TARGET" "$ROLLBACK_BASELINE" "$START" "$BASELINE" <<'PY'
+python3 - "$ROOT" "$TARGET" "$ROLLBACK_BASELINE" "$START" "$BASELINE" "$QUALIFICATION" <<'PY'
 import json,hashlib,pathlib,sys,datetime
 root=pathlib.Path(sys.argv[1])
 def h(p):return hashlib.sha256(p.read_bytes()).hexdigest()
@@ -246,7 +293,14 @@ record={
 'ownedNodeCleanup':json.loads((root/'CLEANUP_R172.json').read_text()),
 'signingAndNativeUIAcceptance':'OPEN'
 }
+record['qualification']=sys.argv[6]
+record['releaseAuthorization']=False
+if sys.argv[6]=='same-schema-rc012':
+    record.update(status='PASS_LINUX_SAME_SCHEMA_RECOVERY_QA',dev12SchemaRefused=True,
+        dev12RefusalLogSha256=h(root/'REJECTED_DEV12_ROLLBACK.log'),
+        catalogPromoted=json.loads((root/'CATALOG_PROMOTED.json').read_text()),
+        catalogRecovered=json.loads((root/'CATALOG_RECOVERY.json').read_text()))
 p=root/'RETURN_R170.json'
 p.write_text(json.dumps(record,indent=2)+'\n')
-print('R170_PASS exact='+sys.argv[2]+' receiptSha='+h(p))
+print(('R170_SAME_SCHEMA_RECOVERY_QA_PASS' if sys.argv[6]=='same-schema-rc012' else 'R170_PASS')+' exact='+sys.argv[2]+' receiptSha='+h(p))
 PY

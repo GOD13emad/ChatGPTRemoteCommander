@@ -293,10 +293,12 @@ export function createWorkerIdentityAuthority({
 
   const getTime=()=>clock(now);
   async function readTrust(){
-    const t=getTime();
     const [contextRaw,deviceRaw,transportRaw,policyRaw]=await Promise.all([
       resolveOwnerContext(),resolveDeviceIdentity(),resolveTransportIdentity(),resolveCapabilityPolicyDigest()
     ]);
+    // Validate against the clock AFTER native async evidence collection.
+    // Otherwise genuine fresh device/Tunnel samples appear future-stamped.
+    const t=getTime();
     const context=validateContext(contextRaw,hostId,profileId,t);
     const device=validateDevice(deviceRaw,t,maxDeviceAgeMs);
     const transport=validateTransport(transportRaw,profileId,device.ownerSidHash,t,maxTransportAgeMs);
@@ -337,8 +339,10 @@ export function createWorkerIdentityAuthority({
   function envelopeFor(privateKey,identity,snapshot,grant){
     const issuedAtMs=getTime();
     const expiresAtMs=Math.min(
-      issuedAtMs+maxEnrollmentTtlMs,snapshot.context.expiresAtMs,
-      snapshot.device.expiresAtMs,snapshot.transport.expiresAtMs,grant.expiresAtMs
+      // Dynamic device and Tunnel proofs are short-lived observations, not
+      // permanent enrollment TTLs. Re-attest both on EVERY authorization.
+      // An owner-approved identity ends with its J01 session or exact grant.
+      issuedAtMs+maxEnrollmentTtlMs,snapshot.context.expiresAtMs,grant.expiresAtMs
     );
     if(expiresAtMs<=issuedAtMs)fail('WORKER_IDENTITY_ENROLLMENT_WINDOW_INVALID');
     const claims=Object.freeze({
@@ -409,6 +413,85 @@ export function createWorkerIdentityAuthority({
       fail('WORKER_IDENTITY_REGISTRY_READBACK_FAILED');
     return persisted;
   }
+  // External native signer handoff: the private signing key stays inside
+  // a separately protected owner-provisioned process. Signed bytes alone
+  // NEVER enroll or authorize a Worker: require the current native J01
+  // context, live device/Tunnel facts, exact owner grant and worker.register
+  // action permission before touching durable shared WorkflowStore state.
+  async function registerSignedWorker(input){
+    const req=exact(input,['envelope'],'WORKER_IDENTITY_REGISTER_REQUEST_INVALID');
+    const signed=verifyWorkerRegistration(req.envelope,{
+      issuer,audience,now,maxTtlMs:maxEnrollmentTtlMs
+    });
+    const first=await readTrust();
+    const identity=identityFor(first,signed.keyId);
+    const claims=signed.claims;
+    const issued=getTime();
+    if(claims.workerId!==identity.workerId
+      ||!claimsMatch(claims,first,identity)
+      ||claims.bindingId!==first.context.bindingId
+      ||claims.issuedAtMs<issued-15000
+      ||claims.expiresAtMs>Math.min(
+        first.context.expiresAtMs,issued+maxEnrollmentTtlMs))
+      fail('WORKER_IDENTITY_SIGNED_NATIVE_SCOPE_MISMATCH');
+    const grant=await readGrant(first,identity);
+    if(claims.grantRevision!==grant.revision
+      ||claims.expiresAtMs>grant.expiresAtMs)
+      fail('WORKER_IDENTITY_OWNER_GRANT_CHANGED');
+    const invocation=Object.freeze({
+      tool:'worker.register',arguments:Object.freeze({
+        workerId:identity.workerId,keyId:signed.keyId,
+        deviceProvider:identity.deviceProvider,
+        deviceIdHash:identity.deviceIdHash,
+        tunnelProvider:identity.tunnelProvider,
+        tunnelIdHash:identity.tunnelIdHash,
+        capabilityPolicyDigest:identity.capabilityPolicyDigest,
+        grantRevision:grant.revision
+      })
+    });
+    if(await authorizeExactInvocation(routeOf(first.context),invocation,
+      authorizationContext(first.context,identity,grant.revision))!==true)
+      fail('WORKER_IDENTITY_REGISTER_NOT_AUTHORIZED');
+    const stable=await stableRecheck(first,identity,grant);
+    const currentGrant=await readGrant(stable,identity);
+    if(!sameGrant(grant,currentGrant)
+      ||claims.expiresAtMs<=getTime())
+      fail('WORKER_IDENTITY_OWNER_GRANT_CHANGED');
+    const existing=await registry.get(identity.workerId);
+    let expectedPreviousBindingId=null,expectedPreviousState='EMPTY';
+    if(existing){
+      const old=verifyWorkerRegistration(existing,{
+        issuer,audience,now,maxTtlMs:maxEnrollmentTtlMs,allowExpired:true
+      });
+      const revoked=await registry.isRevoked(identity.workerId,old.claims.bindingId);
+      const expired=old.claims.expiresAtMs<=getTime();
+      if(!revoked&&!expired){
+        if(existing.signature===req.envelope.signature
+          &&existing.keyId===signed.keyId
+          &&old.claims.bindingId===claims.bindingId
+          &&old.claims.grantRevision===grant.revision)
+          return existing;
+        fail('WORKER_IDENTITY_ACTIVE_BINDING_CONFLICT');
+      }
+      if(old.claims.bindingId===claims.bindingId)
+        fail('WORKER_IDENTITY_REENROLLMENT_EPOCH_REQUIRED');
+      expectedPreviousBindingId=old.claims.bindingId;
+      expectedPreviousState=revoked?'REVOKED':'EXPIRED';
+    }
+    const final=await stableRecheck(first,identity,grant);
+    if((await readGrant(final,identity)).revision!==grant.revision
+      ||claims.expiresAtMs<=getTime())
+      fail('WORKER_IDENTITY_OWNER_GRANT_CHANGED');
+    if(await registry.register(req.envelope,{
+      expectedPreviousBindingId,expectedPreviousState
+    })!==true)
+      fail('WORKER_IDENTITY_REGISTRY_WRITE_FAILED');
+    const persisted=await registry.get(identity.workerId);
+    if(!persisted||persisted.signature!==req.envelope.signature
+      ||await registry.isRevoked(identity.workerId,claims.bindingId)!==false)
+      fail('WORKER_IDENTITY_REGISTRY_READBACK_FAILED');
+    return persisted;
+  }
   async function authorizeWorker(input){
     const request=exact(input,['workerId','invocation'],'WORKER_IDENTITY_AUTHORIZE_REQUEST_INVALID');
     if(!safeId(request.workerId))fail('WORKER_IDENTITY_AUTHORIZE_REQUEST_INVALID');
@@ -439,6 +522,16 @@ export function createWorkerIdentityAuthority({
     const latest=await registry.get(request.workerId);
     if(!latest||latest.signature!==envelope.signature)
       fail('WORKER_IDENTITY_REGISTRATION_CHANGED');
+    // Revocation may be committed DURING the final awaited registry read.
+    // A valid Ed25519 envelope remains valid after its identity is revoked.
+    // Direct callers of WorkerIdentityAuthority (not only the PRIVATE gate)
+    // must reject unless the last durable revocation read is literally false.
+    if(await registry.isRevoked(request.workerId,claims.bindingId)!==false)
+      fail('WORKER_IDENTITY_REVOKED');
+    // The final registry lookups are asynchronous; the signed enrollment
+    // itself can expire during those awaits even with the same signature.
+    if(claims.expiresAtMs<=getTime())
+      fail('WORKER_IDENTITY_EXPIRED');
     return Object.freeze({
       authorized:true,workerId:claims.workerId,keyId:verified.keyId,
       bindingId:claims.bindingId,capabilityPolicyDigest:claims.capabilityPolicyDigest,
@@ -486,7 +579,7 @@ export function createWorkerIdentityAuthority({
     });
   }
   return Object.freeze({
-    registerWorker,authorizeWorker,revokeWorker,
+    registerWorker,registerSignedWorker,authorizeWorker,revokeWorker,
     verifyRegistration:value=>verifyWorkerRegistration(value,{issuer,audience,now,maxTtlMs:maxEnrollmentTtlMs})
   });
 }

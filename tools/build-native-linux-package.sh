@@ -48,6 +48,7 @@ SOURCE_GUARD
 HEAD="$(git -C "$ROOT" rev-parse HEAD^{commit})"
 EPOCH="$(git -C "$ROOT" show -s --format=%ct HEAD)"
 VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
+DEB_VERSION="${VERSION/-dev./~dev.}"
 if [[ ! "$VERSION" =~ ^0\.12\.0-dev\.[1-9][0-9]*$ ]]; then
   echo 'NATIVE_LINUX_QA_VERSION_NOT_APPROVED' >&2; exit 4
 fi
@@ -72,14 +73,37 @@ mkdir -p "$APP" "$RUNTIME" "$DEB/DEBIAN" \
   "$DEB/usr/lib/systemd/user" \
   "$DEB/usr/share/doc/chatgpt-remote-commander" \
   "$DEB$PACKAGE_DIR/tunnel"
-# Match the exact committed-Core allowlist used by packaging/unified/prepare.mjs.
-# Do not ship repository governance docs, skill bundles, tests or Git history.
-git -C "$ROOT" archive --format=tar "$HEAD" -- src tools vendor assets config.json package.json | tar -xf - -C "$APP"
+# Reuse the ONE reviewed public-Core allowlist, not a second whole-repository
+# git archive that could restore optional extensions under /usr/lib/.../app.
+# Prepare is source-pinned and rebuilds the derived stage from the exact HEAD.
+node "$ROOT/packaging/unified/prepare.mjs"
+PUBLIC_CORE="$ROOT/packaging/unified/.stage/core"
+cp -a -- "$PUBLIC_CORE/." "$APP/"
+node - "$ROOT" "$PUBLIC_CORE" "$APP" "$HEAD" <<'PUBLIC_CORE_VERIFY'
+const fs=require('node:fs'),path=require('node:path');
+const [repo,stage,installed,head]=process.argv.slice(2);
+const {validateCore}=require(path.join(repo,'packaging/unified/pilot-runtime.cjs'));
+const staged=validateCore(stage),native=validateCore(installed);
+const expectedTree=require('node:child_process').execFileSync('git',
+ ['-C',repo,'rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim();
+const files=Object.keys(staged.files);
+if(staged.head!==head||native.head!==head||staged.tree!==expectedTree
+ ||native.tree!==expectedTree||staged.count!==native.count
+ ||files.some(p=>p==='extensions'||p.startsWith('extensions/'))
+ ||JSON.stringify(staged.files)!==JSON.stringify(native.files)
+ ||fs.existsSync(path.join(installed,'extensions')))
+ throw Error('RC012_NATIVE_PUBLIC_CORE_SOURCE_MISMATCH');
+console.log('RC012_NATIVE_PUBLIC_CORE_ALLOWLIST_PASS files='+files.length+
+ ' optionalExtensions=0');
+PUBLIC_CORE_VERIFY
 test "$(node -p 'require(process.argv[1]).version' "$APP/package.json")" = "$VERSION"
 # Every build of the single v0.12 Linux product MUST contain the real protected
 # Core + J01 + signed Worker implementation. Version strings alone are not proof.
 for rel in \
  src/server-v0.3.mjs src/v012-private-core-runtime.mjs \
+ src/v012-owner-native-host-lease-bootstrap.mjs \
+ src/v012-host-global-operation-lease.mjs \
+ src/v012-windows-host-global-lease-acl.mjs \
  src/v2-private-pair-mcp-http-ingress.mjs \
  src/v2-private-tunnel-https-gateway.mjs \
  src/v2-private-pair-operation-gate.mjs \
@@ -133,12 +157,13 @@ install -m 0644 "$STAGE/tunnel-download/var/tunnel-client-installed.json" \
   "$DEB/usr/share/doc/chatgpt-remote-commander/tunnel-client-provenance.json"
 cat > "$DEB/DEBIAN/control" <<EOF
 Package: chatgpt-remote-commander
-Version: 0.12.0~dev1-2
+Version: $DEB_VERSION
 Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Remote Commander maintainers
 Depends: libc6 (>= 2.31), ca-certificates, curl (>= 7.68)
+Recommends: python3, python3-pil, python3-gi, xdotool, x11-utils
 Description: Single native Remote Commander application core (V0.12 QA)
  One dpkg-owned immutable code and Node runtime for all local profiles.
  Native owner admission, authenticated G1/J01 and fleet approval are
@@ -301,7 +326,10 @@ EOF
 find "$DEB" -type d -exec chmod 755 {} +
 find "$DEB" -type f ! -path '*/DEBIAN/*' -exec chmod a+r {} +
 find "$DEB" -type f ! -path '*/DEBIAN/*' -perm /111 -exec chmod a+x {} +
+# dpkg root:root must NEVER install group/world writable Core or resources.
+find "$DEB" -type f -exec chmod go-w {} +
 SOURCE_DATE_EPOCH="$EPOCH" dpkg-deb --root-owner-group --build "$DEB" "$STAGE/Remote-Commander-Linux-amd64.deb" >/dev/null
+python3 "$ROOT/tools/verify-native-package-permissions.py" "$STAGE/Remote-Commander-Linux-amd64.deb"
 dpkg-deb --field "$STAGE/Remote-Commander-Linux-amd64.deb" Package Version Architecture
 dpkg-deb --contents "$STAGE/Remote-Commander-Linux-amd64.deb" |
   grep -E 'native-config-preflight.mjs|systemd/(system|user)/chatgpt-remote-commander.*service|app/src/server-v0.3.mjs|runtime/node$|tunnel/tunnel-client$|tunnel/LICENSE$'

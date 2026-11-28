@@ -5,10 +5,25 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands } from '../tools/run-bounded-test-script.mjs';
+import { boundNodeTestConcurrency, parseQualificationArgs, prioritizeSensitiveQualificationCommands, isolateWindowsLeaseRegression, isolateWindowsTimingSensitiveRegressions, isolateWindowsProcessTreeRegression, isolateWindowsAgentHttpRegression, isolateWindowsTransferMeshHttpRegression, isolateWindowsWorkflowPlanRegression, isolateWindowsAsyncHttpRegression, isolateWindowsMcpConformanceRegression, isolateWindowsAutotickRegression, isolateWindowsStartupReadinessRegressions, prioritizeWindowsAdaptiveCold, markIsolatedQualificationPhases, splitWindowsQualificationCommands, parseQualificationPhase } from '../tools/run-bounded-test-script.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
+
+// The live Windows runner executes validated argv one phase at a time.
+// Retain the legacy single-command limit in its dedicated negative test,
+// but assess the complete growing suite through the actual phase contract.
+function assertWindowsPhaseContract(command){
+  const phases=splitWindowsQualificationCommands(command);
+  assert.deepEqual(phases,command.split(' && '),'every command preserved in order');
+  assert.ok(phases.length>=2&&phases.length<=160);
+  for(const phase of phases){
+    assert.ok(phase.length<=7000,'individual command length stays bounded');
+    const parsed=parseQualificationPhase(phase);
+    assert.ok(parsed.args||parsed.nested,'every phase must use validated argv');
+  }
+  return phases;
+}
 
 test('qualification paths bound full test file concurrency',()=>{
   const pkg=JSON.parse(read('package.json'));
@@ -356,14 +371,10 @@ test('R157 qualifier markers are opt-in, index-only, and preserve all original c
   assert.ok(groups[5].includes('test/async-http.test.mjs'),'async HTTP still runs ahead of high-volume batch');
   for(const file of ['test/project-adaptive.test.mjs','test/async-http.test.mjs'])
     assert.equal(command.split(file).length-1,1,'exactly one regression '+file);
-  const marked=markIsolatedQualificationPhases(command);
-  assert.ok(marked.length<7550,'preserve Windows cmd.exe length limit');
-  assert.equal((marked.match(/RC_QUAL_PHASE_START_\d{2}/g)||[]).length,groups.length);
-  assert.equal((marked.match(/RC_QUAL_PHASE_PASS_\d{2}/g)||[]).length,groups.length);
-  for(const [index,part] of groups.entries()){
-    assert.ok(marked.includes('RC_QUAL_PHASE_START_'+String(index).padStart(2,'0')+'&&'+part+'&&echo RC_QUAL_PHASE_PASS_'+String(index).padStart(2,'0')),
-      'each exact original command is preserved in its own observed phase');
-  }
+  const phases=assertWindowsPhaseContract(command);
+  assert.deepEqual(phases,groups,'each exact original command is preserved in its own observed phase');
+  assert.equal(phases.filter(part=>part.includes('test/dependency-provenance-order.test.mjs')).length,1,
+    'new dependency provenance regression remains registered exactly once');
   const wrapper=read('tools/run-bounded-test-script.mjs');
   assert.ok(wrapper.includes("process.env.RC_QUALIFICATION_RUN_ID"),'R157 opt-in is guarded');
   assert.ok(wrapper.includes('splitWindowsQualificationCommands(command)'));
@@ -399,6 +410,10 @@ test('R157 isolates every owned Windows phase so total command length cannot def
   assert.equal(phases.length,90);
   assert.deepEqual(phases,original.split(' && '));
   assert.ok(phases.every(part=>part.length<7000));
+  assert.deepEqual(assertWindowsPhaseContract(original),phases);
+  const maxPhases=Array.from({length:160},(_,i)=>'node test/phase-'+i+'.mjs').join(' && ');
+  assert.equal(assertWindowsPhaseContract(maxPhases).length,160);
+  assert.throws(()=>assertWindowsPhaseContract('node test/a.mjs && node test/b.mjs;bad'),/CI_QUALIFICATION/);
   assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && echo untrusted'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
   assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && npm run arbitrary'),/R157_PHASE_COMMAND_SHAPE_INVALID/);
   assert.throws(()=>splitWindowsQualificationCommands('node test/a.mjs && node '+ 'a'.repeat(7200)),/R157_PHASE_COMMAND_SHAPE_INVALID/);
@@ -521,8 +536,7 @@ test('Windows runs exact workflow-plan races before loaded CI; bounded adaptive 
   assert.ok(command.includes('test/project-engine-integration.test.mjs'));
   assert.ok(command.includes('test/boot-recovery-diagnostics.test.mjs'));
   assert.throws(()=>isolateWindowsWorkflowPlanRegression(prior.replace(' '+file,'')),/CI_WORKFLOW_PLAN_CARDINALITY/);
-  const marked=markIsolatedQualificationPhases(command);
-  assert.ok(marked.length<7550,'bounded R157 Windows shell command with phase markers');
+  assertWindowsPhaseContract(command);
   const source=read('test/project-adaptive.test.mjs');
   const first=source.indexOf("  test('inspect, extend, read prerequisite");
   const team=source.indexOf("  test('team reserves all calls before workers");
@@ -636,16 +650,24 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
   assert.ok(isolated.includes('test/workflow-plan.test.mjs'));
   assert.ok(isolated.includes('test/agent-extensions.test.mjs'),
     'preserve unrelated existing bulk qualification coverage');
-  assert.ok(markIsolatedQualificationPhases(isolated).length<7550,
-    'R157 Windows cmd.exe phase-marked bound stays unchanged');
+  assertWindowsPhaseContract(isolated);
   assert.throws(()=>isolateWindowsMcpConformanceRegression(before.replace(' '+file,'')),
     /CI_MCP_CONFORMANCE_CARDINALITY/);
   assert.throws(()=>isolateWindowsMcpConformanceRegression(prefix+before),
     /CI_MCP_CONFORMANCE_CARDINALITY/);
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsMcpConformanceRegression(command);'));
-  assert.match(read('test/mcp-conformance.test.mjs'),/attempt < 400/,
-    'original fixture readiness budget and body remain untouched');
+  const fixture=read('test/mcp-conformance.test.mjs');
+  // The fixture was deliberately changed to a bounded 30-second startup
+  // deadline; scheduling must not accidentally remove that protection.
+  assert.match(fixture,/const startupDeadline = Date\.now\(\) \+ 30000;/);
+  assert.match(fixture,/while \(Date\.now\(\) < startupDeadline\)/);
+  assert.match(fixture,/signal: AbortSignal\.timeout\(300\)/);
+  assert.ok(fixture.includes('MCP_CONFORMANCE_FIXTURE_HEALTH_NOT_READY_WITHIN_30000MS'));
+  assert.ok(fixture.includes('await response.body?.cancel()'));
+  assert.ok(fixture.includes('if (response.ok) { healthy = true; break; }'));
+  assert.ok(fixture.includes('assert.equal(healthy, true,'));
+  assert.ok(fixture.includes("const legacyInit = await post(port, {"));
 });
 
 test('bounded Windows adaptive fixture is scheduled cold with all original groups intact',()=>{
@@ -667,7 +689,7 @@ test('bounded Windows adaptive fixture is scheduled cold with all original group
   assert.equal(next[0],target);
   assert.deepEqual(next.slice(1),old.filter(c=>c!==target),'no other group order or body changes');
   for(const c of old)assert.equal(next.filter(x=>x===c).length,old.filter(x=>x===c).length);
-  assert.equal(markIsolatedQualificationPhases(result).match(/RC_QUAL_PHASE_START_/g).length,next.length);
+  assert.deepEqual(assertWindowsPhaseContract(result),next);
   assert.throws(()=>prioritizeWindowsAdaptiveCold(result+' && '+target),/CI_COLD_ADAPTIVE_CARDINALITY/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/project-adaptive.test.mjs'),/CI_COLD_ADAPTIVE_NOT_ISOLATED/);
   assert.throws(()=>prioritizeWindowsAdaptiveCold('node --test test/other.test.mjs'),/CI_COLD_ADAPTIVE_CARDINALITY/);
@@ -738,7 +760,37 @@ test('V012 source regression retains every pinned test exactly once with bounded
   const ranges=[...runner.matchAll(/files\.slice\((\d+),\s*(\d+)\)/g)]
     .map(match=>[Number(match[1]),Number(match[2])]);
   const scheduled=ranges.flatMap(([from,to])=>files.slice(from,to));
-  assert.equal(files.length,30,'G1 private owner TLS/Core, native J01, signed pair Worker, encrypted worker-key provisioning, Windows host-name preflight, stream-safe consent, recovery and Linux tunnel observer stay source-pinned');
+  assert.equal(files.length,56,'retain 55 previous suites and require portable native witness path binding');
+  for(const required of [
+    'test/v012-host-global-operation-lease.test.mjs',
+    'test/v012-windows-host-global-operation-lease.test.mjs',
+    'test/v012-native-operation-lease-gate.test.mjs',
+    'test/v012-owner-native-host-lease-bootstrap.test.mjs',
+    'test/gui-linux-session-route.test.mjs',
+    'test/qa-v012-no-grant-source-coherence.test.mjs',
+      'test/v101-pinned-interop-runner.test.mjs',
+      'test/v012-shared-physical-root-fence.test.mjs',
+      'test/v012-shared-physical-root-fence-windows-native.test.mjs',
+      'test/v012-shared-core-workflow-fence.test.mjs',
+      'test/v012-native-deferred-lease.test.mjs',
+      'test/v012-native-async-root-lifetime.test.mjs',
+      'test/v012-native-deferred-proof-authenticity.test.mjs',
+      'test/v012-native-cessation-certificate.test.mjs',
+      'test/v012-native-cessation-issuer.test.mjs',
+      'test/v012-native-cessation-evidence-archive.test.mjs',
+      'test/v012-owner-grant-administration.test.mjs',
+      'test/v012-owner-grant-admin-unix.test.mjs',
+      'test/v012-owner-grant-admin-cli-linux.test.mjs',
+      'test/v012-owner-worker-key-evidence-linux.test.mjs',
+      'test/v012-native-worker-registration-signer.test.mjs',
+      'test/v012-native-worker-registration-signer-linux.test.mjs',
+      'test/v012-owner-worker-signer-client-linux.test.mjs',
+      'test/rc012-owner-native-scoped-canary-bootstrap-linux.test.mjs',
+      'test/rc012-runtime-version-contract.test.mjs',
+      'test/linux-native-owner-witness-paths.test.mjs'
+  ])assert.ok(files.includes(required),'required source QA missing: '+required);
+  assert.deepEqual(ranges.slice(16),[[30,31],[31,32],[32,33],[33,34],[34,35],[35,36],[36,37],[37,38],[38,39],[39,40],[40,41],[41,42],[42,43],[43,44],[44,45],[45,46],[46,47],[47,48],[48,49],[49,50],[50,51],[51,52],[52,53],[53,54],[54,55],[55,56]],
+    'new native suites execute separately without changing the prior batch indices');
   assert.ok(files.includes('test/windows-owner-tunnel-host-resolution.test.mjs'),'native Windows read-only exact owner host regression must run in CI');
   assert.ok(files.includes('test/v012-owner-local-canary.test.mjs'),'real owner-local canary and failed-bootstrap quarantine must run in CI');
   assert.ok(files.includes('test/owner-pinned-provenance.test.mjs'),'owner-pinned unsigned candidate and rollback integrity must run in CI');
@@ -756,16 +808,118 @@ test('V012 source regression retains every pinned test exactly once with bounded
   assert.deepEqual(scheduled,files,'each fixture must execute exactly once and in original order');
   assert.deepEqual(ranges.slice(12,15),[[20,21],[21,22],[22,23]],
     'protected Core, Windows DPAPI and Linux owner recovery must not share a short subprocess deadline');
-  assert.match(runner,/timeout: index === 13 \? 100000\s*: index === 14 \? \(part === 0 \? 55000 : 65000\)\s*: 30000/,
-    'ordinary fixtures retain 30s, Windows DPAPI has a bounded 100s aggregate for its declared 30s/60s tests, Linux recovery has isolated 55/65s budgets');
+  assert.match(runner,/timeout: index === 13 \? 100000\s*: index === 14 \? \(part === 0 \? 55000 : 65000\)\s*: index === 16 \? 60000\s*: index === 17 \? 240000\s*: index === 19 \? 270000\s*: index === 26 \? 125000\s*: index === 27 \? 125000\s*: index === 28 \? 100000\s*: 30000/,
+    'retain previous deadlines; allow bounded aggregate budgets for native Linux, Windows and owner-bootstrap tests without relaxing per-test limits');
   assert.ok(runner.includes('index === 14 ? linuxOwnerRecoveryTests.map(name =>'),
     'only the named Linux native credential tests may use separate bounded deadlines');
+  assert.ok(runner.includes("process.platform === 'win32' && index === 9"),
+    'Windows host TLS/Gateway fixtures must retain a separate process per file');
+  const gateway=read('test/v2-private-tunnel-https-gateway.test.mjs');
+  for(const name of [
+    'v0.12 protected Core composition uses J01 and signed worker before real readText',
+    'real full-catalog 0.12 owner-local protected boot stays fail-closed without native grants'
+  ]){
+    assert.equal(gateway.split("test('"+name+"'").length,2,'exactly one pinned top-level fixture: '+name);
+    assert.ok(runner.includes("'"+name+"'"),'slow Windows Gateway fixture must remain pinned: '+name);
+  }
+  assert.ok(runner.includes("isolatedWindowsTunnel ? [[], ...gatewayPatterns.map(name => ['--test-name-pattern=^' + name + '$']), ['--test-skip-pattern=' + gatewaySlowPattern]]"),
+    'Windows runs attestor, two distinct slow Gateway fixtures and exact complementary Gateway fixtures');
+  assert.ok(runner.includes("isolatedWindowsTunnel ? [batch[part === 0 ? 0 : 1]] : batch"),
+    'Windows partition routing must retain attestor and Gateway, while non-Windows keeps original batch');
+  assert.ok(runner.includes("gatewayPatterns = slowWindowsGatewayTests.map(name => name.replaceAll('.', '[.]'))") &&
+    runner.includes("gatewaySlowPattern = '^(?:' + gatewayPatterns.join('|') + ')$'"),
+    'literal dots and anchored disjoint selection preserve the exact complement');
+  assert.ok(runner.includes("batch[0] !== 'test/v2-private-tunnel-mtls-attestor.test.mjs'") &&
+    runner.includes("batch[1] !== 'test/v2-private-tunnel-https-gateway.test.mjs'"),
+    'named tunnel batches must fail closed if the exact pinned file identities drift');
   for(const name of ['Linux native owner credential recovery stages idempotently, verifies isolated restore and rejects tampering',
     'profile-specific owner recovery capsules never share a Tunnel or private TLS pair'])
     assert.ok(runner.includes(name),'native credential fixture must remain covered: '+name);
   assert.ok(runner.includes('result.signal || result.status !== 0'),'nonzero tests fail closed');
 });
 
+
+test('qualification refuses an injected shell separator from a modified package script', {skip:process.platform!=='linux'},()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-qualification-shell-injection-'));
+  try{
+    for(const dir of ['tools','test'])fs.mkdirSync(path.join(temp,dir));
+    fs.copyFileSync(path.join(root,'tools/run-bounded-test-script.mjs'),
+      path.join(temp,'tools/run-bounded-test-script.mjs'));
+    fs.writeFileSync(path.join(temp,'package.json'),JSON.stringify({
+      type:'module',
+      scripts:{test:'node --test test/fixture.test.mjs; node tools/out-of-scope.mjs && node --test test/fixture.test.mjs'}
+    }));
+    fs.writeFileSync(path.join(temp,'test/fixture.test.mjs'),
+      "import test from 'node:test'; test('safe',()=>{});\n");
+    fs.writeFileSync(path.join(temp,'tools/out-of-scope.mjs'),
+      "import fs from 'node:fs'; fs.writeFileSync('unsafe-executed','1');\n");
+    const result=spawnSync(process.execPath,[path.join(temp,'tools/run-bounded-test-script.mjs'),
+      '--script','test','--concurrency','1'],{
+      cwd:temp,encoding:'utf8',timeout:10000
+    });
+    assert.equal(result.error,undefined,result.error?.message);
+    assert.notEqual(result.status,0,'shell separators must be denied');
+    assert.equal(fs.existsSync(path.join(temp,'unsafe-executed')),false,
+      'unapproved command must never execute');
+  }finally{
+    fs.rmSync(temp,{recursive:true,force:true});
+  }
+});
+
+test('qualification phase parser accepts current Node and nested scripts, rejects shell grammar',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  for(const key of ['test','check','test:v1-01-worker-grants','test:v1-01-hybrid-oauth','check:v1-01-hybrid-oauth']){
+    const bounded=key==='test'||key==='check'
+      ?boundNodeTestConcurrency(pkg.scripts[key],1).command:pkg.scripts[key];
+    for(const part of bounded.split(' && ')){
+      const phase=parseQualificationPhase(part);
+      assert.ok(phase.args||phase.nested,part);
+    }
+  }
+  assert.deepEqual(parseQualificationPhase('node --test --test-concurrency=1 test/fixture.test.mjs'),
+    {args:['--test','--test-concurrency=1','test/fixture.test.mjs']});
+  for(const bad of ['node --test test/a.mjs;touch-marker',
+    'node --test test/a.mjs | node tools/b.mjs',
+    'node --test ../other/a.mjs',
+    'node --test test/a.mjs && node test/b.mjs',
+    'node --check test/a.mjs test/b.mjs',
+    'npm run arbitrary',
+    'node -e process.exit(0)'])
+    assert.throws(()=>parseQualificationPhase(bad),/CI_QUALIFICATION/);
+});
+
+test('qualification recursively runs only approved nested scripts and rejects injected nested commands',
+  {skip:process.platform!=='linux'},()=>{
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-qualification-nested-'));
+  try{
+    for(const dir of ['tools','test','src'])fs.mkdirSync(path.join(temp,dir));
+    fs.copyFileSync(path.join(root,'tools/run-bounded-test-script.mjs'),
+      path.join(temp,'tools/run-bounded-test-script.mjs'));
+    fs.writeFileSync(path.join(temp,'src/fixture.mjs'),'export const value=1;\n');
+    fs.writeFileSync(path.join(temp,'test/fixture.test.mjs'),
+      "import test from 'node:test'; test('safe',()=>{});\n");
+    fs.writeFileSync(path.join(temp,'tools/out-of-scope.mjs'),
+      "import fs from 'node:fs'; fs.writeFileSync('unsafe-executed','1');\n");
+    const pkg={type:'module',scripts:{
+      test:'npm run check:v1-01-hybrid-oauth && node --test test/fixture.test.mjs',
+      'check:v1-01-hybrid-oauth':'node --check src/fixture.mjs'
+    }};
+    const run=()=>{
+      fs.writeFileSync(path.join(temp,'package.json'),JSON.stringify(pkg));
+      return spawnSync(process.execPath,[path.join(temp,'tools/run-bounded-test-script.mjs'),
+        '--script','test','--concurrency','1'],{
+        cwd:temp,encoding:'utf8',timeout:10000
+      });
+    };
+    const ok=run();
+    assert.equal(ok.status,0,ok.stderr||ok.stdout);
+    pkg.scripts['check:v1-01-hybrid-oauth']=
+      'node --check src/fixture.mjs; node tools/out-of-scope.mjs';
+    const blocked=run();
+    assert.notEqual(blocked.status,0,'injected nested commands must be rejected');
+    assert.equal(fs.existsSync(path.join(temp,'unsafe-executed')),false);
+  }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
 
 test('Linux qualification preserves a pinned user-local Node PATH instead of launching a login shell',{
   skip:process.platform!=='linux'
@@ -807,5 +961,79 @@ test('Linux qualification preserves a pinned user-local Node PATH instead of lau
       'both qualification phases must invoke the inherited explicit Node');
   }finally{
     fs.rmSync(temp,{recursive:true,force:true});
+  }
+});
+
+test('R470 check failure emits bounded counts and contiguous unfinished phase without raw log names',{
+  skip:process.platform!=='win32'
+},t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r470-check-fixture-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const commit='a'.repeat(40);
+  const probe=(name,lines)=>{
+    const temp=path.join(dir,name);
+    const logs=path.join(temp,'STATE','ChatGPTRemoteCommander','update-logs');
+    fs.mkdirSync(logs,{recursive:true});
+    fs.writeFileSync(path.join(logs,'qualification-output-qualification-check-'+commit.slice(0,12)+'-fixture.stdout.log'),lines.join('\n')+'\n');
+    const run=spawnSync('pwsh.exe',['-NoLogo','-NoProfile','-NonInteractive','-File',
+      path.join(root,'tools/diagnose-updater-gate-r470.ps1'),'-Root',temp,'-ExpectedCommit',commit],
+      {encoding:'utf8',timeout:15000});
+    assert.equal(run.status,0,run.error?.message||run.stderr);
+    const report=JSON.parse(fs.readFileSync(path.join(temp,'DIAGNOSTIC_R470.json'),'utf8'));
+    assert.equal(report.failedGate,'check');
+    assert.doesNotMatch(run.stdout,/synthetic-private-name|fixture-secret-123|STATE[\\/]/);
+    return {report,out:run.stdout};
+  };
+  const phases=Array.from({length:100},(_,i)=>{
+    const index=String(i).padStart(2,'0');
+    return ['RC_QUAL_PHASE_START_'+index,'RC_QUAL_PHASE_PASS_'+index];
+  }).flat();
+  const valid=probe('valid',[...phases,'RC_QUAL_PHASE_START_100','\u2716 synthetic-private-name (1ms)',
+    '\u2139 fail 1','fixture-secret-123']);
+  assert.match(valid.out,/R470_SAFE_CHECK_SUMMARY_KIND=SPEC_SUMMARY_EXTRACTED/);
+  assert.match(valid.out,/R470_SAFE_SPEC_FAIL_COUNT=1(?:\r?\n)/);
+  assert.match(valid.out,/R470_SAFE_FAILURE_PHASE=100(?:\r?\n)/);
+  assert.equal(valid.report.failurePhaseIndex,100);
+  const invalid=probe('invalid',['RC_QUAL_PHASE_START_00','RC_QUAL_PHASE_PASS_00',
+    'RC_QUAL_PHASE_START_02','\u2139 fail 1']);
+  assert.equal(invalid.report.failurePhaseIndex,null);
+  assert.doesNotMatch(invalid.out,/R470_SAFE_FAILURE_PHASE=/);
+  const noPhase=probe('no-phase',['# fail 1','not ok 1 - synthetic-private-name','fixture-secret-123']);
+  assert.match(noPhase.out,/R470_SAFE_TAP_FAIL_COUNT=1(?:\r?\n)/);
+  assert.doesNotMatch(noPhase.out,/R470_SAFE_FAILURE_PHASE=/);
+});
+
+test('R470 async HTTP diagnostic retains bounded phase and cleanup evidence',t=>{
+  if(process.platform!=='win32')return t.skip('native PowerShell fixture');
+  const sha='a'.repeat(40), marker='SYNTHETIC_VALUE_NOT_FOR_EXPORT';
+  for(const prefix of ['', '# ']){
+    const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r470-async-evidence-'));
+    try{
+      const logs=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
+      fs.mkdirSync(logs,{recursive:true});
+      const lines=[
+        'R157_ASYNC_HTTP_LAST_PHASE=operation-start',
+        'R157_ASYNC_HTTP_LAST_PHASE=operation-terminal',
+        'R157_ASYNC_HTTP_FAILURE_PHASE=operation-terminal',
+        'R157_ASYNC_HTTP_FAILURE_ASSERTION='+JSON.stringify({operator:'strictEqual',actual:marker,expected:'SUCCEEDED'}),
+        'R157_ASYNC_HTTP_CLEANUP_FAILURE_PHASE=fixture-remove',
+        'R157_ASYNC_HTTP_CLEANUP_FAILURE_CODE=EPERM',
+        'R157_ASYNC_HTTP_LAST_PHASE=not-a-known-phase'
+      ].map(line=>prefix+line);
+      lines.push('# tests 1','# fail 1');
+      fs.writeFileSync(path.join(logs,'qualification-output-qualification-test-'+sha.slice(0,12)+'-fixture.stdout.log'),lines.join('\n'));
+      const run=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-File',path.join(root,'tools/diagnose-updater-gate-r470.ps1'),'-Root',tmp,'-ExpectedCommit',sha],{encoding:'utf8',timeout:15000});
+      assert.equal(run.status,0,run.stderr);
+      const raw=fs.readFileSync(path.join(tmp,'DIAGNOSTIC_R470.json'),'utf8');
+      assert.ok(!raw.includes(marker));
+      assert.ok(!run.stdout.includes(marker));
+      const d=JSON.parse(raw);
+      assert.equal(d.asyncHttpLastPhase,'operation-terminal');
+      assert.equal(d.asyncHttpFailurePhase,'operation-terminal');
+      assert.deepEqual(d.asyncHttpFailureAssertion,{operator:'strictEqual',actual:null,expected:'SUCCEEDED'});
+      assert.equal(d.asyncHttpCleanupFailurePhase,'fixture-remove');
+      assert.equal(d.asyncHttpCleanupFailureCode,'EPERM');
+      assert.equal(d.rawLogIncluded,false);
+    }finally{fs.rmSync(tmp,{recursive:true,force:true});}
   }
 });

@@ -349,3 +349,60 @@ test('actual read-only Core readText executes only with the exact signed-gate to
     fs.rmSync(root,{recursive:true,force:true});
   }
 });
+
+test('revocation after durable receipt reservation denies without quarantining a proven pre-effect operation',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-pre-effect-denial-'));
+  const receipts=new MutationIdempotencyStore({directory:dir,scope:'private-denial-qa'});
+  let checks=0,effects=0,held=false,markedSafe=0,started=false;
+  try{
+    const {gate}=setup({
+      receiptStore:receipts,
+      verifyExactNativeGrant:async()=>++checks!==3,
+      withLease:async(_key,work)=>{
+        if(held)throw Error('RESOURCE_STILL_QUARANTINED');
+        held=true;let safe=false;
+        try{
+          const result=await work({
+            markEffectStarted(){started=true;},
+            markSafePreEffectDenial(){assert.equal(started,false);safe=true;markedSafe++;}
+          });
+          held=false;return result;
+        }catch(error){if(safe)held=false;throw error;}
+      },
+      execute:async()=>{effects++;return {ok:true};}
+    });
+    await assert.rejects(gate.execute(call()),{code:'V2_GRANT_REQUIRED'});
+    assert.equal(effects,0);
+    assert.equal(started,false);
+    assert.deepEqual(receipts.status().states,{DENIED:1});
+    assert.equal(markedSafe,1);
+    assert.equal(held,false);
+    await assert.rejects(gate.execute(call()),
+      {mutationIdempotencyCode:'MUTATION_PRE_EFFECT_DENIED'});
+    assert.equal(held,false,'terminal denial replay must not quarantine resource');
+    assert.equal(effects,0);
+    const distinct={...route(),operationId:'step2'};
+    assert.deepEqual(await gate.execute(call({r:distinct})),{ok:true});
+    assert.equal(effects,1);
+  }finally{receipts.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('deferred launch capability rechecks the exact immutable action and live owner grant after Core preparation',async()=>{
+  let allowed=true,launches=0;
+  const args={command:'fixture-public-command'};
+  const {gate}=setup({
+    verifyExactNativeGrant:async({route:r,tool,arguments:actual,ownerContext:c})=>{
+      assert.equal(r.operationId,'step1');assert.equal(tool,'run_shell');
+      assert.equal(JSON.stringify(actual),JSON.stringify(args));assert.equal(Object.isFrozen(actual),true);
+      assert.equal(c.bindingId,BINDING);return allowed;
+    },
+    execute:async(_r,_args,_tool,capability)=>{
+      assert.equal(Object.isFrozen(capability),true);
+      assert.equal(await capability.authorizeNativeLaunch(),true);
+      allowed=false;
+      if(await capability.authorizeNativeLaunch())launches++;
+      return {launches};
+    }
+  });
+  assert.deepEqual(await gate.execute({...call(),arguments:args}),{launches:0});
+});

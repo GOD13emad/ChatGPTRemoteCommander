@@ -11,6 +11,7 @@ import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const read=f=>fs.readFileSync(path.join(root,f),'utf8');
@@ -91,7 +92,7 @@ test('R230 real updater helper execution leaves arbitrary legacy projection sent
        linuxFn,
        'ensure_project_provider'
      ].join('\n');
-     result=spawnSync('bash',['-c',command,'--',sandbox,promote?'1':'0'],{encoding:'utf8',timeout:15000});
+     result=spawnSync('bash',['-s','--',sandbox,promote?'1':'0'],{input:command,encoding:'utf8',timeout:15000});
    }else{
      return t.skip('R230 native execution is required only on Windows and Linux');
    }
@@ -1045,7 +1046,7 @@ test('R234 Linux work-plugin updater preserves arbitrary owner data and retains 
     func,
     'sync_work_plugin_projection "$3" "$4" "$5"'
   ].join('\n');
-  const invoke=()=>spawnSync('bash',['-c',bash,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+  const invoke=()=>spawnSync('bash',['-s','--',backup,data,project,version,commit],{input:bash,encoding:'utf8',timeout:15000});
   const first=invoke();
   assert.equal(first.error,undefined,first.error?.message);
   assert.equal(first.status,0,first.stderr+' '+first.stdout);
@@ -1099,7 +1100,7 @@ test('R254 Linux plugin post-verify failure preserves owner data and quarantines
  func,
  'sync_work_plugin_projection "$3" "$4" "$5"'
  ].join('\n');
- const invoke=()=>spawnSync('bash',['-c',script,'--',backup,data,project,version,commit],{encoding:'utf8',timeout:15000});
+ const invoke=()=>spawnSync('bash',['-s','--',backup,data,project,version,commit],{input:script,encoding:'utf8',timeout:15000});
  const result=invoke();
  assert.equal(result.error,undefined,result.error?.message);
  assert.notEqual(result.status,0,'fault-injected post-verify must fail closed');
@@ -1283,8 +1284,8 @@ test('R170 isolated rollback qualification is version-scoped, not a release auth
   assert.ok(workflow.includes('isolated-qa-policy.mjs'));
   assert.ok(!workflow.includes("'0.10.27'"),'future candidate requires explicit review');
   assert.ok(linux.includes('R170_GITHUB_HOSTED_LINUX_ONLY'),'CI-only, not owner host');
-  assert.ok(linux.includes("ROLLBACK_BASELINE='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'rollback must target the last fleet-accepted dev23 baseline');
-  assert.ok(linux.includes("ROLLBACK_VERSION='0.11.0-dev.23'"),'rollback version and exact commit must agree');
+  assert.ok(linux.includes("ROLLBACK_BASELINE='46a8256186e09f3355b10f796717aefee29ed309'"),'rollback must target the installed schema-compatible dev12 baseline');
+  assert.ok(linux.includes("ROLLBACK_VERSION='0.12.0-dev.12'"),'rollback version and exact commit must agree');
   assert.ok(!linux.includes('af18cbdce3cc106842adebde912fea079094deb1'),'obsolete incompatible dev18 rollback is not accepted');
 });
 
@@ -1303,8 +1304,8 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
   assert.ok(qa.includes('R173_JOB_RUNNER_SHA_MISMATCH'),'R173 must verify exact job runner hash');
   assert.ok(qa.includes("'-WindowsJobRunnerPath',$JobRunner"),'updater must receive the verified runner explicitly');
   const windowsUpdater=read('auto-update-windows.ps1');
-  assert.ok(qa.includes("if($Name -eq 'ROLLBACK'){$args+= '-PinnedLegacyRunnerOverlay'}"),'only rollback may enable historical runner compatibility');
-  assert.ok(qa.includes('R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'),'rollback must prove the verified compatibility receipt');
+  assert.ok(!qa.includes('PinnedLegacyRunnerOverlay') && !qa.includes('R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'),'dev12 rollback must use its native runner manifest without the historical dev23 overlay');
+  assert.ok(qa.includes('SCHEMA_CONTINUITY_GATE_PASS profile=default'),'R173 must attest the schema-continuity gate');
   assert.ok(windowsUpdater.includes('if(-not $PinnedLegacyRunnerOverlay){throw \'WINDOWS_JOB_RUNNER_MANIFEST_MISSING\'}'),'default updater must fail closed on missing native manifest');
   assert.ok(windowsUpdater.includes("8ccf0fd16355a4ab79844feec6c295366763df0d"),'compatibility overlay is exact dev23 predecessor only');
   assert.ok(windowsUpdater.includes("RUNNER_ENVIRONMENT -ne 'github-hosted'") && windowsUpdater.includes('R173_PINNED_LEGACY_RUNNER_SCOPE_REJECTED'),'historical exception is hosted-only and explicit');
@@ -1314,8 +1315,8 @@ test('R173 Windows rollback source qualification allows only explicitly reviewed
 
   assert.ok(!workflow.includes('gh release create'),'QA workflow is not release authority');
   const helper=read('tools/run-r157-standard-user.ps1');
-  assert.ok(qa.includes("$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'"),'R173 must roll back to schema-compatible fleet baseline');
-  assert.ok(qa.includes("$RollbackVersion='0.11.0-dev.23'"),'R173 rollback version must match exact baseline');
+  assert.ok(qa.includes("$RollbackBaseline='46a8256186e09f3355b10f796717aefee29ed309'"),'R173 must roll back to installed schema-compatible dev12 baseline');
+  assert.ok(qa.includes("$RollbackVersion='0.12.0-dev.12'"),'R173 rollback version must match exact baseline');
   assert.ok(qa.includes('R173_STANDARD_USER_SANDBOX_MARKER_REQUIRED'),'R173 sandbox must be helper-created and fresh');
   assert.ok(workflow.includes('run-r157-standard-user.ps1 -RunR173Rollback'),'R173 updater must run under a verified standard token');
   assert.ok(workflow.includes('R173_STANDARD_USER_CLEANUP_NOT_ACCEPTED'),'R173 requires account removal and zero owned processes');
@@ -1339,7 +1340,7 @@ test('Linux tunnel-client is required before release promotion and profile enrol
   assert.ok(sameCommit>0 && maintenanceStage>sameCommit && maintenanceControl>maintenanceStage,'existing-route maintenance must also block on unverified release-local tunnel');
   assert.ok(audit>0 && stage>audit && candidateStart>stage,'new candidate dependency must run after source audit and before candidate/cutover');
   assert.ok(updater.includes('/bin/bash "$helper" --install-dir "$project"'),'pinned installer must provision each staged release');
-  assert.ok(installer.includes('TUNNEL_CLIENT_REQUIRED_MISSING'),'--skip-tunnel-client must fail closed when binary is absent');
+  assert.ok(installer.includes('/bin/bash "$helper" --install-dir "$INSTALL_DIR" --verify-only') && read('tools/install-tunnel-client-linux.sh').includes('TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID'),'--skip-tunnel-client must delegate to the pinned fail-closed verifier');
   assert.ok(enrollment.includes('/bin/bash "$ROOT/tools/install-tunnel-client-linux.sh" --install-dir "$ROOT"'),'profile enrollment must provision release dependency');
 });
 
@@ -1362,20 +1363,29 @@ test('Linux installer skip mode rejects missing/wrong tunnel binaries and accept
     const invoke=()=>cp.spawnSync('bash',['-c','INSTALL_DIR="$1"; SKIP_TUNNEL_CLIENT=1; . "$2"; install_tunnel_client','_',tmp,fn],{encoding:'utf8'});
     const missing=invoke();
     assert.notEqual(missing.status,0,'absent executable must not be accepted');
-    assert.match(missing.stderr,/TUNNEL_CLIENT_REQUIRED_MISSING/);
+    assert.match(missing.stderr,/TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID/);
     const pin=JSON.parse(fs.readFileSync(path.join(toolsDir,'tunnel-client-pin.json'),'utf8'));
     const binDir=path.join(toolsDir,'tunnel-client-v'+pin.version+'-linux-'+(process.arch==='arm64'?'arm64':'amd64'));
     fs.mkdirSync(binDir);
     const exe=path.join(binDir,'tunnel-client');
     fs.writeFileSync(exe,'#!/bin/sh\necho \"'+pin.version+'+'+pin.upstreamCommit+'\"\n');
     fs.chmodSync(exe,0o755);
+    const arch=process.arch==='arm64'?'arm64':'amd64', asset=pin.assets['linux-'+arch];
+    const companion=path.join(binDir,'cloudflared');
+    fs.writeFileSync(companion,'#!/bin/sh\nexit 0\n',{mode:0o755});
+    const digest=p=>createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+    asset.binarySha256=digest(exe);asset.cloudflaredSha256=digest(companion);
+    fs.writeFileSync(path.join(toolsDir,'tunnel-client-pin.json'),JSON.stringify(pin));
+    fs.writeFileSync(path.join(binDir,'.verified-archive-sha256'),asset.sha256+'\n');
+    fs.mkdirSync(path.join(tmp,'var'));
+    fs.writeFileSync(path.join(tmp,'var','tunnel-client-installed.json'),JSON.stringify({schema:1,version:pin.version,releaseTag:pin.releaseTag,upstreamCommit:pin.upstreamCommit,asset:asset.file,assetSha256:asset.sha256,binarySha256:asset.binarySha256,cloudflaredSha256:asset.cloudflaredSha256,verification:'archive-and-binary-set-sha256'}));
     const verified=invoke();
     assert.equal(verified.status,0,verified.stderr);
-    assert.match(verified.stdout,/Reusing existing pinned tunnel-client/);
-    fs.writeFileSync(exe,'#!/bin/sh\necho \"wrong-version\"\n');
+    assert.match(verified.stdout,/TUNNEL_CLIENT_VERIFY_PASS/);
+    fs.appendFileSync(exe,'# tampered bytes, unchanged version\n');
     const invalid=invoke();
     assert.notEqual(invalid.status,0,'invalid provenance must be rejected');
-    assert.match(invalid.stderr,/provenance mismatch/);
+    assert.match(invalid.stderr,/TUNNEL_CLIENT_EXISTING_PROVENANCE_INVALID/);
   } finally {
     fs.rmSync(tmp,{recursive:true,force:true});
   }
@@ -1417,10 +1427,10 @@ test('Linux staged dependency rejects missing helper, missing executable, and ba
   }
 });
 
-test('preliminary schema probe nonzero must not invoke ERR trap before final continuity gate', {skip:process.platform!=='linux'},()=>{
+test('preliminary schema probe nonzero must be handled explicitly rather than invoking ERR trap', {skip:process.platform!=='linux'},()=>{
   const updater=read('auto-update-linux.sh');
-  const begin=updater.indexOf('if SCHEMA_PRE="$(node "$STAGE_DIR/tools/schema-continuity-gate.mjs"');
-  const finalGate=updater.indexOf('if ! node "$STAGE_DIR/tools/schema-continuity-gate.mjs"');
+  const begin=updater.indexOf('if SCHEMA_PRE="$(node "$SCHEMA_GATE"');
+  const finalGate=updater.indexOf('if ! node "$SCHEMA_GATE"');
   assert.ok(begin>0&&finalGate>begin,'guard preliminary probe and keep final blocking gate');
   assert.ok(updater.includes('SCHEMA_PRE_REJECTED_BEFORE_ROUTER_BOOTSTRAP'),'diagnostic marker must remain');
   assert.ok(!updater.includes('set +e\n    SCHEMA_PRE='),'unguarded command substitution still triggers ERR trap');
@@ -1430,11 +1440,61 @@ test('preliminary schema probe nonzero must not invoke ERR trap before final con
     "if SCHEMA_PRE=\"$(bash -c 'exit 3')\"; then :; else echo EXPECTED_SCHEMA_REJECT; fi",
     'echo FINAL_GATE_REACHED'
   ].join('\n');
-  const result=offlineSpawn.spawnSync('bash',['-c',script],{encoding:'utf8'});
+  const result=offlineSpawn.spawnSync('bash',['-s'],{input:script,encoding:'utf8'});
   assert.equal(result.status,0,result.stderr);
   assert.match(result.stdout,/EXPECTED_SCHEMA_REJECT/);
   assert.match(result.stdout,/FINAL_GATE_REACHED/);
   assert.doesNotMatch(result.stdout,/ERR_TRAP_FIRED/);
+});
+
+test('R170 incompatible schema must stop before any router source replacement', {skip:process.platform!=='linux'},()=>{
+  const updater=read('auto-update-linux.sh');
+  const begin=updater.indexOf('    if SCHEMA_PRE=');
+  const end=updater.indexOf('  fi\nfi\n',begin);
+  assert.ok(begin>0&&end>begin,'actual routed preflight block must be extractable');
+  const actual=updater.slice(begin,end);
+  const cases=[
+    [2,'{"ok":false,"changed":true}',true],
+    [3,'{"ok":false,"changed":true}',true],
+    [0,'{"ok":false,"changed":true}',true],
+    [0,'{"ok":true,"changed":"true"}',true],
+    [0,'not-json',true],
+    [0,'{"ok":true,"changed":false}',false]
+  ];
+  for(const [code,body,rejected] of cases){
+    const script=[
+      'set -Eeuo pipefail',
+      'STAGE_DIR=/qa; INSTALL_DIR=/qa; SELF_PATH=/qa/auto-update-linux.sh; SCHEMA_GATE=/qa/tools/schema-continuity-gate.mjs',
+      'ROUTE=/qa/route; ROUTING_ROOT=/qa; STATE_ROOT=/qa; PORT=48832; SCHEMA_OLD_PORT=48831; CANDIDATE_PID=1',
+      'log(){ echo "$*"; }; stop_owned_candidate(){ echo CANDIDATE_STOPPED; }',
+      'node(){ case "$1" in */schema-continuity-gate.mjs) printf "%s\\n" \''+body+'\'; return '+code+';; */router-source-bootstrap.mjs) echo ROUTER_MUTATED >&2; echo \'{"changed":true}\';; -e) command node "$@";; *) return 91;; esac; }',
+      actual,'echo POST_GATE_REACHED'
+    ].join('\n');
+    const result=offlineSpawn.spawnSync('bash',['-s'],{input:script,encoding:'utf8'});
+    if(rejected){
+      assert.notEqual(result.status,0,'failed or invalid probe must not return success/retry');
+      assert.match(result.stderr,/SCHEMA_CONTINUITY_GATE_FAIL profile=default/);
+      assert.match(result.stdout,/CANDIDATE_STOPPED/);
+      assert.doesNotMatch(result.stdout+result.stderr,/ROUTER_MUTATED|POST_GATE_REACHED|AUTO_UPDATE_ROUTER_BOOTSTRAPPED_RETRY_REQUIRED/);
+    }else{
+      assert.equal(result.status,0,result.stderr);
+      assert.match(result.stderr,/ROUTER_MUTATED/);
+      assert.match(result.stdout,/POST_GATE_REACHED/);
+    }
+  }
+});
+
+test('Windows preflights every routed candidate before any router source replacement',()=>{
+  const win=read('auto-update-windows.ps1');
+  const begin=win.indexOf('$routerBootstrapDeferred=@()');
+  const end=win.indexOf('if($routerBootstrapDeferred.Count-gt0)',begin);
+  const block=win.slice(begin,end);
+  const pre=block.indexOf('$pre=Get-SchemaContinuityProbe');
+  const reject=block.indexOf('if($pre.exitCode -ne 0 -or $pre.ok -ne $true)');
+  const mutation=block.indexOf('$bootstrap=Ensure-RouterCandidateSource');
+  assert.ok(pre>=0&&reject>pre&&mutation>reject,'preflight failure must precede mutation');
+  assert.match(block.slice(reject,mutation),/SCHEMA_CONTINUITY_GATE_FAIL/);
+  assert.match(block.slice(reject,mutation),/foreach\(\$c in \$candidates\)/,'all profile checks must finish before first replacement');
 });
 
 test('R170 isolated rollback retries only an explicit router-bootstrap receipt once',()=>{
@@ -1445,7 +1505,9 @@ test('R170 isolated rollback retries only an explicit router-bootstrap receipt o
   assert.ok(r170.includes("grep -q \"AUTO_UPDATE_PASS version=$ROLLBACK_VERSION\""),'full compatible rollback acceptance cannot be bypassed');
   assert.ok(r170.includes("grep -q '^SCHEMA_CONTINUITY_GATE_FAIL profile=default$'"),'legacy incompatible rollback must fail closed');
   assert.ok(r170.includes('R170_LEGACY_INCOMPATIBLE_ROLLBACK_REJECTED_SAFELY'),'legacy refusal must retain promoted route');
-  assert.ok(r170.includes('ROLLBACK_BASELINE=\'8ccf0fd16355a4ab79844feec6c295366763df0d\''),'compatible rollback commit must be exact and pinned');
+  assert.ok(r170.includes('ROLLBACK_BASELINE=\'46a8256186e09f3355b10f796717aefee29ed309\''),'compatible rollback commit must be exact and pinned');
+  assert.ok(r170.includes('ROLLBACK_VERSION=\'0.12.0-dev.12\''),'compatible rollback version must match exact baseline');
+  assert.ok(r170.includes("grep -Fq 'SCHEMA_CONTINUITY_GATE_PASS profile=default'"),'successful rollback must attest schema continuity');
   assert.ok(r170.includes('R170_LINUX_ROLLBACK_ROUTE_PASS'),'route readback must remain mandatory');
   assert.ok(r170.includes('git -C "$WORKSPACE" diff --cached --quiet --'),'staged changes remain prohibited before byte-exact normalized EOL comparison');
   assert.ok(r170.includes('R170_SOURCE_CHANGED'),'any semantic source change must block');

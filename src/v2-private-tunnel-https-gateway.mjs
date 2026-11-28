@@ -6,7 +6,8 @@ import https from 'node:https';
 import tls from 'node:tls';
 import {X509Certificate} from 'node:crypto';
 import {createV2CandidateHttpIngress} from './v2-mcp-http-ingress.mjs';
-import {createV2PrivateTunnelMtlsAttestor,createV2OwnerPinnedPrivatePairAttestor} from './v2-private-tunnel-mtls-attestor.mjs';
+import {createV2PrivateTunnelMtlsAttestor,createV2OwnerPinnedPrivatePairAttestor,
+  isV2PinnedTunnelClientCertificate} from './v2-private-tunnel-mtls-attestor.mjs';
 import {createV2PrivatePairMcpIngress} from './v2-private-pair-mcp-http-ingress.mjs';
 import {isProxy} from 'node:util/types';
 
@@ -98,6 +99,7 @@ export function createV2CandidatePrivateTunnelHttpsGateway({
     });
   const ingress=privatePair?createV2PrivatePairMcpIngress({
     attestTransport,
+    isPinnedBootstrapPeer:req=>isV2PinnedTunnelClientCertificate(req,expectedClientLeafDerSha256,now()),
     resolveTrustedConversation:privatePair.resolveTrustedConversation,
     ownerStack:privatePair.ownerStack,operationGate:privatePair.operationGate,
     trustedToolCatalog:privatePair.trustedToolCatalog??[],

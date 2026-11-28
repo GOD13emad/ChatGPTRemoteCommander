@@ -227,3 +227,127 @@ test('RSA public keys below 2048 bits are rejected even if signature verifies',a
   await assert.rejects(verifier(signedData+'.'+proof),
     {code:'V2_JWKS_KEY_REJECTED'});
 });
+
+test('OAuth bearer expiry during awaited native session is rejected before admission',async()=>{
+  let current=NOW,principalRevoked=false,revokeOnObservation=false;
+  const route={hostId:'host',principalId:'user-1',profileId:'alice',
+    conversationId:'chat-a',operationId:'write',target:{kind:'workflow-root',id:'flow-a'}};
+  const args={path:'a.txt',content:'ok'};
+  const internal=generateKeyPairSync('ed25519');
+  const fields=['issuer','audience','hostId','principalId','profileId','conversationId',
+    'operationId','targetKind','targetId','osSessionId','tool','argumentsHash',
+    'issuedAtMs','expiresAtMs','nonce'];
+  const claims={issuer:'internal-issuer',audience:'internal-audience',
+    hostId:'host',principalId:'user-1',profileId:'alice',conversationId:'chat-a',
+    operationId:'write',targetKind:'workflow-root',targetId:'flow-a',
+    osSessionId:'owner-session',tool:'write_text',
+    argumentsHash:v2ActionDigest('write_text',args),
+    issuedAtMs:NOW-1,expiresAtMs:NOW+30000,nonce:'unique-nonce'};
+  const encoded=Buffer.from(JSON.stringify([2,'internal',...fields.map(f=>claims[f])]));
+  const assertion={schema:2,keyId:'internal',claims,
+    signature:sign(null,encoded,internal.privateKey).toString('base64url')};
+  const observed=createV2OAuthObservedCaller({
+    route,tool:'write_text',args,assertion,
+    assertionTrust:{issuer:'internal-issuer',audience:'internal-audience',
+      publicKeys:new Map([['internal',internal.publicKey]])},
+    readAuthorization:async()=> 'Bearer '+token('EdDSA',
+      payload({exp:Math.floor(NOW/1000)+2})),
+    verifyAccessToken:createV2JwksTokenVerifier({...config,now:()=>current}),
+    resolvePrincipal:async()=>principalRevoked?'other-principal':'user-1',
+    observedNativeSession:async()=>{
+      if(revokeOnObservation)principalRevoked=true;
+      else current+=3000;
+      return 'owner-session';
+    },
+    issuer:ISS,audience:AUD,now:()=>current
+  });
+  await assert.rejects(observed(),{code:'V2_OAUTH_TOKEN_NOT_CURRENT'});
+  current=NOW;
+  revokeOnObservation=true;
+  await assert.rejects(observed(),{code:'V2_OAUTH_PRINCIPAL_MISMATCH'});
+});
+test('signed chat assertion expiry during awaited native session is rejected',async()=>{
+  let current=NOW,swapSession=false,rotateProof=false,
+    expireDuringFinalPrincipal=false,principalChecks=0,
+    revokeDuringFinalPrincipal=false,replaceDuringFinalPrincipal=false;
+  const route={hostId:'host',principalId:'user-1',profileId:'alice',
+    conversationId:'chat-a',operationId:'write',target:{kind:'workflow-root',id:'flow-a'}};
+  const args={path:'a.txt',content:'ok'};
+  const internal=generateKeyPairSync('ed25519');
+  const fields=['issuer','audience','hostId','principalId','profileId','conversationId',
+    'operationId','targetKind','targetId','osSessionId','tool','argumentsHash',
+    'issuedAtMs','expiresAtMs','nonce'];
+  const claims={issuer:'internal-issuer',audience:'internal-audience',
+    hostId:'host',principalId:'user-1',profileId:'alice',conversationId:'chat-a',
+    operationId:'write',targetKind:'workflow-root',targetId:'flow-a',
+    osSessionId:'owner-session',tool:'write_text',
+    argumentsHash:v2ActionDigest('write_text',args),
+    issuedAtMs:NOW-1,expiresAtMs:NOW+1000,nonce:'unique-nonce'};
+  const encoded=Buffer.from(JSON.stringify([2,'internal',...fields.map(f=>claims[f])]));
+  const assertion={schema:2,keyId:'internal',claims,
+    signature:sign(null,encoded,internal.privateKey).toString('base64url')};
+  const trust={issuer:'internal-issuer',audience:'internal-audience',
+    publicKeys:new Map([['internal',internal.publicKey]])};
+  const observed=createV2OAuthObservedCaller({
+    route,tool:'write_text',args,assertion,assertionTrust:trust,
+    readAuthorization:async()=> 'Bearer '+token('EdDSA',
+      payload({exp:Math.floor(NOW/1000)+60})),
+    verifyAccessToken:createV2JwksTokenVerifier({...config,now:()=>current}),
+    resolvePrincipal:async()=>{
+      if((expireDuringFinalPrincipal||revokeDuringFinalPrincipal
+        ||replaceDuringFinalPrincipal)&&++principalChecks===2){
+        if(expireDuringFinalPrincipal)current+=2000;
+        if(revokeDuringFinalPrincipal)trust.publicKeys.delete('internal');
+        if(replaceDuringFinalPrincipal){
+          claims.nonce='re-signed-during-final-identity-lookup';
+          assertion.signature=sign(null,Buffer.from(JSON.stringify([2,'internal',
+            ...fields.map(f=>claims[f])])),internal.privateKey).toString('base64url');
+        }
+      }
+      return 'user-1';
+    },
+    observedNativeSession:async()=>{
+      if(swapSession||rotateProof){
+        // A newly signed proof, even if still valid, cannot replace
+        // the exact owner-attested assertion mid-observation.
+        if(swapSession)claims.osSessionId='different-owner-session';
+        if(rotateProof)claims.nonce='renewed-nonce';
+        claims.expiresAtMs=NOW+10000;
+        const changed=Buffer.from(JSON.stringify([2,'internal',
+          ...fields.map(f=>claims[f])]));
+        assertion.signature=sign(null,changed,internal.privateKey).toString('base64url');
+      }else if(!expireDuringFinalPrincipal)current+=2000;
+      return 'owner-session';
+    },
+    issuer:ISS,audience:AUD,now:()=>current
+  });
+  await assert.rejects(observed(),{code:'V2_ASSERTION_EXPIRED_OR_INVALID_TIME'});
+  current=NOW;
+  swapSession=true;
+  await assert.rejects(observed(),{code:'V2_ASSERTION_NATIVE_SESSION_MISMATCH'});
+  claims.osSessionId='owner-session';
+  claims.nonce='reset-nonce';
+  assertion.signature=sign(null,Buffer.from(JSON.stringify([2,'internal',
+    ...fields.map(f=>claims[f])])),internal.privateKey).toString('base64url');
+  swapSession=false;
+  rotateProof=true;
+  await assert.rejects(observed(),{code:'V2_ASSERTION_CHANGED_DURING_NATIVE_SESSION'});
+  // The final trusted OAuth principal lookup itself may outlast an otherwise
+  // valid same-chat signed native assertion, even when the OAuth JWT is fresh.
+  current=NOW;swapSession=false;rotateProof=false;
+  expireDuringFinalPrincipal=true;principalChecks=0;
+  claims.nonce='final-principal-check';claims.expiresAtMs=NOW+1000;
+  assertion.signature=sign(null,Buffer.from(JSON.stringify([2,'internal',
+    ...fields.map(f=>claims[f])])),internal.privateKey).toString('base64url');
+  await assert.rejects(observed(),{code:'V2_ASSERTION_EXPIRED_OR_INVALID_TIME'});
+  // Signing authority can also revoke during the final trusted lookup.
+  current=NOW;principalChecks=0;expireDuringFinalPrincipal=false;
+  revokeDuringFinalPrincipal=true;claims.expiresAtMs=NOW+10000;
+  assertion.signature=sign(null,Buffer.from(JSON.stringify([2,'internal',
+    ...fields.map(f=>claims[f])])),internal.privateKey).toString('base64url');
+  await assert.rejects(observed(),{code:'V2_ASSERTION_TRUSTED_KEY_REQUIRED'});
+  // A different valid proof is not the exact proof seen by native J01.
+  current=NOW;principalChecks=0;revokeDuringFinalPrincipal=false;
+  replaceDuringFinalPrincipal=true;trust.publicKeys.set('internal',internal.publicKey);
+  await assert.rejects(observed(),{code:'V2_ASSERTION_CHANGED_DURING_NATIVE_SESSION'});
+});

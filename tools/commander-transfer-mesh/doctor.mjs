@@ -3,7 +3,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const IDS={
  PC:'EFE6R4U-O3B6JVV-N4OKZFL-7X4U24W-A5GFD4G-TM4OPRK-AXBDALA-OCJUBQ6',
@@ -36,15 +35,34 @@ export function evaluatePeerConnectivity(connections,alias){
  return {connectedPeers,expectedPeers:expected.length,disconnectedPeers,transports,
   allConnected:disconnectedPeers.length===0};
 }
+export function assessDaemonIdentity({status,version,alias}){
+ if(!Object.hasOwn(IDS,alias)||typeof status?.myID!=='string'||status.myID!==IDS[alias])
+   throw new Error('Certificate identity mismatch');
+ const current=version?.version;
+ if(typeof current!=='string'||current.length>64
+  ||!/^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.+-]{1,48})?$/.test(current))
+   throw new Error('Invalid Syncthing version');
+ return 'syncthing '+current;
+}
+// The local node identity has already been matched to IDS and the live REST
+// status.myID has been checked. Bind each pair to both identities and exact root.
+export function isExpectedPeerFolder(folder,{localDeviceId,peerId,root,peerName}={}){
+ if(!folder||typeof folder!=='object'||folder.paused)return false;
+ const devices=folder.devices;
+ if(!Array.isArray(devices)||devices.length!==2)return false;
+ const ids=devices.map(d=>d&&typeof d.deviceID==='string'?d.deviceID:null);
+ if(ids.some(id=>!id)||new Set(ids).size!==2)return false;
+ if(typeof localDeviceId!=='string'||typeof peerId!=='string'||localDeviceId===peerId
+  ||!ids.includes(localDeviceId)||!ids.includes(peerId))return false;
+ if(typeof folder.path!=='string'||typeof root!=='string'||typeof peerName!=='string')return false;
+ try{return path.resolve(folder.path)===path.resolve(root,'pairs',peerName);}catch{return false;}
+}
+
 async function main(){
 try {
  const node=JSON.parse(fs.readFileSync(path.join(root,'node.json'),'utf8'));
  output.alias=node.alias;
  if(!Object.hasOwn(IDS,node.alias)||node.deviceID!==IDS[node.alias])throw new Error('Node identity mismatch');
- const exe=path.join(root,'bin',process.platform==='win32'?'syncthing.exe':'syncthing');
- const id=execFileSync(exe,['device-id','--home='+path.join(root,'state')],{encoding:'utf8',timeout:4000,windowsHide:true}).trim();
- if(id!==IDS[node.alias])throw new Error('Certificate identity mismatch');
- output.version=execFileSync(exe,['--version'],{encoding:'utf8',timeout:4000,windowsHide:true}).trim().split(' ').slice(0,2).join(' ');
  const xml=fs.readFileSync(path.join(root,'state','config.xml'),'utf8');
  const key=xml.match(/<apikey>([^<]+)<\/apikey>/)?.[1];
  if(!key)throw new Error('Local REST key missing');
@@ -61,6 +79,11 @@ try {
   try {const health=await fetchLocal(u,'/rest/noauth/health',false);if(health.status==='OK'){base=u;break;}}catch{}
  }
  if(!base)throw new Error('Local Syncthing REST health unavailable');
+ // Authenticate to the loopback daemon and bind its live certificate identity
+ // to the reviewed peer map. A diagnostic never executes a pilot-supplied binary.
+ const status=await fetchLocal(base,'/rest/system/status');
+ const version=await fetchLocal(base,'/rest/system/version');
+ output.version=assessDaemonIdentity({status,version,alias:node.alias});
  output.apiStatus='OK';
  const folders=await fetchLocal(base,'/rest/config/folders');
  const connected=await fetchLocal(base,'/rest/system/connections');
@@ -71,9 +94,8 @@ try {
  const scoped=folders.filter(f=>f.id?.startsWith('ctmesh-v1-'));
  for(const exp of expected){
   const f=scoped.find(x=>x.id===exp.id);
-  if(!f||f.paused||f.devices?.length!==2||new Set(f.devices.map(d=>d.deviceID)).size!==2
-   ||!f.devices.some(x=>x.deviceID===id)||!f.devices.some(x=>x.deviceID===exp.peerId)
-   ||path.resolve(f.path)!==path.resolve(root,'pairs',exp.peerName)){err(new Error('Invalid pair '+exp.id));}
+  if(!isExpectedPeerFolder(f,{localDeviceId:node.deviceID,peerId:exp.peerId,root,peerName:exp.peerName}))
+   err(new Error('Invalid pair '+exp.id));
   else output.activePairCount++;
  }
  output.staleMisconfiguredActive=scoped.filter(f=>!expected.some(x=>x.id===f.id)&&!f.paused).length;

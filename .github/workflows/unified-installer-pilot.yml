@@ -1,31 +1,28 @@
 name: Unified Installer Pilot (NoPromote)
 on:
   pull_request:
+    # Match the entire committed Core archive, optional Companion, installer
+    # inputs and acceptance tests. A selective list of private ingress files
+    # missed packaged native worker/lease changes and other transitive inputs.
     paths:
+      - "src/**"
+      - "tools/**"
+      - "vendor/**"
+      - "assets/**"
+      - "config.json"
+      - "package.json"
+      - "package-lock.json"
+      - "extensions/chatgpt-companion/**"
       - "packaging/unified/**"
-      - "test/unified-*"
-      - "test/verify-compiled-core.test.mjs"
-      - "test/native-compiled-core-verifier.mjs"
-      # PRIVATE pair ingress and the installed Core tool surface are part of
-      # the shipped package, even when packaging scripts are unchanged.
-      - "src/server-v0.3.mjs"
-      - "src/v2-private-*.mjs"
-      - "src/v101-private-*.mjs"
-      - "src/v101-g1-loopback-runtime.mjs"
-      - "src/v012-private-core-runtime.mjs"
-      - "src/v012-private-*.mjs"
-      - "test/v012-private-*.test.mjs"
-      - "tools/provision-owner-worker-key-linux.mjs"
-      - "src/v2-native-owner-session-bindings.mjs"
-      - "src/v2-authorized-operation.mjs"
-      - "src/worker-identity-authority.mjs"
-      - "src/full-access-http-quarantine.mjs"
-      - "test/v2-private-*.test.mjs"
-      - "test/v101-private-*.test.mjs"
+      - "installer/universal-install-contract.json"
+      - "installer/products.json"
+      - "docs/release-train-0.12.json"
+      - "test/**"
       - ".github/workflows/unified-installer-pilot.yml"
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: unified-pilot-${{ github.ref }}
   cancel-in-progress: true
@@ -53,6 +50,16 @@ jobs:
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Prepare exact committed Core
         run: node packaging/unified/prepare.mjs
+      - name: Verify packaged profile reconfiguration rejects stale or missing identity records
+        env:
+          RC_PROFILE_RECONFIGURE_TEST_CORE: packaging/unified/.stage/core
+        run: node --test test/profile-reconfigure.test.mjs
+      - name: Verify optional Companion manifest path, hash and permission fail-closed guards
+        run: node --test test/verify-compiled-companion.test.mjs test/browser-companion-targets.test.mjs
+      - name: Verify identical native transaction and OS adapter contracts
+        run: node --test test/universal-native-transaction.test.mjs test/universal-native-os-adapters.test.mjs test/universal-native-manifest.test.mjs test/universal-native-cli-policy.test.mjs
+      - name: Verify native owner/Worker denial and DPAPI custody on both OSes
+        run: npm run test:v012-owner-worker-admission
       - name: Reject mutated native Core manifests and extraction paths (synthetic negatives)
         run: node --test test/verify-compiled-core.test.mjs
       - name: Preserve exact native Core inventory for cross-OS byte comparison
@@ -68,6 +75,8 @@ jobs:
       - name: Install pinned packaging tools
         working-directory: packaging/unified
         run: npm ci --no-audit --no-fund
+      - name: Verify installed legacy build-tool matcher APIs after npm ci
+        run: node --test test/unified-build-tool-compat.test.mjs
       - name: Prefetch signed Ubuntu GUI dependencies before long packaging build
         if: runner.os == 'Linux'
         shell: bash
@@ -90,6 +99,32 @@ jobs:
           SOURCES
           sudo apt-get -o Dir::Etc::sourcelist="$RUNNER_TEMP/rc012-official-ubuntu.sources" -o Dir::Etc::sourceparts=- -o Acquire::Retries=3 update -qq
           sudo apt-get -o Dir::Etc::sourcelist="$RUNNER_TEMP/rc012-official-ubuntu.sources" -o Dir::Etc::sourceparts=- -o Acquire::Retries=3 install -y -qq --no-install-recommends xvfb xauth libnotify4 libsecret-1-0
+      # Chromium's official Linux SUID sandbox requires root:root and mode 4755.
+      # Prepare *only* the pinned Electron helper on an ephemeral same-repo CI
+      # runner. Never use --no-sandbox, alter a user's desktop, or run this
+      # privileged setup on fork-submitted source.
+      - name: Prepare Chromium SUID sandbox on trusted ephemeral Linux CI only
+        if: runner.os == 'Linux' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node -p "require('./packaging/unified/node_modules/electron/package.json').version")" = "45.3.0"
+          # Resolving the Electron package may initialize its pinned binary.
+          # Do not parse CLI output as a path: installers may print progress.
+          node -e "require('./packaging/unified/node_modules/electron')" >/dev/null
+          helper="$GITHUB_WORKSPACE/packaging/unified/node_modules/electron/dist/chrome-sandbox"
+          test -f "$helper" && test ! -L "$helper"
+          test -x "$GITHUB_WORKSPACE/packaging/unified/node_modules/electron/dist/electron"
+          # Electron's pinned binary was fetched through its verified installer.
+          sudo chown root:root "$helper"
+          sudo chmod 4755 "$helper"
+          test "$(stat -c '%u:%a' "$helper")" = "0:4755"
+      - name: Prove bundled Electron MV3 extension loads and its worker answers in an isolated GUI (NoPromote)
+        if: runner.os == 'Linux' && github.event.pull_request.head.repo.full_name == github.repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 45s xvfb-run -a packaging/unified/node_modules/.bin/electron packaging/unified/companion-electron-smoke.cjs
       - name: Build pinned native Linux Core, Node and Tunnel DEB
         if: runner.os == 'Linux'
         shell: bash
@@ -102,10 +137,6 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: bash packaging/unified/merge-native-deb.sh
-      - name: Upgrade same-name native package, test GUI, then rollback on disposable Ubuntu
-        if: runner.os == 'Linux'
-        shell: bash
-        run: bash test/unified-native-upgrade-smoke.sh
       - name: Build package (Windows)
         if: runner.os == 'Windows'
         working-directory: packaging/unified
@@ -114,10 +145,43 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./test/unified-nsis-migration-guard.ps1
-      - name: Transactionally migrate legacy GUI to single Windows NSIS and restore original
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./test/unified-windows-owner-migration.ps1
+      - name: Actual native first install and exact uninstall via ONE coordinator on disposable OS (NoPromote)
+        shell: bash
+        run: node test/universal-native-coordinator-hosted.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+      # The native Core and merged candidate now correctly share one version.
+      # A real upgrade must start from different, independently attested bytes.
+      - name: Fetch exact attested historical Linux DEB (NoPromote)
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo=GOD13emad/ChatGPTRemoteCommander
+          old_commit=e2d58bb0d59eb11ac8d6075913ff4258cab32d47
+          old_ref=refs/heads/fix/rc012-dev12-minimatch-runtime-20261123
+          old_hash=4a6cecd5eef2faca8d726dbf6ac3cd1d6118a4ba86518a3a63dc76e3ae79915e
+          run=45153904956
+          gh run view "$run" --repo "$repo" --json headSha,headBranch,conclusion,event | \
+            jq -e --arg sha "$old_commit" --arg ref "$old_ref" \
+            '.headSha==$sha and ("refs/heads/"+.headBranch)==$ref and .conclusion=="success" and .event=="workflow_dispatch"' >/dev/null
+          dest="$GITHUB_WORKSPACE/dist/qa-historical"
+          test ! -e "$dest" && test ! -L "$dest"
+          mkdir -m 700 "$dest"
+          gh run download "$run" --repo "$repo" --name rc-unified-linux-deb-qa --dir "$dest"
+          old="$dest/Remote-Commander-Unified-0.12.0-dev.12-Linux-amd64.deb"
+          test -f "$old" && test ! -L "$old"
+          printf '%s  %s\n' "$old_hash" "$old" | sha256sum -c -
+          gh attestation verify "$old" --repo "$repo" --source-digest "$old_commit" \
+            --source-ref "$old_ref" --signer-workflow "$repo/.github/workflows/unified-installer-pilot.yml" \
+            --deny-self-hosted-runners
+          test "$(dpkg-deb --field "$old" Package)" = chatgpt-remote-commander
+          test "$(dpkg-deb --field "$old" Version)" = '0.12.0~dev.12'
+          test "$(dpkg-deb --field "$old" Architecture)" = amd64
+          echo RC012_HISTORICAL_DEB_ATTESTED_PASS
+      - name: One common native install/upgrade/rollback lifecycle on both hosted OSes (NoPromote)
+        shell: bash
+        run: node tools/universal-install/native-smoke.mjs --run --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Test exact source, privilege boundaries and embedded runtime
         run: node --test test/unified-packaging.test.mjs test/unified-electron-runtime.test.mjs test/unified-migration-preflight.test.mjs test/unified-profile-recovery.test.mjs
       - name: Real Windows Electron GUI and restricted Core Start/Stop
@@ -148,6 +212,10 @@ jobs:
             --core-root "$dest/opt/Remote Commander/resources/core" \
             --source-manifest "$(pwd)/packaging/unified/.stage/core/source-manifest.json" \
             --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
+          node test/verify-compiled-companion.mjs \
+            --companion-root "$dest/opt/Remote Commander/resources/companion" \
+            --source-manifest "$(pwd)/packaging/unified/.stage/companion/source-manifest.json" \
+            --expected-commit "${{ github.event.pull_request.head.sha || github.sha }}"
       - name: Verify actual Windows NSIS embeds SHA-pinned public Core
         if: runner.os == 'Windows'
         shell: pwsh
@@ -160,9 +228,10 @@ jobs:
           if (-not (Test-Path -LiteralPath $zipPath)) { throw 'NATIVE_CORE_NATIVE_7Z_MISSING' }
           $dest = Join-Path $env:RUNNER_TEMP 'rc012-compiled-nsis-verify'
           New-Item -ItemType Directory -Path $dest -Force | Out-Null
-          & $zipPath x -t7z -y "-o$dest" $exes[0].FullName 'resources\core\*'
+          & $zipPath x -t7z -y "-o$dest" $exes[0].FullName 'resources\core\*' 'resources\companion\*'
           if ($LASTEXITCODE -ne 0) { throw 'NATIVE_CORE_NSIS_EXTRACT_FAILED' }
           node test/native-compiled-core-verifier.mjs --core-root (Join-Path $dest 'resources/core') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/core/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
+          node test/verify-compiled-companion.mjs --companion-root (Join-Path $dest 'resources/companion') --source-manifest (Join-Path (Get-Location) 'packaging/unified/.stage/companion/source-manifest.json') --expected-commit '${{ github.event.pull_request.head.sha || github.sha }}'
       - name: Artifact fingerprint (Linux)
         if: runner.os == 'Linux'
         run: sha256sum dist/unified/*.deb

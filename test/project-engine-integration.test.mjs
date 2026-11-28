@@ -87,7 +87,13 @@ async function claimWorker(root) {
 if (process.argv[2] === '--claim-worker') {
   await claimWorker(process.argv[3]);
 } else {
-  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: 9000 }, async t => {
+  // The full hosted Windows qualification runner has measured scheduler test
+  // wall time >10 s during serial SQLite/child-process-heavy suites. The
+  // previous 9 s hard stop cancelled an in-progress completion check; keep
+  // the real timer-cycle/no-effect assertions and use a bounded Windows
+  // scheduling budget instead of mistaking host starvation for product failure.
+  const schedulerHostedWindows = process.platform === 'win32';
+  test('automatic scheduler never plans an unenrolled workflow and completes only after explicit enrollment', { timeout: schedulerHostedWindows ? 25000 : 9000 }, async t => {
     const fixture = makeFixture({ scheduler: true, runner: { autoTick: true }, planner: async () => proposal('write_text', { path: 'result.txt', content: 'verified output' }) });
     try {
       await fixture.create();
@@ -100,7 +106,7 @@ if (process.argv[2] === '--claim-worker') {
       t.diagnostic('SCHEDULER_PHASE=unenrolled_not_planned');
       await fixture.start();
       t.diagnostic('SCHEDULER_PHASE=enrolled_waiting_for_completion');
-      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; });
+      const final = await until(async () => { const current = await fixture.status(); return current.status === 'COMPLETED' ? current : null; }, schedulerHostedWindows ? 18000 : 6000);
       assert.equal(final.actions, 1);
       assert.equal(fixture.plans, 1);
       assert.equal(fixture.calls, 1);

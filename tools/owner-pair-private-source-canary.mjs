@@ -1,3 +1,4 @@
+import {CORE_VERSION} from '../src/runtime-version.mjs';
 // Real owner-local v0.12 HTTPS/mTLS canary, never a live Tunnel rebind.
 // The candidate boots the actual Core with the installed owner's staged certs.
 // Crucially, it intentionally has NO signed Worker or J01 grant; tool admission
@@ -70,7 +71,7 @@ export async function createOwnerPrivatePairBootstrap({profileId}={}){
       resolveCurrentOwnerRoute:denied,
       resolveCurrentWorkerId:denied,
       workerAuthority:{authorizeWorker:async()=>null},
-      workerRegistry:{get:async()=>null},
+      workerRegistry:{get:async()=>null,isRevoked:async()=>true},
       withLease:denied
     }
   };
@@ -165,7 +166,7 @@ async function main(){
     }
     if(!health?.protectedIngress?.wired)
       fail('RC012_PROTECTED_INGRESS_FAILED_'+String(health?.protectedIngress?.code??'UNAVAILABLE'));
-    assert.equal(health.version,'0.12.0-dev.9');
+    assert.equal(health.version,CORE_VERSION);
     assert.equal(health.protectedIngress.ready,false);
     assert.equal(health.privilegedLegacyHttpQuarantined,true);
     const old=await fetch('http://127.0.0.1:'+plainPort+'/mcp',{

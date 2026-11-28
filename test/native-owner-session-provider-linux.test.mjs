@@ -385,6 +385,59 @@ test('native administration authorizer binds grant approval to the live owner ep
   });
 });
 
+test('native approval display accepts only literal identity fields and a single-line reason',async t=>{
+  const owner=ownerContext();
+  let prompts=0,coercions=0;
+  const authorize=createNativeOwnerAdministrationAuthorizer({
+    ownerSessionProvider:{
+      getOwnerSessionSnapshot:async()=>({
+        ownerSidHash:owner.ownerSidHash,osSessionId:'linux-logind-4',
+        seatId:'seat0',displayId:':0',sessionType:'x11',leaderPid:3519
+      }),
+      requestConsent:async()=>{prompts++;return true;}
+    },
+    nativeSessionBindings:{resolveNativeOwnerContext:async()=>owner}
+  });
+  const malicious=[
+    ['line breaks',adminRequest(workerContext(),{reason:'valid reason\nAction: REVOKED'})],
+    ['bidi override',adminRequest(workerContext(),{reason:'valid reason\u202e'} )],
+    ['invisible control',adminRequest(workerContext(),{reason:'valid reason\u200b'})],
+    ['non-string worker id',adminRequest(workerContext({workerId:{toString(){coercions++;return 'cw_'+'c'.repeat(64);}}}))],
+    ['non-string key hash',adminRequest(workerContext({keyId:new String('d'.repeat(64))}))],
+    ['kind getter',Object.defineProperty(adminRequest(),'kind',{enumerable:true,get(){coercions++;return 'worker-enrollment-grant';}})]
+  ];
+  for(const [name,request] of malicious)await t.test(name,async()=>{
+    assert.equal(await authorize(request),false);
+  });
+  assert.equal(prompts,0);
+  assert.equal(coercions,0);
+  assert.equal(await authorize(adminRequest(workerContext(),{reason:'تأیید مالک برای این Worker'})),true);
+  assert.equal(prompts,1);
+});
+
+test('owner administration rejects an approval returned after the requested grant or owner binding expires',async t=>{
+  for(const [label,grantExpiry,ownerExpiry,after] of [
+    ['grant expires',2000,3000,2000],['owner expires',3000,3000,3000],
+    ['clock regresses',2000,3000,999]
+  ]) await t.test(label,async()=>{
+    let time=1000;
+    const owner=ownerContext({expiresAtMs:ownerExpiry});
+    const snapshot={
+      ownerSidHash:owner.ownerSidHash,osSessionId:'linux-logind-4',
+      seatId:'seat0',displayId:':0',sessionType:'x11',leaderPid:3519
+    };
+    const authorize=createNativeOwnerAdministrationAuthorizer({
+      now:()=>time,
+      ownerSessionProvider:{
+        getOwnerSessionSnapshot:async()=>snapshot,
+        requestConsent:async()=>{time=after;return true;}
+      },
+      nativeSessionBindings:{resolveNativeOwnerContext:async()=>owner}
+    });
+    assert.equal(await authorize(adminRequest(workerContext(),{expiresAtMs:grantExpiry})),false);
+  });
+});
+
 test('Linux V1-01 bootstrap composes native session binding and async owner-admin grant approval',async()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'v101-linux-owner-stack-'));
   let prompts=0;

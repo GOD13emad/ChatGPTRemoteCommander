@@ -1,5 +1,37 @@
 # Project Brain — ChatGPT Remote Commander
 
+### RC012-CROSS-REPO-DURABLE-MMZ-20261127 — verified isolated QA correction, NoPromote
+
+Base: PR643 merge `34ae9725a50e747799fdab471abde777a49090b7`, tree `6791d6b8a633a5834672f9af622cf95df692521a`. An isolated detached Linux QA tree, not an active install or canonical writer, reproduced the current AgentOS/Browser/Companion/AI/Mesh integration baseline (129 PASS / 0 FAIL / 1 SKIP; operation `9b856ae8-2c11-4d82-acfc-77475d87c8ce`).
+
+Transfer Mesh contract drift: Core, pilot CLI and doctor include five peer aliases, but portable durable-send and backend-update retained four. New synthetic tests reproduced `INVALID_TRANSFER_ID_OR_PEER` and `R16_NODE_ALIAS_INVALID` (2 FAIL, operation `614e1608-bf61-4572-9cb4-a666ef979b65`). Added the missing MMZ alias to the two portable backends without changing execution authority, journal schema or transfer limits. New candidate durable-send SHA256 `a4374ccd34db6a75d2e0f68ff63093295473ff2d89746eb869d88e7b0d32a674`; historical four-peer hash preserved in test comment. Eleven focused Mesh suites including HTTP, signed receipt, quota, crash/recovery and updater fixtures: 64 PASS / 0 FAIL / 0 SKIP, op `1edbf72d-e495-4f66-a63e-49d2f98d98e3`, TAP SHA256 `918a5523dd5540108246562652d4afeac19984ccf7c1c73f2f7c123ae71a23df`; git diff --check clean. Local synthetic PC↔MMZ staging and MMZ updater apply/rollback proven; live Syncthing cross-host transport and signed production package NOT_RUN.
+
+Composition audit delta: browser-hybrid pins Playwright Core 1.65.0, Selenium WebDriver 4.51.0, Stagehand 4.4.0; unified Electron packaging pins 45.3.0, builder 26.18.1, Playwright Core 1.65.0. Hybrid CLI is standalone scoped QA; no proof all three are in the signed native payload. AgentOS selection is invoked by workspace-tools and is not execution authorization. Coucou remains optional via generic event relay/public release exclusion guard; no runtime notification acceptance inferred. Mixed legacy portable backends still require explicit peer capability/parity admission, shared contract regression and exact candidate propagation before fleet rollout. Keep existing upstream C01–C22 inventory authority and previous QA deltas; do not substitute this narrow repair for complete third-party review or claim all 87/91 candidate rows reconciled.
+
+Follow-up on same QA record: large-transfer-preflight also retained four peers and omitted MMZ pending reservations. Three synthetic RED cases (legacy v2 backend creating receipt challenge before rejecting unsupported peer; malformed peer advertisement; MMZ preflight refusal) failed in op `ab4685ea-9d52-44dd-8d5c-56ac5b2fe0af`. Added explicit supportedPeers advertisement, validated Core capability negotiation (legacy no-field fallback limited to historical four), dynamic durable MCP peer enum, early target and local identity guard before receipt/backend effects, and peer-aware preflight including all five reservations. First full rerun 66 PASS/1 FAIL due receipt fixture lacking node.json; fixture now includes real-contract Linux alias, without weakening the guard. All 11 Mesh suites reran 67 PASS/0 FAIL/0 SKIP, op `d2fc7827-d9fa-4ccb-a5b7-225ff7999415`, TAP SHA256 `234aeb18baff21dac9c7d6b0bc2328604250d8f28a3ffa57402d9b4a27aafb11`. New durable sender SHA256 `4572858d1138b3740c7aa91c177b76c60b1292b2542e6790fe414caa51871f06`; alias-only candidate and original digest retained as history. Negotiation at Core initialization is not a proof of live backend replacement/restart or all-pair transport; require coordinated update and fresh capability discovery before activation. Earlier 64-case result superseded for latest local patch.
+
+Integration handoff: merge only via designated one-writer carrier after reconciling latest source and private strict-JSON/capability-gap QA changes. Windows, hosted CI, new package provenance, installed acceptance and peer-matrix E2E remain open; no release flags or live services changed.
+
+## RC012-NATIVE-DEFERRED-LIFETIME-20261125 — source validation, migration open
+
+Owner's current accepted outcome: finish reviewed 0.12 migration with genuine enabled capabilities/FULL_ACCESS and one active installation per host; preserve native OS consent, accounts, working data and verified rollback. This is not yet achieved.
+
+PR610 exact 359b84ff was AI-assisted technically reviewed on actual isolated Windows and Linux source, then merged into Draft carrier PR586 as 25dc7b51 with checked head/base and normal merge. Linux six-suite 73 PASS/7 OS SKIP; Windows 57 PASS/23 OS SKIP, both zero failures including native two-process exclusion. Review is explicit AI-assisted source acceptance, not a separate human or fleet acceptance.
+
+PR611 connected the same native physical-root fence to both protected Core and WorkflowTools, retained failed-bootstrap denial, and corrected a reproduced premature release on QUEUED direct-operation receipts. Final reviewed source 8a0e82b62ede006932fd57c87b718e126c9751bd passed Windows 105 PASS/16 OS SKIP and Linux 117 PASS/4 OS SKIP, hosted CI/R157/package builds. Transparent AI-assisted self-review 6050617506 is not independent human acceptance. Normal merge into Draft PR586 produced ed2adeab64cbe1c8f826fa047906ca2e9507fd6c with identical tree 489f8562204036819a0b25b26c6bb9a562175266.
+
+Signed workflow_dispatch installer QA [45531271033](https://github.com/GOD13emad/ChatGPTRemoteCommander/actions/runs/45531271033) on ed2adea completed all five jobs successfully: Windows/Linux packages, exact Core parity, Sigstore QA provenance and isolated native NSIS old-to-candidate-to-old rollback. This is NoPromote package evidence for ed2adea only, not live host migration or this newer change. Superseded ba6c signed run 45461996407 was deliberately cancelled.
+
+The current change completes a bounded deferred-operation lifecycle by reusing the existing native Windows Job Object/Linux systemd cgroup provider. A detached trusted supervisor receives the raw execution spec on stdin and persists only a private exact operation/input/receipt hash plus native cessation proof. The shared SQLite claim retains its owner/lease binding across restart, publishes the handoff only after the entire outer callback settles, and releases only a matching proven empty native tree. Missing, corrupt, stale or unbound legacy effects stay quarantined; no PID-only or TTL takeover. A DB-pinned private original-store locator permits another profile of the SAME OS owner to reconcile the original operation, without borrowing its execution grant. Public operation result and delivery cannot report direct-worker success before native cessation. Exact native grant/owner checks are repeated after preparatory I/O and immediately before releasing the stdin spec. Signed control-plane observation/cancellation retain their own native lock and stay usable while the project writer holds its physical-root fence.
+
+Source verification: real Windows native deferred/cross-profile restart tests 4 PASS/0 FAIL, including withheld proof, corrupt state reconstruction, no premature COMPLETED delivery, stale proof rejection and current-grant revocation. Windows current signed-gate/HTTPS/Core/CI contracts 87 PASS/3 OS SKIP; existing native lease/async/package regression 35 PASS/12 OS SKIP. Linux exact production-source/cross-profile batch 75 PASS/3 OS SKIP/0 FAIL, operation 94972e92-7fc6-4ad8-91c6-88b9e09f8b90, TAP SHA256 276d12c1afc3d70925b47b7f9b0daafefddfea2a68cf36abc2ab9643f165b01d. Linux signed control-plane TLS 1 PASS, operation f6d90f19-a9bc-4a4e-9235-fd10a946f365, TAP SHA256 eb23d04609fd5d3e19de4580899b0fc03c3aa4dcaa2928b9ae151c63ede11f74. These batches overlap; do not sum them as distinct tests. New tests clearly distinguish synthetic owner/J01 callbacks from actual native containment and SQLite/ACL enforcement. CI appends the two native lifecycle suites to all 40 prior suites, preserving prior indices and deadlines; the native supervisor is required in both source and embedded package inventories.
+
+Latest source acceptance delta: [PR612](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/612) initial ff70dce is superseded after blocking AI-assisted self-review [6051211262](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/612#pullrequestreview-6051211262) reproduced stale cached-reservation success after the original request file was withheld. The corrected reader always re-reads and validates the exact private original reservation and its binding; durable state retains the native-required marker across restart. The regression was RED on ff70dce, then GREEN on the corrected source: Windows native plus legacy async 23 PASS/0 FAIL and explicit new-manager missing-reservation regression 1 PASS. Linux corrected 75 PASS/3 OS SKIP/0 FAIL, operation f4d8b9e4-fbd3-4ff0-a146-d7c8e6c08f2b, TAP SHA256 867a2b603f5fb183a256a8744145044fbc9bce47df1cf5b5ffbe97c36c554e85. Signed QA 45536561067 on ff70dce was deliberately CANCELLED; its PR-event package pass cannot substitute for corrected-head signed provenance. No live install occurred.
+
+Owner recovery: existing Windows three DPAPI capsules and Linux three systemd-creds capsules each passed isolated six-file TestRestore under the actual same owner. Linux operation 6ea95c61-9d98-4d37-af2c-3ab2362c5ae4; helper SHA256 4e32b60faef9cfea51590a43bc6b231abed7dd3655e333b5dd17ca32449257de. Live profiles unchanged; these are dry recovery checks, not live restore/cutover. Installed Windows native dev12 inventory was independently rehashed: 375/375 matching, zero missing/mismatch.
+
+READY: review and hosted exact-head qualification of this new lifecycle, then same-head signed package preparation. BLOCKED migration: owner-enrolled root resolver/bootstrap, actual persistent J01/Worker enrollment and revoke, installed protected canary/rollback and genuine OS FULL_ACCESS. Routed fleet remains legacy dev23. Existing native package on verified Emad PC/Emad Server/Amirreza/Emad Laptop remains dev12, source 46a8256, manifest SHA256 00afe3fb; Saeid/Server103 lacked the manifest at the checked standard path (not proof of no installation elsewhere). MMZ status responded but execution stalled; detailed installation unverified. No service stopped, candidate installed, security bypass, destructive retirement or Stable release here. Preserve the working connection until the replacement is independently healthy and reversible.
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair
@@ -1510,3 +1542,47 @@ Next independent acceptance: provision owner-held real Ed25519 key through
 native credential provider, approve exact machine-global Worker grants
 under real J01, establish durable lease+real Plugin ingress, verify a
 genuine protected Core effect and reversible one-install cutover per host.
+
+### RC012-UNIVERSAL-INSTALLER-AUTHORITY-20261122 — single canonical native engine
+
+Owner accepted ONE platform-independent native installation architecture for
+all Commander systems, not machine-specific installers or account-specific
+patches. The existing `installer/universal-install-contract.json` and
+`docs/UNIVERSAL_INSTALLER_V012.md` are canonical; single native effect authority
+`tools/universal-install/native-cli.mjs` routes through one
+`native-transaction.mjs` policy, lease and journal, with OS adapters limited
+to Windows NSIS and Linux dpkg/polkit. The packaging gate now requires this
+complete shared engine inventory. The older `engine.mjs` remains QA-only. Clean first install uses one native
+candidate plus independently pinned provenance schema 2, with OS-native
+uninstall/verified absence as rollback. An upgrade retains the exact
+previous native package and schema 1. The package's source-pinned Core
+must include the provenance verifier itself.
+GitHub [PR #521](https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/521)
+contains the code, stacked on migration [PR #512]
+(https://github.com/GOD13emad/ChatGPTRemoteCommander/pull/512).
+Earlier exact-source results: Linux 34/34 and Windows 21/21 unit tests PASS,
+same native manifest/CLI plans on real owner PC+Laptop PASS. 2026-11-22 fleet
+read-only package versions: Emad Linux and Windows dev.9, MMZ Linux and the
+two Windows servers dev.8. Windows NSIS registrations are one Core per host;
+other Browser Commander uninstall entries belong to a separate product.
+Windows a982 preflight was stale; the dba0 branch correctly detects NSIS.
+Real ephemeral J01 owner-pair admission was also verified on three
+source-pinned, no-grant Emad Laptop canaries on 2026-11-22:
+(default/chatgpt-remote-commander:48965),
+(MMZ/mmz-emad-laptop:48966), and
+(saeed-emad/saeed-emad-laptop:48967). All three native owner
+approvals gave mTLS TLSv1.3/HTTP 200 for the isolated owner binding,
+but ungranted tool calls remained HTTP 503 and anonymous TLS was
+rejected. Active 0.11 service PIDs and all production Tunnel state
+were unchanged; temporary broker/Core QA units were collected.
+Previously provisioned real Ed25519 encrypted credentials for these
+three profiles independently passed systemd LoadCredentialEncrypted
+sign-and-verify without owner grant or Core effect. On Emad PC, native
+Windows DPAPI owner/Tunnel --preflight PASS, but real enrollment was
+blocked by the remote safety boundary; no key or approval request
+was generated. This evidence closes ONLY ephemeral no-grant owner-pair
+canary verification, not a persistent signed Worker grant.
+Production NO_PROMOTE continues because live protected Worker/Plugin
+ingress, exact-action grant+revocation, immutable release provenance,
+actual reversible Core cutover, boot/recovery and fleet acceptance
+are unaccepted. Keep all installed 0.11 Core/Tunnels alive.

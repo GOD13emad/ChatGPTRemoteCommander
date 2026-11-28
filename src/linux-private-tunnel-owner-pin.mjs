@@ -90,6 +90,37 @@ export function readLinuxOwnerTunnelPin({
   return normalizeLinuxOwnerTunnelPin(parsed,{nowMs});
 }
 
+// Native profile-to-private-pair directory selection shared by provisioning,
+// the opt-in Core bootstrap and isolated QA. The historical "default" pair
+// is usable for a named owner profile ONLY when its verified owner-private
+// enrollment PIN binds exactly that profile. Never follow a dangling alias.
+const OWNER_PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+export function resolvePinnedOwnerTunnelDirectory({
+  home,profile,ownerUid=process.getuid?.()
+}={}){
+  if(process.platform!=='linux'||typeof home!=='string'||!path.isAbsolute(home)
+    ||typeof profile!=='string'||!OWNER_PROFILE.test(profile)
+    ||profile==='.'||profile==='..'
+    ||!Number.isSafeInteger(ownerUid)||ownerUid<1)
+    fail('RC012_WORKER_KEY_OWNER_ARGS_REQUIRED');
+  const root=path.join(home,'.config','chatgpt-remote-commander','private-pair');
+  const named=path.join(root,
+    profile==='chatgpt-remote-commander'?'default':profile);
+  let namedPresent=false;
+  try{fs.lstatSync(named);namedPresent=true;}
+  catch(error){if(error.code!=='ENOENT')throw error;}
+  if(namedPresent||profile==='chatgpt-remote-commander')return named;
+  const fallback=path.join(root,'default');
+  let fallbackPresent=false;
+  try{fs.lstatSync(fallback);fallbackPresent=true;}
+  catch(error){if(error.code!=='ENOENT')throw error;}
+  if(!fallbackPresent)return named;
+  const pin=readLinuxOwnerTunnelPin({directory:fallback,ownerUid});
+  if(pin.profileId!==profile)
+    fail('RC012_WORKER_KEY_PINNED_TUNNEL_REQUIRED');
+  return fallback;
+}
+
 export async function enrollLinuxOwnerTunnelPin({
   directory,record,authorizeOwner,verifyCurrent,
   ownerUid=process.getuid?.(),nowMs=Date.now()

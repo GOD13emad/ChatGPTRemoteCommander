@@ -243,7 +243,12 @@ export async function startRouter({listenPort,stateFile,runtimeFile=null,host=LO
     upstream.once('error',error=>{done();if(!res.destroyed){if(!res.headersSent)res.writeHead(502,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:'ROUTER_UPSTREAM_UNAVAILABLE',detail:error.code||'ERROR'}));}});
     upstream.end(body);
   });
-  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(listenPort,host,resolve);});
+  try {
+    await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(listenPort,host,resolve);});
+  } catch(error) {
+    clearInterval(routeTimer);
+    throw error;
+  }
   if(runtimeFile){
     runtimeFile=localFile(runtimeFile);fs.mkdirSync(path.dirname(runtimeFile),{recursive:true});
     const state={schema:1,pid:process.pid,host,port:listenPort,stateFile,sourceSha256:ROUTER_SOURCE_SHA256,startedAt:new Date().toISOString()};

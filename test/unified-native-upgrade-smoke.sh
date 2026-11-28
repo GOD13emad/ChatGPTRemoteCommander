@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Disposable hosted Linux runner only. Exercises actual same-name Debian upgrade,
 # native tunnel persistence, sandboxed GUI and downgrade rollback.
-set -euo pipefail
+# Historical input must be the independently attested, immutable prior DEB.
+set -Eeuo pipefail
+trap 'printf "RC012_NATIVE_UPGRADE_STEP_FAILED line=%s\\n" "$LINENO" >&2' ERR
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == Linux &&
    "${RUNNER_ENVIRONMENT:-}" == github-hosted &&
    "${CI:-}" == true && -n "${GITHUB_WORKSPACE:-}" && -n "${RUNNER_TEMP:-}" ]] || {
@@ -16,7 +18,8 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
   echo RC012_NATIVE_UPGRADE_TEST_OWNER_INSTALL_REFUSED >&2;exit 3;
 }
 cd "$ROOT"
-OLD="$ROOT/dist/installer/Remote-Commander-Linux-amd64.deb"
+OLD="$ROOT/dist/qa-historical/Remote-Commander-Unified-0.12.0-dev.12-Linux-amd64.deb"
+OLD_SHA256=4a6cecd5eef2faca8d726dbf6ac3cd1d6118a4ba86518a3a63dc76e3ae79915e
 command -v node >/dev/null || { echo RC012_SOURCE_VERSION_NODE_MISSING >&2; exit 3; }
 VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/package.json")"
 GUI_VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/packaging/unified/package.json")"
@@ -24,10 +27,25 @@ GUI_VERSION="$(node -p 'require(process.argv[1]).version' "$ROOT/packaging/unifi
   echo RC012_NATIVE_UPGRADE_SOURCE_VERSION_MISMATCH >&2;exit 3;
 }
 NEW="$ROOT/dist/unified/Remote-Commander-Unified-${VERSION}-Linux-amd64.deb"
-test -f "$OLD" && test -f "$NEW"
-test "$(dpkg-deb --field "$OLD" Package)" = chatgpt-remote-commander
-test "$(dpkg-deb --field "$NEW" Package)" = chatgpt-remote-commander
-dpkg --compare-versions "$(dpkg-deb --field "$NEW" Version)" gt "$(dpkg-deb --field "$OLD" Version)"
+[[ -f "$OLD" && ! -L "$OLD" && -f "$NEW" && ! -L "$NEW" ]] || {
+  echo RC012_NATIVE_UPGRADE_ARTIFACT_UNTRUSTED >&2; exit 3;
+}
+verify_old_digest(){
+  printf '%s  %s\n' "$OLD_SHA256" "$OLD" | sha256sum -c --status || {
+    echo RC012_HISTORICAL_DEB_DIGEST_MISMATCH >&2; exit 3;
+  }
+}
+verify_old_digest
+for artifact in "$OLD" "$NEW"; do
+  test "$(dpkg-deb --field "$artifact" Package)" = chatgpt-remote-commander
+  test "$(dpkg-deb --field "$artifact" Architecture)" = amd64
+done
+test "$(dpkg-deb --field "$OLD" Version)" = '0.12.0~dev.12'
+test "$(dpkg-deb --field "$NEW" Version)" = "${VERSION/-dev./~dev.}"
+dpkg --compare-versions "$(dpkg-deb --field "$NEW" Version)" gt "$(dpkg-deb --field "$OLD" Version)" || {
+  echo RC012_NATIVE_UPGRADE_VERSION_ORDER_INVALID >&2; exit 3;
+}
+echo RC012_HISTORICAL_DEB_PIN_AND_ORDER_PASS
 # Audit *actual* Native and merged DEB payload names BEFORE installing even on
 # this disposable hosted runner. The public app payload is only the committed
 # runtime Core, never the complete repository or human project/Skill records.
@@ -35,7 +53,8 @@ python3 - "$OLD" "$NEW" <<'PUBLIC_APP_BOUNDARY'
 import subprocess, sys
 prefix="./usr/lib/chatgpt-remote-commander/app/"
 allowed_dirs={"src","tools","vendor","assets"}
-allowed_files={"config.json","package.json"}
+allowed_files={"config.json","package.json","source-manifest.json","packaging/unified/owner-pinned-provenance.mjs","packaging/unified/migration-preflight.mjs","packaging/unified/package.json","packaging/unified/owner-dpapi-profile-recovery.ps1","packaging/unified/owner-systemd-creds-profile-recovery.sh"}
+allowed_scaffolding={"packaging","packaging/unified"}
 for pkg in sys.argv[1:]:
     listing=subprocess.check_output(["dpkg-deb","--contents",pkg],text=True)
     seen=set()
@@ -45,11 +64,21 @@ for pkg in sys.argv[1:]:
         relative=row[at+len(prefix):].split(" -> ",1)[0].strip().rstrip("/")
         if not relative: continue
         head=relative.split("/",1)[0]
-        if relative in allowed_files or head in allowed_dirs:
-            seen.add(relative)
-            continue
-        raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
-    required={"package.json","config.json","src/server-v0.3.mjs"}
+        if relative in seen:
+            raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
+        kind=row.lstrip()[:1]
+        if relative in allowed_files or relative=="src/server-v0.3.mjs":
+            permitted=kind=="-"
+        elif relative in allowed_scaffolding:
+            permitted=kind=="d"
+        else:
+            permitted=head in allowed_dirs and kind in {"d","-"}
+        if not permitted:
+            raise SystemExit("RC012_PUBLIC_NATIVE_APP_PATH_DISALLOWED "+relative)
+        seen.add(relative)
+    required={"package.json","config.json","source-manifest.json","src/server-v0.3.mjs","packaging/unified/owner-pinned-provenance.mjs"}
+    if pkg==sys.argv[-1]:
+        required.update({"packaging/unified/migration-preflight.mjs","packaging/unified/package.json","packaging/unified/owner-dpapi-profile-recovery.ps1","packaging/unified/owner-systemd-creds-profile-recovery.sh"})
     if not required.issubset(seen):
         raise SystemExit("RC012_PUBLIC_NATIVE_APP_REQUIRED_FILE_MISSING")
 print("RC012_PUBLIC_NATIVE_APP_ALLOWLIST_PASS")
@@ -59,35 +88,48 @@ if dpkg-query -W -f='${Status}' chatgpt-remote-commander 2>/dev/null | grep -q '
 fi
 command -v xvfb-run >/dev/null || { echo RC012_XVFB_PREFETCH_MISSING >&2; exit 4; }
 dpkg-query -W -f='${Status}\n' libnotify4 libsecret-1-0 2>/dev/null | grep -c '^install ok installed$' | grep -qx 2 || { echo RC012_SIGNED_GUI_DEPENDENCIES_NOT_PREFETCHED >&2; exit 4; }
+# Compare actual installed bytes against each distinct verified input. The old
+# artifact is a complete unified package, so the old GUI must also be restored.
+TMP="$(mktemp -d /tmp/rc012-native-upgrade-XXXXXX)"
+trap 'rm -rf -- "$TMP"' EXIT
+dpkg-deb -x "$OLD" "$TMP/old"
+dpkg-deb -x "$NEW" "$TMP/new"
+NATIVE=/usr/lib/chatgpt-remote-commander
+verify_installed_package(){
+  local artifact="$1" extracted="$2" rel expected actual
+  test "$(dpkg-query -W -f='${Status}' chatgpt-remote-commander)" = 'install ok installed'
+  test "$(dpkg-query -W -f='${Version}' chatgpt-remote-commander)" = "$(dpkg-deb --field "$artifact" Version)"
+  for rel in \
+    "$NATIVE/runtime/node" "$NATIVE/tunnel/native-tunnel-launch.sh" \
+    "$NATIVE/tunnel/tunnel-client" "$NATIVE/tunnel/cloudflared" \
+    "$NATIVE/app/source-manifest.json" "$NATIVE/app/package.json" \
+    /usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service \
+    '/opt/Remote Commander/remote-commander-unified' \
+    '/opt/Remote Commander/chrome-sandbox' \
+    '/opt/Remote Commander/resources/core/source-manifest.json'; do
+    [[ -f "$extracted$rel" && ! -L "$extracted$rel" && -f "$rel" && ! -L "$rel" ]] || {
+      echo "RC012_NATIVE_INSTALLED_ASSET_UNTRUSTED $rel" >&2; return 1;
+    }
+    expected="$(sha256sum "$extracted$rel" | cut -d' ' -f1)"
+    actual="$(sha256sum "$rel" | cut -d' ' -f1)"
+    test "$actual" = "$expected" || {
+      echo "RC012_NATIVE_INSTALLED_BYTE_MISMATCH $rel" >&2; return 1;
+    }
+  done
+  test -x '/opt/Remote Commander/remote-commander-unified'
+  test "$(stat -c %u '/opt/Remote Commander/chrome-sandbox')" -eq 0
+  test "$(stat -c %a '/opt/Remote Commander/chrome-sandbox')" = "$(stat -c %a "$extracted/opt/Remote Commander/chrome-sandbox")"
+}
+verify_old_digest
 sudo dpkg --install "$OLD" || {
   echo RC012_NATIVE_OLD_INSTALL_FAILED >&2; exit 4;
 }
-NATIVE=/usr/lib/chatgpt-remote-commander
-for rel in runtime/node tunnel/native-tunnel-launch.sh tunnel/tunnel-client tunnel/cloudflared; do
-  test -s "$NATIVE/$rel"
-done
-test -f /usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service
-test ! -e '/opt/Remote Commander/remote-commander-unified'
-TMP="$(mktemp -d /tmp/rc012-native-upgrade-XXXXXX)"
-trap 'rm -rf -- "$TMP"' EXIT
-for rel in runtime/node tunnel/native-tunnel-launch.sh tunnel/tunnel-client tunnel/cloudflared; do
-  sha256sum "$NATIVE/$rel" | sed "s|$NATIVE/|$TMP/|" >> "$TMP/pre-upgrade-sha256.txt"
-done
+verify_installed_package "$OLD" "$TMP/old"
+echo RC012_HISTORICAL_UNIFIED_BASELINE_INSTALLED
 sudo dpkg --install "$NEW"
-test "$(dpkg-query -W -f='${Status}' chatgpt-remote-commander)" = 'install ok installed'
-test "$(dpkg-query -W -f='${Version}' chatgpt-remote-commander)" = "$(dpkg-deb --field "$NEW" Version)"
-for rel in runtime/node tunnel/native-tunnel-launch.sh tunnel/tunnel-client tunnel/cloudflared; do
-  actual="$(sha256sum "$NATIVE/$rel" | cut -d' ' -f1)"
-  expected="$(grep -F " $TMP/$rel" "$TMP/pre-upgrade-sha256.txt" | cut -d' ' -f1)"
-  test "$actual" = "$expected"
-done
-test -f /usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service
-test -x '/opt/Remote Commander/remote-commander-unified'
-test "$(stat -c %u '/opt/Remote Commander/chrome-sandbox')" -eq 0
-cd "$ROOT"
+verify_installed_package "$NEW" "$TMP/new"
 xvfb-run -a env RC_TEST_INSTALLED_GUI=1 node --test test/unified-electron-gui.test.mjs
+verify_old_digest
 sudo dpkg --install "$OLD"
-test "$(dpkg-query -W -f='${Version}' chatgpt-remote-commander)" = "$(dpkg-deb --field "$OLD" Version)"
-test -f "$NATIVE/tunnel/native-tunnel-launch.sh"
-test ! -e '/opt/Remote Commander/remote-commander-unified'
-echo 'RC012_NATIVE_UPGRADE_SANDBOX_GUI_AND_ROLLBACK_PASS'
+verify_installed_package "$OLD" "$TMP/old"
+echo RC012_NATIVE_UPGRADE_SANDBOX_GUI_AND_ROLLBACK_PASS

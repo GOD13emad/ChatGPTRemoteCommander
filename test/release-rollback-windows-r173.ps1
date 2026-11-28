@@ -1,7 +1,8 @@
 #requires -Version 7.0
 param(
  [Parameter(Mandatory=$true)][string]$ExpectedCommit,
- [Parameter(Mandatory=$true)][string]$WindowsJobRunnerPath
+ [Parameter(Mandatory=$true)][string]$WindowsJobRunnerPath,
+ [switch]$SameSchemaRecoveryQA
 )
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
@@ -11,8 +12,14 @@ $Source=[IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
 $Root=Join-Path ([IO.Path]::GetFullPath($env:RUNNER_TEMP)) 'remote-commander-rollback-r173'
 $Install=Join-Path $Root 'INSTALL'
 $Baseline='362375c464948be3001b307650c13fc3353ed05b'
-$RollbackBaseline='8ccf0fd16355a4ab79844feec6c295366763df0d'
-$RollbackVersion='0.11.0-dev.23'
+$RollbackBaseline='46a8256186e09f3355b10f796717aefee29ed309'
+$RollbackVersion='0.12.0-dev.12'
+$Dev12Baseline=$RollbackBaseline
+$RecoveryTree=$null
+$qualification=if($SameSchemaRecoveryQA){'same-schema-rc012'}else{'historical-dev12'}
+$dev12Refused=$false
+$catalogBefore=$null
+$catalogAfter=$null
 $OldLocal=[string]$env:LOCALAPPDATA
 $OldRoaming=[string]$env:APPDATA
 $OldTemp=[string]$env:TEMP
@@ -48,7 +55,7 @@ function Readback([string]$Name,[string]$Sha,[string]$Version){
   [IO.File]::WriteAllText((Join-Path $Root ('HEALTH_'+$Name+'.json')),(ConvertTo-Json $health -Depth 12)+[Environment]::NewLine)
   Write-Output ('R173_'+$Name+'_IDENTITY_PASS')
 }
-function Update([string]$Name,[string]$Sha){
+function Update([string]$Name,[string]$Sha,[switch]$ExpectSchemaRefusal){
   # R185: On Windows, PowerShell's native-command pipeline can remain open because
   # background router/backend processes inherit redirected stdout/stderr handles.
   # Start-Process without -Wait, then WaitForExit only on the exact updater PID.
@@ -58,7 +65,6 @@ function Update([string]$Name,[string]$Sha){
   if((Test-Path $stdout) -or (Test-Path $stderr)){throw ('R185_NO_BLIND_RERUN_'+$Name)}
   if($Source -match '\s' -or $Install -match '\s'){throw 'R185_UNSAFE_ARGUMENT_PATH_WHITESPACE'}
   $args=@('-NoLogo','-NoProfile','-NonInteractive','-File',(Join-Path $Source 'auto-update-windows.ps1'),'-InstallDir',$Install,'-SourceRef',$Sha,'-ExpectedCommit',$Sha,'-TargetProfile','default','-WindowsJobRunnerPath',$JobRunner,'-Force')
-  if($Name -eq 'ROLLBACK'){$args+= '-PinnedLegacyRunnerOverlay'}
   $updater=Start-Process -FilePath 'pwsh.exe' -ArgumentList $args -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr -ErrorAction Stop
   if($null -eq $updater -or $updater.Id -le 0){throw 'R185_UPDATER_PID_UNAVAILABLE'}
   Write-Output ('R185_'+$Name+'_UPDATER_PID='+$updater.Id)
@@ -110,6 +116,13 @@ function Update([string]$Name,[string]$Sha){
       Write-Output ('R252_QUAL_LOG_SHA_PASS='+$sha+' markers='+$found)
     }catch{Write-Output 'R252_QUAL_DIAG_UNAVAILABLE_FAIL_CLOSED'}
   }
+  if($ExpectSchemaRefusal){
+    if($exitCode -eq 0 -or $status -ne 'FAILED' -or [string]$result.error -notmatch '^SCHEMA_CONTINUITY_GATE_FAIL profile=default decision=(LEGACY_HOST_SEEN|TOOLS_LIST_REFRESH_UNNEGOTIATED)$'){
+      throw 'R173_EXPECTED_DEV12_SCHEMA_REFUSAL_MISSING'
+    }
+    Write-Output 'R173_DEV12_SCHEMA_REFUSAL_ACCEPTED'
+    return
+  }
   if($exitCode -ne 0 -or $status -ne 'PROMOTED'){throw ('R185_'+$Name+'_NOT_ACCEPTED')}
 }
 function Cleanup {
@@ -145,6 +158,13 @@ Assert-Head $Source $ExpectedCommit
 $CandidateVersion=[string]((Get-Content (Join-Path $Source 'package.json') -Raw|ConvertFrom-Json).version)
 & node.exe (Join-Path $Source 'tools/isolated-qa-policy.mjs')
  if($LASTEXITCODE -ne 0){throw 'R173_CANDIDATE_VERSION_POLICY'}
+if($SameSchemaRecoveryQA){
+  $planRaw=& node.exe (Join-Path $Source 'test/rc012-same-schema-recovery-qa.mjs') plan $CandidateVersion $ExpectedCommit
+  if($LASTEXITCODE){throw 'R173_RECOVERY_PLAN_DENIED'}
+  $plan=$planRaw|ConvertFrom-Json
+  if($plan.releaseAuthorization -ne $false -or $plan.rejectedDev12Head -ne $Dev12Baseline){throw 'R173_RECOVERY_PLAN_INVALID'}
+  $RollbackBaseline=$plan.recoveryHead; $RollbackVersion=$plan.recoveryVersion; $RecoveryTree=$plan.recoveryTree
+}
 New-Item -ItemType Directory -Path (Join-Path $Root 'STATE'),(Join-Path $Root 'ROAMING'),(Join-Path $Root 'TEMP') -Force -ErrorAction Stop|Out-Null
 & git.exe -c core.autocrlf=false clone --depth 1 --branch v0.10.20 https://github.com/GOD13emad/ChatGPTRemoteCommander.git $Install | Out-Host
 if($LASTEXITCODE -ne 0){throw 'R173_CLONE_FAIL'}
@@ -172,11 +192,38 @@ try {
   Update 'PROMOTE' $ExpectedCommit
   Assert-Head $Install $ExpectedCommit
   Readback 'PROMOTE' $ExpectedCommit $CandidateVersion
+  if($SameSchemaRecoveryQA){
+    $route=Join-Path $Root 'STATE\ChatGPTRemoteCommander\routing\default.json'
+    $runtime=Join-Path $Root 'STATE\ChatGPTRemoteCommander\routing\default.runtime.json'
+    $routeHash=(Get-FileHash -LiteralPath $route -Algorithm SHA256).Hash
+    $runtimeHash=(Get-FileHash -LiteralPath $runtime -Algorithm SHA256).Hash
+    $catalogBefore=& node.exe (Join-Path $Source 'test/rc012-same-schema-recovery-qa.mjs') catalog
+    if($LASTEXITCODE){throw 'R173_PROMOTED_CATALOG_INVALID'}
+    [IO.File]::WriteAllText((Join-Path $Root 'CATALOG_PROMOTED.json'),[string]$catalogBefore)
+    Update 'REJECT_DEV12' $Dev12Baseline -ExpectSchemaRefusal
+    Assert-Head $Install $ExpectedCommit
+    if((Get-FileHash -LiteralPath $route -Algorithm SHA256).Hash -ne $routeHash -or (Get-FileHash -LiteralPath $runtime -Algorithm SHA256).Hash -ne $runtimeHash){throw 'R173_REFUSAL_MUTATED_ROUTE_OR_ROUTER'}
+    Readback 'AFTER_DEV12_REFUSAL' $ExpectedCommit $CandidateVersion
+    $afterRefusal=& node.exe (Join-Path $Source 'test/rc012-same-schema-recovery-qa.mjs') catalog
+    if($LASTEXITCODE -or $afterRefusal -cne $catalogBefore){throw 'R173_REFUSAL_CATALOG_CHANGED'}
+    [IO.File]::WriteAllText((Join-Path $Root 'CATALOG_AFTER_DEV12_REFUSAL.json'),[string]$afterRefusal)
+    $dev12Refused=$true
+  }
   Update 'ROLLBACK' $RollbackBaseline
-  $overlayMarkers=@(Select-String -LiteralPath (Join-Path $Root 'ROLLBACK.stdout.log') -SimpleMatch 'R173_PINNED_LEGACY_RUNNER_OVERLAY_VERIFIED exactBaseline=8ccf0fd1')
-  if($overlayMarkers.Count -ne 1){throw 'R173_LEGACY_RUNNER_OVERLAY_NOT_ATTESTED'}
+  $rollbackLog=Join-Path $Root 'ROLLBACK.stdout.log'
+  $schemaMarkers=@(Select-String -LiteralPath $rollbackLog -SimpleMatch 'SCHEMA_CONTINUITY_GATE_PASS profile=default')
+  if($schemaMarkers.Count -ne 1){throw 'R173_ROLLBACK_SCHEMA_CONTINUITY_NOT_ATTESTED'}
+  $runnerMarkers=@(Select-String -LiteralPath $rollbackLog -SimpleMatch 'WINDOWS_JOB_RUNNER_STAGE_VERIFIED sha256=57b50598798c328ee6fb06c926e8eb16b4da71dc83ac76344e41952383a848d4')
+  if($runnerMarkers.Count -ne 1){throw 'R173_ROLLBACK_JOB_RUNNER_STAGE_NOT_ATTESTED'}
   Assert-Head $Install $RollbackBaseline
   Readback 'ROLLBACK' $RollbackBaseline $RollbackVersion
+  if($SameSchemaRecoveryQA){
+    $tree=(& git.exe -C $Install rev-parse 'HEAD^{tree}').Trim()
+    if($LASTEXITCODE -or $tree -ne $RecoveryTree){throw 'R173_RECOVERY_TREE_MISMATCH'}
+    $catalogAfter=& node.exe (Join-Path $Source 'test/rc012-same-schema-recovery-qa.mjs') catalog
+    if($LASTEXITCODE -or $catalogAfter -cne $catalogBefore){throw 'R173_RECOVERY_CATALOG_CHANGED'}
+    [IO.File]::WriteAllText((Join-Path $Root 'CATALOG_RECOVERY.json'),[string]$catalogAfter)
+  }
 }catch{$Failure=$_.Exception.Message}
 finally{
   $env:LOCALAPPDATA=$OldLocal
@@ -185,10 +232,12 @@ finally{
   $env:TMP=$OldTmp
   $clean=$null
   try{$clean=Cleanup}catch{$Failure=if($Failure){$Failure+' | '+$_.Exception.Message}else{$_.Exception.Message}}
-  $pass=($null -eq $Failure -and $script:Stages.Count -eq 2 -and $null -ne $clean -and $clean.pass)
+  $expectedStages=if($SameSchemaRecoveryQA){3}else{2}
+  $pass=($null -eq $Failure -and $script:Stages.Count -eq $expectedStages -and $null -ne $clean -and $clean.pass -and (-not $SameSchemaRecoveryQA -or ($dev12Refused -and $catalogBefore -and $catalogAfter)))
   $rec=[ordered]@{
-    schema=1;revision='R173';status=if($pass){'PASS_WINDOWS_REAL_PROMOTION_ROLLBACK_ZERO_OWNED'}else{'FAIL_CLOSED_WINDOWS_RELEASE_ROLLBACK'}
+    schema=1;revision='R173';status=if($pass){if($SameSchemaRecoveryQA){'PASS_WINDOWS_SAME_SCHEMA_RECOVERY_QA'}else{'PASS_WINDOWS_REAL_PROMOTION_ROLLBACK_ZERO_OWNED'}}else{'FAIL_CLOSED_WINDOWS_RELEASE_ROLLBACK'}
     candidateHead=$ExpectedCommit;baselineHead=$Baseline;rollbackHead=$RollbackBaseline;rollbackVersion=$RollbackVersion;stages=$script:Stages;cleanup=$clean
+    qualification=$qualification;releaseAuthorization=$false;dev12SchemaRefused=$dev12Refused;catalogBefore=$catalogBefore;catalogAfter=$catalogAfter
     error=$Failure;isolatedGithubRunner=$true;ownerMachineTouched=$false
     startedUtc=$Started.ToString('o');finishedUtc=[DateTime]::UtcNow.ToString('o')
     nativeOwnerUIAndSigning='OPEN'

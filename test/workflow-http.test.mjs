@@ -7,13 +7,28 @@ import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createHash } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { probeWindowsAdministrator } from '../src/windows-admin-token.mjs';
 import { processContainmentAvailable } from '../src/process-containment.mjs';
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
-async function port(){const s=net.createServer();await new Promise((r,j)=>s.listen(0,'127.0.0.1',r).once('error',j));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
+// A configured Windows ephemeral range can include Fetch-forbidden ports
+// (observed 6667). Reserve an available high loopback port explicitly.
+async function port(){
+ for(let attempt=0;attempt<32;attempt++){
+  const s=net.createServer(),p=randomInt(49152,65536);
+  try{
+   await new Promise((resolve,reject)=>{s.once('error',reject);s.listen({host:'127.0.0.1',port:p,exclusive:true},resolve);});
+   await new Promise((resolve,reject)=>s.close(error=>error?reject(error):resolve()));
+   return p;
+  }catch(error){
+   if(s.listening)await new Promise(resolve=>s.close(resolve));
+   if(!['EADDRINUSE','EACCES'].includes(error?.code))throw error;
+  }
+ }
+ throw Error('WORKFLOW_HTTP_NO_SAFE_LOOPBACK_PORT');
+}
 async function fixture(enabled,{forceNoCessation=false}={}){
  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-wf-http-'))),app=path.join(root,'app'),project=path.join(root,'project');
  fs.mkdirSync(project);fs.mkdirSync(app);fs.cpSync(path.join(repo,'src'),path.join(app,'src'),{recursive:true});
@@ -42,7 +57,13 @@ async function fixture(enabled,{forceNoCessation=false}={}){
  const stop=async()=>{if(child&&child.exitCode===null){const closed=once(child,'close');child.kill();await closed;}};
  const rpc=async(name,args={})=>{const r=await fetch(`http://127.0.0.1:${p}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}}),signal:AbortSignal.timeout(30000)});return r.json();};
  const invoke=async(name,args)=>{const r=await rpc(name,args);assert.ok(!r.error,JSON.stringify(r));assert.equal(r.result.isError,false,JSON.stringify(r));return r.result.structuredContent;};
- return {root,project,p,config,invoke,rpc,start,stop,async dispose(){await stop();fs.rmSync(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});}};
+ return {root,project,p,config,invoke,rpc,start,stop,async dispose(){
+  await stop();
+  // On Windows, native process close and ephemeral filesystem handles can
+  // settle at different instants. Keep bounded cleanup and fail on EBUSY
+  // after the deadline; never skip cleanup or conceal a persistent process.
+  await fs.promises.rm(root,{recursive:true,force:true,maxRetries:60,retryDelay:100});
+ }};
 }
 // Hosted elevated Windows cannot access legacy unauthenticated MCP.
 // Never disable quarantine just to permit a positive test.

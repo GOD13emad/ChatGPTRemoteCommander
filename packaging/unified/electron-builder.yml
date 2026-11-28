@@ -7,14 +7,26 @@ files:
   - main.cjs
   - preload.cjs
   - pilot-runtime.cjs
+  - browser-companion-bridge.cjs
+  - companion-integrity.cjs
+  - browser-companion-targets.cjs
   - migration-preflight.mjs
   - owner-windows-legacy-migrate.ps1
   - index.html
+  - workspace.css
+  - workspace-catalog.cjs
   - renderer.js
+  - from: .stage/catalog
+    to: catalog
+    filter:
+      - products.json
+      - source.json
 asar: true
 extraResources:
   - from: .stage/core
     to: core
+  - from: .stage/companion
+    to: companion
 win:
   target: nsis
   requestedExecutionLevel: asInvoker

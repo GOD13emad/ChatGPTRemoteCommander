@@ -6,6 +6,7 @@ import { appendFile, copyFile, mkdir, opendir, readFile, rename, rm, stat, write
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { terminateProcessTree } from './platform.mjs';
+import { boundedCommandTimeout } from './command-timeout-limits.mjs';
 import { runContainedProjectCommand } from './process-containment.mjs';
 import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
@@ -222,8 +223,7 @@ export async function prepareProjectCommand(ctx, input) {
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const args = validateCommandArgs(program, input.args ?? [], cwd, ctx.roots, { fullFilesystem });
   await assertNoCodexDelegatingScript(program, args, cwd, { allowCodex });
-  const requested = Number(input.timeoutMs ?? ctx.config.maxCommandMs);
-  const timeoutMs = Math.max(1000, Math.min(requested, ctx.config.maxCommandMs));
+  const timeoutMs = boundedCommandTimeout(input.timeoutMs, ctx.config.maxCommandMs ?? 300000);
   return { file: program, args, cwd, timeoutMs, outputLimit: 262144, fullFilesystem };
 }
 export function v102WindowsJobReceipt(stderrTail, runnerExitCode) {

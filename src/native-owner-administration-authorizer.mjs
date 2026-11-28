@@ -31,12 +31,23 @@ function exact(value,fields,code){
   return out;
 }
 function safeId(value){return typeof value==='string'&&ID.test(value)&&value!=='.'&&value!=='..';}
+function literalMatch(value,pattern){
+  return typeof value==='string'&&pattern.test(value);
+}
+// A reason is explanatory text, not a way to insert new identity/action lines.
+// Allow ordinary Persian/Arabic joining characters while rejecting other
+// formatting controls, line separators and invalid Unicode surrogates.
+function safeReason(value){
+  return typeof value==='string'&&value.trim().length>=5&&value.length<=400
+    &&!/[\p{Cc}\p{Cs}\p{Zl}\p{Zp}]/u.test(value)
+    &&![...value].some(c=>/\p{Cf}/u.test(c)&&c!=='\u200c'&&c!=='\u200d');
+}
 function ownerOf(value){
   const o=exact(value,OWNER_FIELDS,'NATIVE_OWNER_ADMIN_CONTEXT_INVALID');
   if(o.source!=='native-owner-attested'
     ||!safeId(o.hostId)||!safeId(o.profileId)||!safeId(o.principalId)
-    ||!safeId(o.conversationId)||!BINDING.test(o.bindingId)
-    ||!HASH.test(o.ownerSidHash)||!Number.isSafeInteger(o.expiresAtMs))
+    ||!safeId(o.conversationId)||!literalMatch(o.bindingId,BINDING)
+    ||!literalMatch(o.ownerSidHash,HASH)||!Number.isSafeInteger(o.expiresAtMs))
     fail('NATIVE_OWNER_ADMIN_CONTEXT_INVALID');
   return Object.freeze(o);
 }
@@ -44,11 +55,11 @@ function workerOf(value){
   const w=exact(value,WORKER_FIELDS,'NATIVE_OWNER_ADMIN_WORKER_INVALID');
   for(const key of ['hostId','profileId','principalId','conversationId'])
     if(!safeId(w[key]))fail('NATIVE_OWNER_ADMIN_WORKER_INVALID');
-  if(!BINDING.test(w.bindingId)||!WORKER.test(w.workerId)
-    ||!HASH.test(w.keyId)||!HASH.test(w.ownerSidHash)
+  if(!literalMatch(w.bindingId,BINDING)||!literalMatch(w.workerId,WORKER)
+    ||!literalMatch(w.keyId,HASH)||!literalMatch(w.ownerSidHash,HASH)
     ||!['tailscale','native-key-store'].includes(w.deviceProvider)
-    ||!HASH.test(w.deviceIdHash)||w.tunnelProvider!=='openai-secure-mcp-tunnel'
-    ||!HASH.test(w.tunnelIdHash)||!HASH.test(w.capabilityPolicyDigest))
+    ||!literalMatch(w.deviceIdHash,HASH)||w.tunnelProvider!=='openai-secure-mcp-tunnel'
+    ||!literalMatch(w.tunnelIdHash,HASH)||!literalMatch(w.capabilityPolicyDigest,HASH))
     fail('NATIVE_OWNER_ADMIN_WORKER_INVALID');
   return Object.freeze(w);
 }
@@ -65,7 +76,10 @@ function routeMatchesOwner(route,owner){
 }
 function normalizeRequest(value,now){
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value))fail('NATIVE_OWNER_ADMIN_REQUEST_INVALID');
-  if(!Object.hasOwn(value,'kind')){
+  const kind=Object.getOwnPropertyDescriptor(value,'kind');
+  if(kind&&(!Object.hasOwn(kind,'value')||kind.enumerable!==true))
+    fail('NATIVE_OWNER_ADMIN_REQUEST_INVALID');
+  if(!kind){
     const r=exact(value,['actor','route','tool','status'],'NATIVE_OWNER_ADMIN_REQUEST_INVALID');
     const route=normalizeV2Route(r.route);
     if(!safeId(r.actor)||r.actor!==route.principalId||typeof r.tool!=='string'
@@ -74,14 +88,14 @@ function normalizeRequest(value,now){
     return Object.freeze({kind:'base-route-tool-grant',actor:r.actor,route,tool:r.tool,
       status:r.status,reason:null,expiresAtMs:null,workerContext:null});
   }
-  if(value.kind==='worker-enrollment-grant'){
+  if(kind.value==='worker-enrollment-grant'){
     const r=exact(value,[
       'kind','action','status','actor','workerContext','reason','expiresAtMs'
     ],'NATIVE_OWNER_ADMIN_REQUEST_INVALID');
     const workerContext=workerOf(r.workerContext);
     if(r.action!==r.status||!['ACTIVE','REVOKED'].includes(r.status)
       ||!safeId(r.actor)||r.actor!==workerContext.principalId
-      ||typeof r.reason!=='string'||r.reason.trim().length<5||r.reason.length>400
+      ||!safeReason(r.reason)
       ||(r.status==='ACTIVE'
         ?!Number.isSafeInteger(r.expiresAtMs)||r.expiresAtMs<=now
         :r.expiresAtMs!==null))
@@ -89,7 +103,7 @@ function normalizeRequest(value,now){
     return Object.freeze({kind:r.kind,actor:r.actor,status:r.status,
       reason:r.reason.trim(),expiresAtMs:r.expiresAtMs,workerContext,route:null,tool:null});
   }
-  if(value.kind==='worker-tool-grant'){
+  if(kind.value==='worker-tool-grant'){
     const r=exact(value,[
       'kind','action','status','actor','route','tool','workerContext','reason','expiresAtMs'
     ],'NATIVE_OWNER_ADMIN_REQUEST_INVALID');
@@ -97,7 +111,7 @@ function normalizeRequest(value,now){
     if(r.action!==r.status||!['ENABLED','REVOKED'].includes(r.status)
       ||!safeId(r.actor)||r.actor!==workerContext.principalId
       ||!routeMatchesOwner(route,workerContext)||typeof r.tool!=='string'||!TOOL.test(r.tool)
-      ||typeof r.reason!=='string'||r.reason.trim().length<5||r.reason.length>400
+      ||!safeReason(r.reason)
       ||(r.status==='ENABLED'
         ?!Number.isSafeInteger(r.expiresAtMs)||r.expiresAtMs<=now
         :r.expiresAtMs!==null))
@@ -179,7 +193,11 @@ export function createNativeOwnerAdministrationAuthorizer({
       if(approved!==true)return false;
       const after=ownerOf(await nativeSessionBindings.resolveNativeOwnerContext(conversationId));
       const afterSnapshot=await ownerSessionProvider.getOwnerSessionSnapshot();
-      return sameOwner(before,after)
+      const afterTime=now();
+      return Number.isSafeInteger(afterTime)&&afterTime>=t
+        &&after.expiresAtMs>afterTime
+        &&(request.expiresAtMs===null||request.expiresAtMs>afterTime)
+        &&sameOwner(before,after)
         &&afterSnapshot.ownerSidHash===snapshot.ownerSidHash
         &&afterSnapshot.osSessionId===snapshot.osSessionId
         &&afterSnapshot.seatId===snapshot.seatId

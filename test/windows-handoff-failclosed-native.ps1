@@ -16,6 +16,8 @@ $script:mode='healthy'
 $script:active=0
 $script:queued=0
 $script:leases=0
+$script:blocking=0
+$script:expired=0
 $script:guiLeased=$false
 $script:browserUncertain=$false
 
@@ -30,9 +32,11 @@ function Invoke-RestMethod {
     'system_status' {
       $state=[pscustomobject]@{
         concurrency=[pscustomobject]@{activeOperations=$script:active;queued=$script:queued}
-        durableWorkflows=[pscustomobject]@{schedulerState=[pscustomobject]@{currentLeases=$script:leases}}
+        durableWorkflows=[pscustomobject]@{schedulerState=[pscustomobject]@{currentLeases=$script:leases;rootLeasesBlocking=$script:blocking;expiredLeasesRequiringReconciliation=$script:expired}}
       }
       if($script:mode -eq 'missing_queued'){$state.concurrency.PSObject.Properties.Remove('queued')}
+      if($script:mode -eq 'missing_blocking'){$state.durableWorkflows.schedulerState.PSObject.Properties.Remove('rootLeasesBlocking')}
+      if($script:mode -eq 'missing_expired'){$state.durableWorkflows.schedulerState.PSObject.Properties.Remove('expiredLeasesRequiringReconciliation')}
       return [pscustomobject]@{result=[pscustomobject]@{isError=$false;structuredContent=$state}}
     }
     'gui_status' {
@@ -53,6 +57,15 @@ function Invoke-RestMethod {
 
 $cases=@(
   @{name='healthy_idle';mode='healthy';active=0;queued=0;leases=0;gui=$false;browser=$false;expect='0/0/0'},
+  @{name='live_root_lease';mode='healthy';active=0;queued=0;leases=1;blocking=1;expired=0;gui=$false;browser=$false;expect='0/0/1'},
+  @{name='expired_root_lease';mode='healthy';active=0;queued=0;leases=0;blocking=1;expired=1;gui=$false;browser=$false;expect='0/0/1'},
+  @{name='mixed_root_leases';mode='healthy';active=0;queued=0;leases=1;blocking=3;expired=2;gui=$false;browser=$false;expect='0/0/3'},
+  @{name='legacy_missing_blocking';mode='missing_blocking';active=0;queued=0;leases=0;gui=$false;browser=$false;expect='1/1/1'},
+  @{name='missing_expired';mode='missing_expired';active=0;queued=0;leases=0;gui=$false;browser=$false;expect='1/1/1'},
+  @{name='inconsistent_counts';mode='healthy';active=0;queued=0;leases=1;blocking=0;expired=0;gui=$false;browser=$false;expect='1/1/1'},
+  @{name='negative_count';mode='healthy';active=0;queued=0;leases=0;blocking=-1;expired=0;gui=$false;browser=$false;expect='1/1/1'},
+  @{name='string_count';mode='healthy';active=0;queued=0;leases=0;blocking='0';expired=0;gui=$false;browser=$false;expect='1/1/1'},
+  @{name='fractional_count';mode='healthy';active=0;queued=0;leases=0;blocking=0.5;expired=0;gui=$false;browser=$false;expect='1/1/1'},
   @{name='queued_work';mode='healthy';active=0;queued=2;leases=0;gui=$false;browser=$false;expect='0/2/0'},
   @{name='active_operation';mode='healthy';active=1;queued=0;leases=0;gui=$false;browser=$false;expect='1/0/0'},
   @{name='gui_lease';mode='healthy';active=0;queued=0;leases=0;gui=$true;browser=$false;expect='0/0/1'},
@@ -67,6 +80,8 @@ foreach($item in $cases){
   $script:active=$item.active
   $script:queued=$item.queued
   $script:leases=$item.leases
+  $script:blocking=if($item.ContainsKey('blocking')){$item.blocking}else{$item.leases}
+  $script:expired=if($item.ContainsKey('expired')){$item.expired}else{0}
   $script:guiLeased=$item.gui
   $script:browserUncertain=$item.browser
   $response=Get-CommanderBusy

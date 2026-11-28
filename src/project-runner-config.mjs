@@ -52,7 +52,7 @@ function normalizedExplicitRunner(existing) {
   return {
     ...current,
     enabled: true,
-    autoTick: current.autoTick !== false,
+    autoTick: current.autoTick === true,
     provider: {
       ...provider,
       timeoutMs: Math.min(Number.isSafeInteger(Number(provider.timeoutMs)) ? Number(provider.timeoutMs) : 30_000, 30_000),
@@ -66,7 +66,7 @@ function normalizedExplicitRunner(existing) {
     maxDurationMs: Number.isSafeInteger(Number(current.maxDurationMs)) ? Number(current.maxDurationMs) : 300_000,
     maxPlannerCalls: Number.isSafeInteger(Number(current.maxPlannerCalls)) ? Number(current.maxPlannerCalls) : 128,
     adaptive: {
-      enabled: current.adaptive?.enabled !== false,
+      enabled: current.adaptive?.enabled === true,
       maxExtensions: Number.isSafeInteger(Number(current.adaptive?.maxExtensions))
         ? Number(current.adaptive.maxExtensions) : 4
     },
@@ -74,7 +74,7 @@ function normalizedExplicitRunner(existing) {
     // during configuration migration, update, or normalization.
     ...(current.team == null ? {} : { team: current.team }),
     worker: {
-      enabled: current.worker?.enabled !== false,
+      enabled: current.worker?.enabled === true,
       // Preserve an omitted optional limit exactly. Adding a new default here
       // changes an authorized running policy and blocks candidate continuity.
       ...(Object.hasOwn(current.worker ?? {}, 'maxArtifactBytes')

@@ -312,6 +312,44 @@ test('journal events are append-only and projection tampering fails closed',()=>
   } finally { f.dispose(); }
 });
 
+test('constructor verifies identity journal inside one SQLite snapshot despite another registry writer',t=>{
+  const f=fixture();
+  const item=signedEnvelope();
+  let second, observed=0, writerCommittedBetweenReads=false;
+  const original=DatabaseSync.prototype.prepare;
+  const metaSql='SELECT schema_version AS schemaVersion,event_count AS eventCount,head_digest AS headDigest FROM worker_identity_meta WHERE singleton=1';
+  // Instrument only the constructor's first journal-meta read. If there is
+  // no transaction, commit a legitimate registration on the other connection
+  // at the exact gap that the hosted CAS failure exposed.
+  const hook=t.mock.method(DatabaseSync.prototype,'prepare',function(sql){
+    const statement=original.call(this,sql);
+    if(sql!==metaSql||observed!==0)return statement;
+    const db=this;
+    return {get(...args){
+      const meta=statement.get(...args);
+      observed++;
+      if(!db.isTransaction){
+        assert.equal(f.registry.register(item.envelope,{expectedPreviousBindingId:null,expectedPreviousState:'EMPTY'}),true);
+        writerCommittedBetweenReads=true;
+      }
+      return meta;
+    }};
+  });
+  try{
+    second=new WorkflowStore({...f.options,directory:path.join(f.root,'profile-saeed'),authority:{profileId:'saeed'}});
+    assert.equal(observed,1);
+    assert.equal(writerCommittedBetweenReads,false);
+    assert.equal(second.workerIdentityJournalStatus().eventCount,0);
+    assert.equal(f.registry.register(item.envelope,{expectedPreviousBindingId:null,expectedPreviousState:'EMPTY'}),true);
+    assert.equal(second.workerIdentityJournalStatus().eventCount,1);
+    assert.deepEqual(createWorkflowStoreWorkerIdentityRegistry(second).get(item.workerId),item.envelope);
+  }finally{
+    hook.mock.restore();
+    try{second?.close();}catch{}
+    f.dispose();
+  }
+});
+
 test('separate Node processes cannot both win the machine-global initial registration CAS',async()=>{
   const f=fixture();
   try{

@@ -50,6 +50,35 @@ export function isLinuxOwnerCommanderLegacyTunnelUnit({
   const name=unit.slice(0,-'-tunnel.service'.length);
   return command[2].trim()===executable+' run --profile '+name;
 }
+// A graphical rebind is an auxiliary service only when its exact observed
+// command and owner-local fragment match the corresponding Core service.
+// This distinction is inventory only; it never clears an unmapped blocker.
+export function isLinuxOwnerGraphicalRebindUnit({unit,execStart,fragmentPath,home}={}){
+  if(typeof unit!=='string'||typeof home!=='string'||!path.posix.isAbsolute(home)
+    ||typeof execStart!=='string'||typeof fragmentPath!=='string')return false;
+  const m=/^(chatgpt-remote-commander-[a-z0-9][a-z0-9._-]{0,63})-graphical-rebind\.service$/.exec(unit);
+  if(!m||fragmentPath!==path.posix.join(home,'.config','systemd','user',unit))return false;
+  const command=/^\{ path=([^ ;]+) ; argv\[\]=([^;]+) ; ignore_errors=(?:yes|no) ; [^{}]*\}$/.exec(execStart);
+  return !!command&&command[1]==='/usr/bin/systemctl'
+    &&command[2].trim()==='/usr/bin/systemctl --user try-restart '+m[1]+'.service';
+}
+// Native inventory accepts a single exact package-owned service command, not
+// arbitrary arguments containing a known executable path.
+export function classifyLinuxNativeExecStart({unit,execStart,fragmentPath}={}){
+  if(typeof unit!=='string'||typeof execStart!=='string'||typeof fragmentPath!=='string')return null;
+  const command=/^\{ path=([^ ;]+) ; argv\[\]=([^;]+) ; ignore_errors=(?:yes|no) ; [^{}]*\}$/.exec(execStart);
+  if(!command)return null;
+  const root='/usr/lib/chatgpt-remote-commander';
+  const core=/^chatgpt-remote-commander@([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.service$/.exec(unit);
+  const tunnel=/^chatgpt-remote-commander-tunnel@([A-Za-z0-9][A-Za-z0-9._-]{0,63})\.service$/.exec(unit);
+  if(core&&fragmentPath==='/usr/lib/systemd/user/chatgpt-remote-commander@.service'
+    &&command[1]===root+'/runtime/node'
+    &&command[2].trim()===root+'/runtime/node '+root+'/app/src/server-v0.3.mjs')return 'core';
+  if(tunnel&&fragmentPath==='/usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service'
+    &&command[1]===root+'/tunnel/native-tunnel-launch.sh'
+    &&command[2].trim()===root+'/tunnel/native-tunnel-launch.sh '+tunnel[1])return 'tunnel';
+  return null;
+}
 const sha=s=>createHash('sha256').update(s).digest('hex').slice(0,16);
 // The owner-selected tunnel profile is input, not a ChatGPT identity proof.
 // Never print/retain the YAML: it may contain the runtime API key.
@@ -93,6 +122,35 @@ export function parseMainTunnelBinding(yaml){
     ||port<1024||port>65535)return null;
   return Object.freeze({port,channel:'main',path:'/mcp',tls:url.protocol==='https:'});
 }
+// Bounded descriptor-bound observation: no path reopen after validation.
+function readObservedProfile(file,directory,initial,parent){
+  const maxBytes=16384;
+  const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size
+    &&a.mode===b.mode&&a.uid===b.uid&&a.nlink===b.nlink
+    &&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+  const invalid=()=>new Error('PROFILE_OBSERVATION_CHANGED');
+  let fd;
+  try{
+    const flags=fs.constants.O_RDONLY
+      |(process.platform==='linux'?(fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK):0);
+    fd=fs.openSync(file,flags);
+    const opened=fs.fstatSync(fd);
+    if(!opened.isFile()||opened.nlink!==1||opened.size<1||opened.size>maxBytes
+      ||!same(initial,opened)||!same(parent,fs.lstatSync(directory)))throw invalid();
+    const buffer=Buffer.alloc(opened.size+1);
+    let offset=0;
+    while(offset<buffer.length){
+      const count=fs.readSync(fd,buffer,offset,buffer.length-offset,offset);
+      if(count===0)break;
+      offset+=count;
+    }
+    if(offset!==opened.size||!same(opened,fs.fstatSync(fd))
+      ||!same(opened,fs.lstatSync(file))||!same(parent,fs.lstatSync(directory)))
+      throw invalid();
+    return buffer.subarray(0,offset).toString('utf8');
+  }catch{throw invalid();}
+  finally{if(fd!==undefined)fs.closeSync(fd);}
+}
 export function readWindowsOwnerTunnelBinding({
   appData=process.env.APPDATA,profileName='chatgpt-remote-commander'
 }={}){
@@ -101,12 +159,18 @@ export function readWindowsOwnerTunnelBinding({
     ||profileName==='.'||profileName==='..'
     ||typeof appData!=='string'||!path.isAbsolute(appData))
     return {profilePresent:false,valid:false};
-  const file=path.join(appData,'tunnel-client',profileName+'.yaml');
+  const directory=path.join(appData,'tunnel-client');
+  const file=path.join(directory,profileName+'.yaml');
   try{
-    const stat=fs.lstatSync(file);
-    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16384)
+    // A linked parent can redirect a regular-looking YAML file outside the
+    // owner's tunnel configuration without making the YAML itself a symlink.
+    const parent=fs.lstatSync(directory);
+    if(!parent.isDirectory()||parent.isSymbolicLink())
       return {profilePresent:true,valid:false};
-    const binding=parseMainTunnelBinding(fs.readFileSync(file,'utf8'));
+    const stat=fs.lstatSync(file);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size<1||stat.size>16384)
+      return {profilePresent:true,valid:false};
+    const binding=parseMainTunnelBinding(readObservedProfile(file,directory,stat,parent));
     return {profilePresent:true,valid:!!binding,port:binding?.port??null,tls:binding?.tls??false};
   }catch(error){
     if(error?.code==='ENOENT')return {profilePresent:false,valid:false};
@@ -129,9 +193,9 @@ export function readLinuxOwnerTunnelBinding({
   if(typeof home!=='string'||!path.isAbsolute(home))
     return {profilePresent:false,valid:false};
   const directory=path.join(home,'.config','tunnel-client');
-  let names;
+  let names,dir;
   try{
-    const dir=fs.lstatSync(directory);
+    dir=fs.lstatSync(directory);
     if(!dir.isDirectory()||dir.isSymbolicLink()
       ||(ownerUid!==undefined&&(dir.uid!==ownerUid||(dir.mode&0o077)!==0)))
       return {profilePresent:true,valid:false};
@@ -152,12 +216,7 @@ export function readLinuxOwnerTunnelBinding({
       ||stat.size<1||stat.size>16384
       ||(ownerUid!==undefined&&(stat.uid!==ownerUid||(stat.mode&0o077)!==0)))
       return {profilePresent:true,valid:false};
-    const yaml=fs.readFileSync(file,'utf8');
-    const after=fs.lstatSync(file);
-    if(after.ino!==stat.ino||after.dev!==stat.dev||after.size!==stat.size
-      ||after.mtimeMs!==stat.mtimeMs)
-      return {profilePresent:true,valid:false};
-    const binding=parseMainTunnelBinding(yaml);
+    const binding=parseMainTunnelBinding(readObservedProfile(file,directory,stat,dir));
     return {profilePresent:true,valid:!!binding,
       port:binding?.port??null,tls:binding?.tls??false};
   }catch{return {profilePresent:true,valid:false};}
@@ -197,7 +256,7 @@ function verifyLinuxSixFileOwnerCapsule({home,ownerUid,profileName}){
  ];
  const config=path.join(home,'.config');
  const digest=file=>{
-  const p=spawnSync('sha256sum',[file],{encoding:'utf8',timeout:5000,
+  const p=spawnSync('/usr/bin/sha256sum',[file],{encoding:'utf8',timeout:5000,
     maxBuffer:1024,stdio:['ignore','pipe','ignore']});
   return p.status===0?/^([a-f0-9]{64})\s/.exec(p.stdout||'')?.[1]??null:null;
  };
@@ -292,15 +351,6 @@ export function verifyLinuxPrivateProfileBackup({
         &&end.size===initial.size&&end.mtimeMs===initial.mtimeMs;
     }catch{return false;}
   };
-  const digestCommand=(program,args)=>{
-    try{
-      const result=spawnSync(program,args,{
-        encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024,
-        stdio:['ignore','pipe','ignore']});
-      const v=result.stdout?.trim();
-      return result.status===0&&/^[0-9a-f]{64}$/.test(v)?v:null;
-    }catch{return null;}
-  };
   try{
     // Resolve/verify the whole parent path: symlinked recovery directories
     // cannot redirect backup inspection outside the owner home.
@@ -325,7 +375,7 @@ export function verifyLinuxPrivateProfileBackup({
       ||!/^[a-f0-9]{64}$/.test(item.sourceSha256)
       ||!/^[a-f0-9]{64}$/.test(item.ciphertextSha256))return false;
     const fileHash=(file)=>{
-      const result=spawnSync('sha256sum',[file],{
+      const result=spawnSync('/usr/bin/sha256sum',[file],{
         encoding:'utf8',windowsHide:true,timeout:5000,maxBuffer:1024,
         stdio:['ignore','pipe','ignore']});
       const digest=/^([a-f0-9]{64})\s/.exec(result.stdout||'');
@@ -333,9 +383,13 @@ export function verifyLinuxPrivateProfileBackup({
     };
     if(fileHash(source)!==item.sourceSha256
       ||fileHash(encrypted)!==item.ciphertextSha256)return false;
-    const script='set -o pipefail; systemd-creds decrypt --user --refuse-null --name="$1" "$2" - | sha256sum | cut -d " " -f1';
-    const restored=digestCommand('/bin/bash',['-c',script,
-      'verify',expectedCredentialName,encrypted]);
+    const script='set -o pipefail; /usr/bin/systemd-creds decrypt --user --refuse-null --name="$1" "$2" - | /usr/bin/sha256sum | /usr/bin/cut -d " " -f1';
+    // Root-owned executables only; script source travels on stdin, never argv.
+    const proof=spawnSync('/bin/bash',['-s','--',expectedCredentialName,encrypted],{
+      input:script,encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024,
+      stdio:['pipe','pipe','ignore']});
+    const value=proof.stdout?.trim();
+    const restored=proof.status===0&&/^[0-9a-f]{64}$/.test(value)?value:null;
     return restored===item.sourceSha256
       &&unchanged(receipt,rstat)&&unchanged(source,sstat)
       &&unchanged(encrypted,cstat);
@@ -355,7 +409,7 @@ const req=http.get({hostname:'127.0.0.1',port,path:'/health',timeout:1200},res=>
   res.on('data',chunk=>{body+=chunk;if(body.length>2048)req.destroy();});
   res.on('end',()=>{try{
     const obj=JSON.parse(body);
-    if(typeof obj.version==='string'&&/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(obj.version))
+    if(typeof obj.version==='string'&&/^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(obj.version))
       process.stdout.write(obj.version);
     else process.exitCode=2;
   }catch{process.exitCode=2;}});
@@ -365,7 +419,7 @@ req.on('error',()=>{process.exitCode=2;});
 `;
   const result=exec(process.execPath,['-e',script,String(port)]);
   const version=result.stdout.trim();
-  return result.ok && /^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(version)
+  return result.ok && /^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(version)
     ?version:null;
 }
 
@@ -382,10 +436,27 @@ export function assessMigration(facts){
     throw Error('RC012_MIGRATION_CONNECTION_MODE_INVALID');
   const privateTunnel=facts.connectionMode==='private-tunnel';
   const blocked=[];
+  // Windows owner-managed PowerShell deployments need not register either
+  // Inno or NSIS. An observed legacy Router OR an exact live tunnel-target
+  // Core health version proves an existing runtime, not its installer family.
+  // Independent account tunnels can target Core directly, without a Router.
+  // Fail closed before proposing a destructive fresh-install transaction.
+  const liveOldWindowsCore=facts.routerDetected===true
+    ||(facts.tunnelProfileValid===true
+      &&facts.tunnelTargetTls!==true
+      &&typeof facts.tunnelTargetVersion==='string'
+      &&/^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(facts.tunnelTargetVersion));
+  const liveUnregisteredWindowsCore=facts.platform==='win32'
+    &&liveOldWindowsCore
+    &&facts.legacyInnoPresent!==true
+    &&facts.nativeUnifiedNsisPresent!==true;
   const oldPresent=facts.platform==='win32'
     ?facts.legacyInnoPresent===true||facts.nativeUnifiedNsisPresent===true
+      ||liveUnregisteredWindowsCore
     :facts.nativePackageInstalled===true;
   const units=Array.isArray(facts.units)?facts.units:[];
+  if(liveUnregisteredWindowsCore)
+    blocked.push('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED');
   if(!facts.inventoryReliable)blocked.push('INVENTORY_UNAVAILABLE');
   if(facts.platform==='win32'&&facts.routerDetected===true
     &&facts.routerMappingMatches!==true)
@@ -419,7 +490,7 @@ export function assessMigration(facts){
         ||!facts.tunnelTargetVersion.startsWith('0.12.')))
       blocked.push('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE');
   }
-  if(facts.platform==='win32' && oldPresent){
+  if(facts.platform==='win32' && oldPresent&&!liveUnregisteredWindowsCore){
     if(facts.nativeUnifiedNsisPresent===true&&facts.legacyInnoPresent!==true){
       if(facts.ownerRegisteredInstallerFamily==='unified-nsis')
         blocked.push('UNIFIED_NSIS_OWNER_UPGRADE_ROLLBACK_UNVERIFIED');
@@ -524,6 +595,8 @@ export function assessMigration(facts){
     activeTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.active).length,
     enabledCoreUnits:units.filter(u=>u.kind==='core'&&u.enabled).length,
     enabledTunnelUnits:units.filter(u=>u.kind==='tunnel'&&u.enabled).length,
+    activeAuxiliaryUnits:units.filter(u=>u.kind==='auxiliary'&&u.active).length,
+    enabledAuxiliaryUnits:units.filter(u=>u.kind==='auxiliary'&&u.enabled).length,
     unmappedUnits:units.filter(u=>(u.active||u.enabled)&&!u.knownExecutable).length,
     blocked:[...new Set(blocked)],promotionAuthority:'EXTERNAL_REQUIRED'});
 }
@@ -616,9 +689,11 @@ function linuxFacts({profileName=null}={}){
       });
       if(!oldUnit&&!legacyTunnel)continue;
       const active=result.stdout.includes('ActiveState=active');
-      const nativeTunnel=execStart.includes('/usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh');
-      const nativeCore=execStart.includes('/usr/lib/chatgpt-remote-commander/runtime/node');
-      units.push({id:sha(name),kind:legacyTunnel||name.includes('-tunnel')?'tunnel':'core',
+      const nativeKind=classifyLinuxNativeExecStart({unit:name,execStart,fragmentPath});
+      const nativeTunnel=nativeKind==='tunnel';
+      const nativeCore=nativeKind==='core';
+      const auxiliary=isLinuxOwnerGraphicalRebindUnit({unit:name,execStart,fragmentPath,home:process.env.HOME});
+      units.push({id:sha(name),kind:auxiliary?'auxiliary':legacyTunnel||name.includes('-tunnel')?'tunnel':'core',
         active,enabled:enabled.has(name),
         knownExecutable:(nativeTunnel||nativeCore)&&!legacyTunnel,
         nativeTunnelCompatible:nativeTunnel&&!legacyTunnel});
@@ -652,18 +727,20 @@ function linuxFacts({profileName=null}={}){
     units};
 }
 /** Router mapping is an observation, not authorization to change routing. */
-export function classifyObservedRouterStatus(report,listenPort,backendHealthVersion){
-  if(!report||typeof report!=='object'||Array.isArray(report)
+export function classifyObservedRouterStatus(report,listenPort,backendHealthVersion,expectedProfile){
+  if(typeof expectedProfile!=='string'
+    ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(expectedProfile)
+    ||!report||typeof report!=='object'||Array.isArray(report)
     ||report.router!==true||report.listenPort!==listenPort
     ||typeof report.sourceSha256!=='string'
     ||!/^[a-f0-9]{64}$/.test(report.sourceSha256)
-    ||report.profile!=='default'||report.schema!==1
+    ||report.profile!==expectedProfile||report.schema!==1
     ||!Number.isSafeInteger(report.generation)||report.generation<1
     ||!Number.isSafeInteger(report.activePort)
     ||report.activePort<1024||report.activePort>65535
     ||report.activePort===listenPort
     ||typeof report.activeVersion!=='string'
-    ||!/^0\.(?:11|12)\.[A-Za-z0-9.-]+$/.test(report.activeVersion))
+    ||!/^0\.(?:10|11|12)\.[A-Za-z0-9.-]+$/.test(report.activeVersion))
     return Object.freeze({detected:false,mappingMatches:false});
   const match=backendHealthVersion===report.activeVersion;
   return Object.freeze({detected:true,mappingMatches:match,
@@ -761,14 +838,19 @@ export function windowsOwnerDpapiVerifyOutputAccepted(status,stdout){
   return status===0 && typeof stdout==='string'
     && stdout.trim()==='RC012_WINDOWS_OWNER_DPAPI_BACKUP_VERIFY_PASS files=6 encrypted=true originalProfileUnchanged=true actualRestoreNotExecuted=true';
 }
+export function windowsOwnerDpapiPowerShellExecutable(){
+  // The reviewed machine-wide MSI default: never trust caller-controlled
+  // ProgramFiles, PATH or another ambient executable discovery source.
+  // Non-default installations fail closed instead of running an untrusted exe.
+  return path.win32.join('C:\\Program Files','PowerShell','7','pwsh.exe');
+}
 function verifyWindowsOwnerDpapiBackup(profileName='chatgpt-remote-commander'){
   if(process.platform!=='win32'||typeof profileName!=='string'
     ||!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(profileName)
     ||profileName==='.'||profileName==='..')return false;
-  const programFiles=process.env.ProgramFiles,appData=process.env.APPDATA;
-  if(typeof programFiles!=='string'||!path.win32.isAbsolute(programFiles)
-    ||typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
-  const exe=path.win32.join(programFiles,'PowerShell','7','pwsh.exe');
+  const appData=process.env.APPDATA;
+  if(typeof appData!=='string'||!path.win32.isAbsolute(appData))return false;
+  const exe=windowsOwnerDpapiPowerShellExecutable();
   const script=path.join(path.dirname(fileURLToPath(import.meta.url)),
     'owner-dpapi-profile-recovery.ps1');
   try{
@@ -821,7 +903,14 @@ function windowsFacts({profileName=null}={}){
   const routerReport=tunnel.valid?probeLoopbackRouterStatus(tunnel.port):null;
   const backendVersion=routerReport?.activePort
     ?probeLoopbackCoreVersion(routerReport.activePort):null;
-  const route=classifyObservedRouterStatus(routerReport,tunnel.port,backendVersion);
+  // The canonical install calls its Router profile "default", while named
+  // installed profiles (e.g. MMZ) retain their exact owner-selected name.
+  // Compare the observed Router claim with this local selection, never with
+  // a profile supplied by the loopback peer or a caller-controlled MCP body.
+  const expectedRouterProfile=selectedProfile==='chatgpt-remote-commander'
+    ?'default':selectedProfile;
+  const route=classifyObservedRouterStatus(routerReport,tunnel.port,
+    backendVersion,expectedRouterProfile);
   return {platform:'win32',connectionMode:'private-tunnel',
     legacyInnoPresent:checks.some(c=>c.ok),
     nativeUnifiedNsisPresent:nativePresent.length>0,

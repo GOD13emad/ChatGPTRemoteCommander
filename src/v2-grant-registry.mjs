@@ -142,9 +142,19 @@ export class V2GrantRegistry {
     this.now = now;
     this.directory = assertPrivatePath(directory);
     this.location = path.join(this.directory, 'v2-access.sqlite');
+    // SQLite may delete a transient rollback journal between an existence probe
+    // and lstat while another process commits. A single no-entry-tolerant lstat
+    // preserves fail-closed validation for entries that are actually present.
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
-      if (!fs.existsSync(this.location + suffix)) continue;
-      const info = fs.lstatSync(this.location + suffix);
+      const entry = this.location + suffix;
+      let info = fs.lstatSync(entry, { throwIfNoEntry: false });
+      // POSIX stat can return an already unlinked regular inode (nlink=0)
+      // while SQLite removes a transient sidecar. Recheck the pathname once;
+      // never waive the alias guard for a present entry or the primary DB.
+      if (suffix && info?.isFile() && !info.isSymbolicLink() && info.nlink === 0) {
+        info = fs.lstatSync(entry, { throwIfNoEntry: false });
+      }
+      if (!info) continue;
       if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) fail('V2_GRANT_ALIAS_NOT_ALLOWED');
     }
     this.db = new DatabaseSync(this.location, { allowExtension: false });
@@ -278,7 +288,7 @@ export class V2GrantRegistry {
     safeId(actor);
     if(typeof reason!=='string'||reason.trim().length<5||reason.length>400)
       fail('V2_WORKER_GRANT_REASON_REQUIRED');
-    const now=this.now();
+    let now=this.now();
     if(!Number.isSafeInteger(now)||now<0)fail('V2_WORKER_GRANT_CLOCK_INVALID');
     if(status==='ACTIVE'&&(!Number.isSafeInteger(expiresAtMs)||expiresAtMs<=now
       ||expiresAtMs-now>MAX_WORKER_GRANT_TTL_MS))
@@ -289,6 +299,13 @@ export class V2GrantRegistry {
     })!==true)fail('V2_WORKER_GRANT_ADMIN_AUTH_REQUIRED');
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      // The native consent dialog may outlive the originally checked grant.
+      const approvedAt=this.now();
+      if(!Number.isSafeInteger(approvedAt)||approvedAt<now)
+        fail('V2_WORKER_GRANT_CLOCK_INVALID');
+      now=approvedAt;
+      if(status==='ACTIVE'&&expiresAtMs<=now)
+        fail('V2_WORKER_GRANT_EXPIRY_INVALID');
       const current=this.db.prepare('SELECT * FROM v2_worker_grants WHERE host=? AND principal=? AND profile=? AND conversation=? AND worker_id=?')
         .get(c.hostId,c.principalId,c.profileId,c.conversationId,c.workerId);
       const revision=current?Number(current.revision):0;
@@ -360,7 +377,7 @@ export class V2GrantRegistry {
     safeId(actor);
     if(typeof reason!=='string'||reason.trim().length<5||reason.length>400)
       fail('V2_WORKER_TOOL_GRANT_REASON_REQUIRED');
-    const now=this.now();
+    let now=this.now();
     if(!Number.isSafeInteger(now)||now<0)fail('V2_WORKER_GRANT_CLOCK_INVALID');
     const enrollment=this.readWorkerGrant(c);
     if(!enrollment||enrollment.status!=='ACTIVE'||!ownerGrantMatchesContext(enrollment,c)
@@ -374,6 +391,20 @@ export class V2GrantRegistry {
     })!==true)fail('V2_WORKER_TOOL_GRANT_ADMIN_AUTH_REQUIRED');
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      // Re-read the parent grant under the same write lock as the tool grant.
+      const approvedAt=this.now();
+      if(!Number.isSafeInteger(approvedAt)||approvedAt<now)
+        fail('V2_WORKER_GRANT_CLOCK_INVALID');
+      now=approvedAt;
+      const currentEnrollment=this.readWorkerGrant(c);
+      if(!currentEnrollment||currentEnrollment.status!=='ACTIVE'
+        ||!ownerGrantMatchesContext(currentEnrollment,c)
+        ||currentEnrollment.revision!==enrollment.revision
+        ||currentEnrollment.expiresAtMs<=now)
+        fail('V2_WORKER_GRANT_NOT_ACTIVE');
+      if(status==='ENABLED'&&(expiresAtMs<=now
+        ||expiresAtMs>currentEnrollment.expiresAtMs))
+        fail('V2_WORKER_TOOL_GRANT_EXPIRY_INVALID');
       const current=this.db.prepare('SELECT * FROM v2_worker_tool_grants '+
         'WHERE host=? AND principal=? AND profile=? AND conversation=? AND operation_id=? AND kind=? '+
         'AND target=? AND tool=? AND worker_id=?').get(...scope,c.workerId);

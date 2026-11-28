@@ -122,3 +122,48 @@ export async function verifyOwnerPinnedNativeRelease({
     promoteAllowed:false
   });
 }
+
+/** Initial installation has no previous version. The independently pinned
+ * manifest v2 carries exactly ONE candidate; native OS uninstall + readback
+ * is the rollback target. It cannot pretend to be an already verified rollback. */
+export async function verifyOwnerPinnedFreshNativeRelease({
+  manifestPath,ownerPinnedManifestSha256,ownerPinnedHead,
+  candidatePath,platform
+}={}){
+  if(typeof ownerPinnedManifestSha256!=='string'
+    ||!HASH.test(ownerPinnedManifestSha256)
+    ||typeof ownerPinnedHead!=='string'||!HEAD.test(ownerPinnedHead)
+    ||!['win32','linux'].includes(platform))
+    fail('RC012_PROVENANCE_OWNER_PIN_REQUIRED');
+  const paths=[manifestPath,candidatePath];
+  if(paths.some(p=>typeof p!=='string'||!path.isAbsolute(p))
+    ||new Set(paths.map(p=>path.resolve(p).toLowerCase())).size!==2)
+    fail('RC012_PROVENANCE_DISTINCT_FILES_REQUIRED');
+  const resolved=await Promise.all(paths.map(p=>realpath(p)));
+  if(new Set(resolved.map(p=>p.toLowerCase())).size!==2)
+    fail('RC012_PROVENANCE_DISTINCT_FILES_REQUIRED');
+  const manifest=await fingerprint(manifestPath,MAX_MANIFEST);
+  if(manifest.sha256!==ownerPinnedManifestSha256)
+    fail('RC012_PROVENANCE_OWNER_MANIFEST_MISMATCH');
+  let parsed;
+  try{parsed=JSON.parse(manifest.data);}catch{
+    fail('RC012_PROVENANCE_MANIFEST_INVALID');
+  }
+  if(!exact(parsed,['schema','sourceHead','platform','candidate'])
+    ||parsed.schema!==2||parsed.sourceHead!==ownerPinnedHead
+    ||parsed.platform!==platform||!artifact(parsed.candidate))
+    fail('RC012_PROVENANCE_MANIFEST_INVALID');
+  const candidate=await fingerprint(candidatePath,MAX_ARTIFACT);
+  if(candidate.sha256!==parsed.candidate.sha256
+    ||candidate.bytes!==parsed.candidate.bytes)
+    fail('RC012_PROVENANCE_CANDIDATE_MISMATCH');
+  return Object.freeze({
+    sourceHead:ownerPinnedHead,platform,
+    releaseProvenance:'owner-pinned-sha256',
+    ownerPinnedNativeReleaseVerified:true,
+    ownerPinnedRollbackVerified:false,
+    candidateSha256:candidate.sha256,
+    rollbackTarget:'NATIVE_ABSENCE',
+    promoteAllowed:false
+  });
+}

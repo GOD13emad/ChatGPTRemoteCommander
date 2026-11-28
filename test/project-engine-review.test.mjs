@@ -175,10 +175,29 @@ test('caller-attested workflow completion cannot bypass enrolled deterministic c
   assert.equal(result.status,'BLOCKED');assert.equal(result.lastCode,'PROJECT_ACCEPTANCE_FAILED');assert.equal(f.plans,0);
 });
 test('reverified completion requires a match with recorded final evidence',async t=>{
-  const f=fixture(t,async()=>{throw Error('Planning not expected');});await f.create();await f.start();
-  await manualCompletion(f,'verified output original');
-  fs.writeFileSync(path.join(f.root,'project.txt'),'verified output changed');
-  const result=await f.tick();assert.equal(result.status,'BLOCKED');assert.equal(result.lastCode,'PROJECT_COMPLETION_EVIDENCE_CHANGED');
+  const f=fixture(t,async()=>{throw Error('Planning not expected');});await f.create();
+  // This test isolates evidence mismatch, not the independent deadline gate.
+  // Pin the process clock from enrollment through verification so hosted I/O
+  // contention cannot consume the run budget before the evidence is checked.
+  const now=Date.now();t.mock.method(Date,'now',()=>now);
+  try {
+    await f.start();await manualCompletion(f,'verified output original');
+    fs.writeFileSync(path.join(f.root,'project.txt'),'verified output changed');
+    const result=await f.tick();assert.equal(result.status,'BLOCKED',result.lastCode);
+    assert.equal(result.lastCode,'PROJECT_COMPLETION_EVIDENCE_CHANGED');assert.equal(f.plans,0);
+  } finally {t.mock.restoreAll();}
+});
+test('expired reverified completion fails closed before evidence comparison',async t=>{
+  const f=fixture(t,async()=>{throw Error('Planning not expected');});await f.create();
+  let now=Date.now();t.mock.method(Date,'now',()=>now);
+  try {
+    const started=await f.start();await manualCompletion(f,'verified output original');
+    fs.writeFileSync(path.join(f.root,'project.txt'),'verified output changed');
+    now=started.deadline+1;
+    const result=await f.tick();assert.equal(result.status,'EXHAUSTED',result.lastCode);
+    assert.equal(result.lastCode,'PROJECT_DEADLINE_EXHAUSTED');assert.equal(f.plans,0);
+    assert.equal(fs.readFileSync(path.join(f.root,'project.txt'),'utf8'),'verified output changed');
+  } finally {t.mock.restoreAll();}
 });
 test('unchanged independently reverified manual completion is recognized',async t=>{
   const f=fixture(t,async()=>{throw Error('Planning not expected');});await f.create();await f.start();

@@ -53,10 +53,20 @@ jobs:
         run: node --test test/semver-release.test.mjs
       - name: Verify V1-01 worker grants and native owner bridge
         run: npm run test:v1-01-worker-grants
+      - name: Verify owned browser cleanup and backend affinity
+        run: node --test test/browser-backend-affinity.test.mjs test/browser-owned-end-confirmation.test.mjs test/browser-firefox-cleanup-retry.test.mjs test/browser-process.test.mjs test/browser-lease-store.test.mjs test/hybrid-capability-discovery.test.mjs
+      - name: Verify pinned G1 source digest and negative release admission
+        run: node --test test/v101-g1-release-coverage.test.mjs test/v101-v2-protected-dispatcher.test.mjs
       - name: Verify V1-07 signed worker identity and durable registry
         run: npm run test:v1-07-worker-identity
+      - name: Verify v0.12 owner-bound Worker admission and real DPAPI custody
+        run: npm run test:v012-owner-worker-admission
+      - name: Verify bounded command timeout policy on all execution routes
+        run: npm run test:timeout-bounds
       # Keep R157's validated Windows qualification command grammar intact.
       # Run shared installer QA once per OS, as one independent CI step.
+      - name: Verify Browser Core companion, packed byte integrity and extension pairing (NoPromote)
+        run: node --test test/browser-companion-bridge.test.mjs test/verify-compiled-companion.test.mjs test/browser-companion-targets.test.mjs
       - name: Verify universal installer transactions and native parity contracts
         run: npm run test:universal-install
       - name: Reject specialist payloads in public Release ZIPs (negative fixtures)
@@ -65,6 +75,9 @@ jobs:
       - name: Run qualification check with bounded Windows file concurrency
         if: runner.os == 'Windows'
         run: node tools/run-bounded-test-script.mjs --script check --concurrency 1 --prioritize-sensitive 1
+      - name: Verify Linux owner Tunnel enrollment profile isolation
+        if: runner.os == 'Linux'
+        run: node --test test/linux-owner-tunnel-enrollment-directory.test.mjs
       - name: Run full check suite
         if: runner.os != 'Windows'
         run: npm run check

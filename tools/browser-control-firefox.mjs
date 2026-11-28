@@ -49,9 +49,17 @@ function detectFirefox(explicit){
  return null;
 }
 function detectGecko(){
- const ownerLocal=path.join(os.homedir(),'.local','share','chatgpt-remote-commander','adapters','geckodriver','geckodriver');
- const ownerLocalWin=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'ChatGPTRemoteCommander','adapters','geckodriver','geckodriver.exe');
- for(const p of [which('geckodriver.exe'),which('geckodriver'),ownerLocalWin,ownerLocal,'/snap/bin/geckodriver','/usr/bin/geckodriver'])if(p&&exists(p))return path.resolve(p);
+ // PATH and LOCALAPPDATA are ambient input, not executable authorization.
+ // Use only owner-installed adapter locations or known OS package paths.
+ const home=os.homedir();
+ const ownerLocal=path.join(home,'.local','share','chatgpt-remote-commander','adapters','geckodriver','geckodriver');
+ const ownerBin=path.join(home,'.local','bin','geckodriver');
+ const ownerLocalWin=path.join(home,'AppData','Local','ChatGPTRemoteCommander','adapters','geckodriver','geckodriver.exe');
+ const candidates=process.platform==='win32'
+   ?[ownerLocalWin,'C:\\Program Files\\Mozilla Firefox\\geckodriver.exe',
+     'C:\\Program Files (x86)\\Mozilla Firefox\\geckodriver.exe']
+   :[ownerLocal,ownerBin,'/snap/bin/geckodriver','/usr/bin/geckodriver','/usr/local/bin/geckodriver'];
+ for(const file of candidates)if(exists(file))return path.resolve(file);
  return null;
 }
 async function freePort(){
@@ -89,10 +97,21 @@ async function stopDriver(child){
  try{child.kill('SIGKILL');}catch{}
 }
 async function closeBrowser({preserveProfile=false}={}){
- const b=browser;browser=null;if(!b)return;
+ const b=browser;if(!b)return;
+ // Retain the exact owned profile until cleanup is confirmed. Once cleanup
+ // starts, no new operation may use a stale session or recycled driver port.
+ b.cleanupPending=true;
  try{if(b.sessionId)await fetch('http://127.0.0.1:'+b.port+'/session/'+b.sessionId,{method:'DELETE',signal:AbortSignal.timeout(5000)});}catch{}
  await stopDriver(b.driver);
- if(b.isolated&&!preserveProfile){try{fs.rmSync(b.profileDir,{recursive:true,force:true});}catch{throw fail('BROWSER_PROFILE_CLEANUP_FAILED');}}
+ b.sessionId=null;b.port=null;
+ if(b.isolated&&!preserveProfile){
+  try{
+   fs.rmSync(b.profileDir,{recursive:true,force:true});
+   try{fs.lstatSync(b.profileDir);throw fail('BROWSER_PROFILE_CLEANUP_FAILED');}
+   catch(e){if(e.code!=='ENOENT')throw e;}
+  }catch{throw fail('BROWSER_PROFILE_CLEANUP_FAILED');}
+ }
+ if(browser===b)browser=null;
 }
 async function startBrowser(req){
  if(browser)throw fail('BROWSER_SESSION_ALREADY_RUNNING');
@@ -100,7 +119,9 @@ async function startBrowser(req){
  if(!executable||!driverExecutable)throw fail('BROWSER_EXECUTABLE_NOT_FOUND');
  const profileDir=path.resolve(req.profileDir);fs.mkdirSync(profileDir,{recursive:true,mode:0o700});
  const port=await freePort();
- const driverArgs=['--host','127.0.0.1','--port',String(port)];
+ let marionettePort=await freePort();
+ while(marionettePort===port)marionettePort=await freePort();
+ const driverArgs=['--host','127.0.0.1','--port',String(port),'--marionette-port',String(marionettePort)];
  // Snap Firefox and geckodriver must see the same temporary profile root.
  const snapCommon=path.join(os.homedir(),'snap','firefox','common');
  if(process.platform==='linux'&&profileDir.startsWith(snapCommon+path.sep)){
@@ -114,7 +135,14 @@ async function startBrowser(req){
   await waitDriver(driver,port);
   const args=['-profile',profileDir];
   if(req.headless!==false)args.unshift('-headless');
-  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':{args}}}},15000);
+  // Preserve the existing Snap profile-root handling and the historical
+  // explicit-binary contract without expanding executable discovery.
+  const snapDriver=process.platform==='linux'&&driverExecutable==='/snap/bin/geckodriver';
+  const snapLauncher=executable==='/usr/bin/firefox'||executable==='/snap/bin/firefox';
+  if(snapDriver&&!snapLauncher&&executable!=='/snap/firefox/current/usr/lib/firefox/firefox')throw fail('BROWSER_EXECUTABLE_BACKEND_MISMATCH');
+  const options={args};
+  if(!snapDriver||!snapLauncher)options.binary=executable;
+  const created=await http('POST','/session',{capabilities:{alwaysMatch:{browserName:'firefox','moz:firefoxOptions':options}}},15000);
   if(!created?.sessionId)throw fail('BROWSER_DEVTOOLS_UNAVAILABLE');
   browser.sessionId=created.sessionId;browser.product='Firefox '+String(created.capabilities?.browserVersion??'').trim();
   return {ok:true,background:browser.headless,headless:browser.headless,foreground:!browser.headless,userDesktopTouched:!browser.headless,
@@ -174,6 +202,7 @@ async function uploadStagedFileFirefox(req){
  return {ok:true,attached:true,filename:staged.filename,bytes:staged.bytes,sha256:staged.sha256,background:true,verificationRequired:true};
 }
 async function handle(req){
+ if(browser?.cleanupPending&&!['status','end'].includes(req.action))throw fail('BROWSER_PROFILE_CLEANUP_FAILED');
  switch(req.action){
   case 'status':{const executable=detectFirefox(req.executable),driverExecutable=detectGecko();return {ok:true,available:!!executable&&!!driverExecutable,backend:executable&&driverExecutable?'firefox-webdriver':null,executable,driverExecutable,active:!!browser,headless:browser?.headless??null,foreground:browser?browser.headless===false:false,backgroundOnly:browser?browser.headless===true:true,userDesktopTouched:browser?browser.headless===false:false,savedPasswordStoreAccess:false};}
   case 'start':return startBrowser(req);

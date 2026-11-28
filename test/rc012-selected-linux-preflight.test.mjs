@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {readLinuxOwnerTunnelBinding,isLinuxMigrationUnit} from '../packaging/unified/migration-preflight.mjs';
 
-test('exact Linux profile selected within multiple owner-private tunnels',()=>{
+test('exact Linux profile selected within multiple owner-private tunnels',{skip:process.platform!=='linux'},()=>{
  const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-selected-tunnel-'));
  try{
   const d=path.join(home,'.config','tunnel-client');fs.mkdirSync(d,{recursive:true,mode:0o700});

@@ -1,11 +1,13 @@
+import {CORE_VERSION} from '../src/runtime-version.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import https from 'node:https';
-import {createHash} from 'node:crypto';
-import {spawnSync} from 'node:child_process';
+import net from 'node:net';
+import {createHash,randomUUID} from 'node:crypto';
+import {spawn,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createWindowsNativeOwnerSessionProvider} from '../src/native-owner-session-provider-windows.mjs';
 import {createV2CandidatePrivateTunnelHttpsGateway} from '../src/v2-private-tunnel-https-gateway.mjs';
@@ -20,6 +22,13 @@ import {createV2PrivateSignedWorkerGrantAdapter} from '../src/v2-private-signed-
 import {MutationIdempotencyStore} from '../src/mutation-idempotency.mjs';
 import {readText} from '../src/tools-v0.3.mjs';
 import {createV012PrivateCoreRuntime} from '../src/v012-private-core-runtime.mjs';
+import {createV012OwnerGrantAdministration} from '../src/v012-owner-grant-administration.mjs';
+import {createV012OwnerNativeHostLease}
+  from '../src/v012-owner-native-host-lease-bootstrap.mjs';
+import {createV012SharedPhysicalRootFence}
+  from '../src/v012-shared-physical-root-fence.mjs';
+import {ensureWindowsMonitorDirectories}
+  from '../src/browser-companion-windows-private.mjs';
 import {deriveWorkerId} from '../src/worker-identity-authority.mjs';
 import {generateKeyPairSync,sign} from 'node:crypto';
 
@@ -449,16 +458,16 @@ test('PRIVATE pair runtime opens only on explicit owner start and retains NO_PRO
   }
 });
 
-test('full isolated mTLS to signed Worker and real Core readText denies replays after J01 revoke',{
-  skip:process.platform!=='win32'
-},async t=>{
+test('full isolated mTLS to signed Worker and real Core readText denies replays after J01 revoke',async t=>{
   let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
   const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-mtls-real-core-')));
   const approvedFile=path.join(root,'approved.txt');
   fs.writeFileSync(approvedFile,'private-core-mtls-read-only\n');
   const OWNER_SID='S-1-5-21-111-222-333-1001';
-  const OWNER_HASH=createHash('sha256').update(
-    'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
+  const linux=process.platform==='linux',uid=1000;
+  const OWNER_HASH=createHash('sha256').update(linux
+    ?'commander.os-owner.sid.v1\0linux\0uid='+uid+'\0userns=user:[4026531837]'
+    :'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
   const TUNNEL_HASH='a'.repeat(64);
   const context={roots:[root],auditLog:path.join(root,'audit.jsonl'),config:{
     allowedRoots:[root],maxReadBytes:524288,
@@ -478,6 +487,17 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
     ...route(conversationId),operationId:'read-1'
   });
   const nativeExec=(file,args,_options,callback)=>{
+    if(linux){
+      if(file==='/usr/bin/loginctl')return callback(null,[
+        'Id=7','User='+uid,'Seat=seat0','Active=yes','Remote=no',
+        'Type=x11','Class=user','Display=:0','Leader=1001','State=active'
+      ].join('\n')+'\n','');
+      if(file==='/usr/bin/zenity'){
+        state.consents++;
+        return callback(null,'','');
+      }
+      return callback(Error('unreviewed native Linux fixture executable'),'','');
+    }
     assert.equal(file,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
     const mode=args[args.indexOf('-Mode')+1];
     if(mode==='Snapshot')return callback(null,JSON.stringify({
@@ -488,6 +508,22 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
       return callback(null,JSON.stringify({approved:true})+'\n','');
     }
     return callback(Error('unknown mode'),'','');
+  };
+  // Only the owner-session probe and native consent UI are synthetic.
+  // CA-verified HTTPS, pinned client leaf, Ed25519 and readText are real.
+  const ownerSessionOptions=linux?{
+    platform:'linux',execFileImpl:nativeExec,
+    env:{XDG_SESSION_ID:'7',XDG_SESSION_TYPE:'x11',
+      DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/'+uid+'/bus',DISPLAY:':0'},
+    getuid:()=>uid,
+    readFileImpl:()=> '0::/user.slice/user-'+uid+'.slice/session-7.scope\n',
+    readlinkImpl:()=> 'user:[4026531837]',
+    verifyExecutable:()=>{},commandTimeoutMs:1000,dialogTimeoutMs:5000
+  }:{
+    platform:'win32',powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    script:'C:\\Commander\\src\\native-owner-session-windows.ps1',
+    execFileImpl:nativeExec,verifyFile:()=>{},
+    snapshotTimeoutMs:1000,dialogTimeoutMs:5000
   };
   const transportIdentity=()=>({
     ...tdata(now),ownerSidHash:OWNER_HASH,tunnelIdHash:TUNNEL_HASH
@@ -509,13 +545,7 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
       expectedTunnelIdHash:TUNNEL_HASH,expectedOwnerSidHash:OWNER_HASH,
       attestTransport:peerAttestor,resolveOwnerRoute:async h=>route(h),
       now:()=>now,
-      ownerSessionOptions:{
-        platform:'win32',
-        powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-        script:'C:\\Commander\\src\native-owner-session-windows.ps1',
-        execFileImpl:nativeExec,verifyFile:()=>{},
-        snapshotTimeoutMs:1000,dialogTimeoutMs:5000
-      }
+      ownerSessionOptions
     });
     const {privateKey,publicKey}=generateKeyPairSync('ed25519');
     const der=publicKey.export({type:'spki',format:'der'});
@@ -525,7 +555,7 @@ test('full isolated mTLS to signed Worker and real Core readText denies replays 
       deviceProvider:'native-key-store',deviceIdHash:'d'.repeat(64),keyId
     });
     const POLICY='e'.repeat(64);
-    const workerRegistry={get:async()=>state.worker};
+    const workerRegistry={get:async()=>state.worker,isRevoked:async()=>false};
     const workerAuthority={authorizeWorker:async({workerId:id,invocation})=>{
       if(!state.allow||id!==workerId||invocation.tool!=='read_text'
         ||invocation.arguments.path!==approvedFile)return null;
@@ -684,18 +714,29 @@ test('v0.12 private native Worker bootstrap rejects missing or competing authori
   }),{code:'V012_PRIVATE_CORE_WORKER_BOOTSTRAP_AMBIGUOUS_OR_MISSING'});
 });
 
-test('v0.12 protected Core composition uses J01 and signed worker before real readText',{
-  skip:process.platform!=='win32'
-},async t=>{
+test('v0.12 protected Core composition uses J01 and signed worker before real readText',async t=>{
   let fixtureFiles;
   try{fixtureFiles=fixture();}catch{return t.skip('OpenSSL fixture unavailable');}
   const f=fixtureFiles;
-  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-private-core-compose-')));
+  // Windows CI's temp volume need not be an owner-private NTFS volume.
+  // Native lease tests must provision the same verified private owner root as production.
+  const root=process.platform==='win32'
+    ? path.join(fs.realpathSync.native(os.homedir()),'rc012-private-core-compose-'+randomUUID())
+    : fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-private-core-compose-')));
+  if(process.platform==='win32'){
+    const {ensureWindowsMonitorDirectories}=await import('../src/browser-companion-windows-private.mjs');
+    await ensureWindowsMonitorDirectories([root],{create:true});
+  }
   const approved=path.join(root,'approved.txt');
   fs.writeFileSync(approved,'private-core-composition-verified\n');
+  // Linux has a distinct native owner identity/seat provider; reuse the
+  // same real mTLS -> signed Worker -> Core readText path on BOTH platforms.
+  // Loginctl and the visible owner consent dialog are controlled test doubles.
+  const linux=process.platform==='linux',uid=1000;
   const OWNER_SID='S-1-5-21-111-222-333-1001';
-  const ownerHash=createHash('sha256').update(
-    'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
+  const ownerHash=createHash('sha256').update(linux
+    ?'commander.os-owner.sid.v1\0linux\0uid='+uid+'\0userns=user:[4026531837]'
+    :'commander.os-owner.sid.v1\0win32\0sid='+OWNER_SID).digest('hex');
   const tunnelHash='a'.repeat(64),now=Date.now();
   const {privateKey,publicKey}=generateKeyPairSync('ed25519');
   const der=publicKey.export({type:'spki',format:'der'});
@@ -715,14 +756,27 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     target:{kind:'workflow-root',id:'root-1'}
   });
   const liveRoute=conversationId=>({...route(conversationId),operationId:'read-1'});
-  const state={consents:0,effects:0,allow:true,worker:null};
+  const state={consents:0,effects:0,controlEffects:0,allow:true,worker:null};
   const receiptStore=new MutationIdempotencyStore({
     directory:path.join(root,'receipts'),scope:'private-composition'
   });
   const context={roots:[root],auditLog:path.join(root,'audit.jsonl'),
     config:{allowedRoots:[root],maxReadBytes:524288,
       powerMode:{enabled:false,fullFilesystem:false}}};
-  const nativeExec=(_file,args,_opts,callback)=>{
+  const nativeExec=(file,args,_opts,callback)=>{
+    if(linux){
+      if(file==='/usr/bin/loginctl'){
+        return callback(null,[
+          'Id=7','User='+uid,'Seat=seat0','Active=yes','Remote=no',
+          'Type=x11','Class=user','Display=:0','Leader=1001','State=active'
+        ].join('\n')+'\n','');
+      }
+      if(file==='/usr/bin/zenity'){
+        state.consents++;
+        return callback(null,'','');
+      }
+      return callback(Error('unknown native Linux fixture executable'),'','');
+    }
     const mode=args[args.indexOf('-Mode')+1];
     if(mode==='Snapshot')return callback(null,JSON.stringify({
       schema:1,ownerSid:OWNER_SID,sessionId:7,active:true,interactive:true
@@ -733,10 +787,58 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     }
     return callback(Error('unknown fixture mode'),'','');
   };
-  let runtime;
+  const ownerSessionOptions=linux?{
+    platform:'linux',execFileImpl:nativeExec,
+    env:{XDG_SESSION_ID:'7',XDG_SESSION_TYPE:'x11',
+      DBUS_SESSION_BUS_ADDRESS:'unix:path=/run/user/'+uid+'/bus',DISPLAY:':0'},
+    getuid:()=>uid,
+    readFileImpl:()=> '0::/user.slice/user-'+uid+'.slice/session-7.scope\n',
+    readlinkImpl:()=> 'user:[4026531837]',
+    verifyExecutable:()=>{},commandTimeoutMs:1000,dialogTimeoutMs:5000
+  }:{
+    platform:'win32',
+    powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    script:'C:\\Commander\\src\\native-owner-session-windows.ps1',
+    execFileImpl:nativeExec,verifyFile:()=>{},
+    snapshotTimeoutMs:1000,dialogTimeoutMs:5000
+  };
+  let runtime,nativeLease,nativeRoot;
+  const adminDir=linux&&fs.existsSync('/run/user/'+process.getuid())
+    ?fs.mkdtempSync('/run/user/'+process.getuid()+'/rc012-owner-admin-e2e-'):null;
+  const adminSocket=adminDir?path.join(adminDir,'admin.sock'):null;
+  async function localAdmin(action){
+    if(!adminSocket)throw Error('OWNER_ADMIN_SOCKET_UNAVAILABLE');
+    return await new Promise((resolve,reject)=>{
+      const socket=net.createConnection(adminSocket);
+      let value='';
+      socket.setTimeout(8000,()=>socket.destroy(Error('OWNER_ADMIN_SOCKET_TIMEOUT')));
+      socket.once('connect',()=>{
+        socket.end(JSON.stringify({schema:1,action})+'\n');
+      });
+      socket.on('data',chunk=>{value+=chunk.toString('utf8');});
+      socket.once('error',reject);
+      socket.once('close',()=>resolve(JSON.parse(value)));
+    });
+  }
   try{
+    // Windows and Linux both use a real OS-validated native host-global
+    // SQLite lease, not a per-process mock, under a disposable owner path.
+    nativeRoot=linux?path.join(root,'shared-host-lease')
+      :path.join(os.tmpdir(),'rc012-private-native-'+randomUUID());
+    if(linux)fs.mkdirSync(nativeRoot,{mode:0o700});
+    else await ensureWindowsMonitorDirectories([nativeRoot],{create:true});
+    // GitHub-hosted Windows TMP may be exposed through a path alias.
+    // Use its verified canonical path; never relax native owner/ACL checks.
+    nativeRoot=fs.realpathSync.native(nativeRoot);
+    nativeLease=await createV012OwnerNativeHostLease({
+      directory:nativeRoot,hostId:'host-1'
+    });
     runtime=createV012PrivateCoreRuntime({
-      port:0,now:()=>now,
+      port:0,now:()=>now,nativeHostLease:nativeLease,
+      physicalRootFence:createV012SharedPhysicalRootFence({
+        nativeHostLease:nativeLease,hostId:'host-1',allowedRoots:[fs.realpathSync.native(root)],
+        resolveTrustedRouteRoot:()=>fs.realpathSync.native(root)
+      }),
       identity:{
         hostId:'host-1',profileId:'emad',principalId:'account-1',
         expectedOwnerSidHash:ownerHash,expectedTunnelIdHash:tunnelHash,
@@ -749,8 +851,13 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       security:{
         directory:path.join(root,'owner-grants'),
         issuer:'commander.local',audience:'remote-commander',
+        // server-v0.3 supplies this trusted receipt store in production.
+        // Source before the factory-mode fix rejected this as "ambiguous".
+        receiptStore,
         resolveOwnerRoute:async handle=>route(handle),
-        bindWorkerToNativeOwner:({ownerStack,identity})=>{
+        bindWorkerToNativeOwner:({ownerStack,identity,receiptStore:boundReceipts})=>{
+          assert.equal(boundReceipts,receiptStore);
+          assert.equal(typeof identity.resolveTransportIdentity,'function');
           assert.equal(ownerStack.nativeSessionBindings.size,0);
           assert.equal(typeof ownerStack.grantRegistry.readWorkerGrant,'function');
           assert.equal(identity.hostId,'host-1');
@@ -758,15 +865,16 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
           assert.equal(identity.expectedTunnelIdHash,tunnelHash);
           // Trust only the same native owner and bootstrap-provided grants.
           return {
-            resolveTrustedToolRoute:async({nativeRoute})=>({
-              ...nativeRoute,operationId:'read-1'
-            }),
+            resolveTrustedToolRoute:async({nativeRoute,tool})=>{
+              state.operationId=tool==='read_text'?'read-1':tool+'-1';
+              return {...nativeRoute,operationId:state.operationId};
+            },
             resolveCurrentOwnerRoute:async owner=>{
               // The same native J01 state established by HTTPS owner binding.
               const current=await ownerStack.nativeSessionBindings
                 .resolveNativeRoute(owner.conversationId);
               assert.equal(current.conversationId,owner.conversationId);
-              return liveRoute(current.conversationId);
+              return {...liveRoute(current.conversationId),operationId:state.operationId??'read-1'};
             },
             resolveCurrentWorkerId:async owner=>{
               if(state.worker?.claims?.bindingId!==owner.bindingId){
@@ -790,32 +898,75 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
               }
               return workerId;
             },
-            workerRegistry:{get:async()=>state.worker},
+            workerRegistry:{get:async()=>state.worker,isRevoked:async()=>false},
             workerAuthority:{authorizeWorker:async({workerId:id,invocation})=>{
-              if(!state.allow||id!==workerId||invocation.tool!=='read_text'
-                ||invocation.arguments.path!==approved)return null;
+              if(!state.allow||id!==workerId)return null;
+              if(invocation.tool==='read_text' ? invocation.arguments.path!==approved
+                : !['operation_status','operation_cancel'].includes(invocation.tool))return null;
               const claims=state.worker.claims;
+              // The production WorkerIdentityAuthority checks the durable
+              // native parent Worker grant on EVERY operation. This isolated
+              // test double must model that invariant rather than treating
+              // an Ed25519 signature as standalone authorization.
+              const current=ownerStack.grantRegistry.readWorkerGrant({
+                hostId:claims.hostId,profileId:claims.profileId,
+                principalId:claims.principalId,conversationId:claims.conversationId,
+                bindingId:claims.bindingId,workerId,keyId,
+                ownerSidHash:ownerHash,deviceProvider:'native-key-store',
+                deviceIdHash:'d'.repeat(64),
+                tunnelProvider:'openai-secure-mcp-tunnel',tunnelIdHash:tunnelHash,
+                capabilityPolicyDigest:policy
+              });
+              if(current?.status!=='ACTIVE'
+                ||current.bindingId!==claims.bindingId
+                ||current.workerId!==workerId||current.keyId!==keyId
+                ||current.revision!==claims.grantRevision
+                ||current.capabilityPolicyDigest!==policy
+                ||current.expiresAtMs<=now)return null;
               return {authorized:true,workerId,keyId,bindingId:claims.bindingId,
-                capabilityPolicyDigest:policy,grantRevision:1,
+                capabilityPolicyDigest:policy,grantRevision:current.revision,
                 expiresAtMs:claims.expiresAtMs};
             }},
-            // Disposable one-file QA only; production supplies a machine-global lease.
+            // A synthetic Worker callback must NOT replace the separate
+            // native host-global lease selected by protected owner startup.
             withLease:async(_resource,work)=>work(),receiptStore,
           };
         },
-        ownerSessionOptions:{
-          platform:'win32',
-          powershell:'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
-          script:'C:\\Commander\\src\\native-owner-session-windows.ps1',
-          execFileImpl:nativeExec,verifyFile:()=>{},
-          snapshotTimeoutMs:1000,dialogTimeoutMs:5000
-        }
+        ...(adminSocket?{ownerAdminSocketPath:adminSocket}:{}),
+        createOwnerGrantAdministration:({ownerStack,identity:ownerIdentity})=>{
+          assert.equal(ownerIdentity.hostId,'host-1');
+          assert.equal(ownerIdentity.principalId,'account-1');
+          return createV012OwnerGrantAdministration({
+            ownerStack,identity:ownerIdentity,now:()=>now,
+            resolveVerifiedWorkerKey:async()=>({
+              source:'native-worker-key-attestor',hostId:'host-1',
+              profileId:'emad',ownerSidHash:ownerHash,keyId,
+              deviceProvider:'native-key-store',deviceIdHash:'d'.repeat(64),
+              capabilityPolicyDigest:policy,attestedAtMs:now-1000,
+              expiresAtMs:now+80000,verified:true
+            }),
+            resolvePinnedCanaryRoute:async({nativeRoute})=>({
+              ...nativeRoute,operationId:'system-status-canary',
+              target:{kind:'host-shell',id:'system-status'}
+            })
+          });
+        },
+        ownerSessionOptions
       },
       core:{
         catalog:[{name:'read_text',description:'Real Core readText',
           inputSchema:{type:'object',additionalProperties:false,
-            required:['path'],properties:{path:{type:'string',minLength:1}}}}],
-        dispatch:async(name,args)=>{
+            required:['path'],properties:{path:{type:'string',minLength:1}}}},
+          {name:'operation_status',description:'Fixture control-plane observation',inputSchema:{type:'object',additionalProperties:false},
+            annotations:{readOnlyHint:true}},
+          {name:'operation_cancel',description:'Fixture control-plane cancellation',inputSchema:{type:'object',additionalProperties:false},
+            annotations:{idempotentHint:true}}
+        ],
+        dispatch:async(name,args,_route,nativeAuthorization)=>{
+          assert.equal(await nativeAuthorization.authorizeNativeLaunch(),true);
+          if(name==='operation_status'||name==='operation_cancel'){
+            state.controlEffects++;return {observed:true};
+          }
           assert.equal(name,'read_text');
           state.effects++;
           return readText(context,args);
@@ -823,6 +974,9 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
       }
     });
     assert.equal(runtime.status.phase,'CONSTRUCTED');
+    assert.equal(typeof runtime.ownerAdministration.inspect,'function');
+    await assert.rejects(runtime.ownerAdministration.inspect(),
+      {code:'V2_SESSION_NOT_BOUND'});
     const live=await runtime.start();
     const send=(id,name,args)=>privatePairRequest(live.port,
       f.clientCert,f.clientKey,{jsonrpc:'2.0',id,method:'tools/call',
@@ -833,6 +987,78 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     const bound=await send(2,'v2_private_owner_bind',{});
     assert.equal(bound.status,200);
     assert.equal(state.consents,1);
+    if(adminSocket){
+      assert.deepEqual(await localAdmin('inspect'),{
+        ok:true,nativeOwnerBound:true,workerActive:false,
+        exactBaseEnabled:false,exactWorkerToolEnabled:false,
+        readOnlyCanaryAllowed:false
+      });
+    }
+    const pending=await runtime.ownerAdministration.inspect();
+    assert.equal(pending.nativeOwnerBound,true);
+    assert.equal(pending.readOnlyCanaryAllowed,false);
+    const ownerApproved=await runtime.ownerAdministration.approveWorker();
+    assert.equal(ownerApproved.revision,1);
+    const canaryApproved=await runtime.ownerAdministration.approveReadOnlyCanary();
+    assert.equal(canaryApproved.canaryAllowed,true);
+    assert.equal((await runtime.ownerAdministration.inspect()).readOnlyCanaryAllowed,true);
+    assert.equal(state.consents,4,'native J01 plus 3 separate exact grant approvals');
+    if(adminSocket){
+      assert.equal((await localAdmin('inspect')).readOnlyCanaryAllowed,true);
+      assert.deepEqual(await localAdmin('approve_worker'),{ok:true,approved:true},
+        'repeat owner request checks the same existing epoch without new approval');
+      assert.equal(state.consents,4,'no duplicate native owner dialog for active Worker');
+    }
+    const invisible=await send(22,'ownerAdministration',{});
+    assert.equal(invisible.body.result.isError,true,
+      'local owner admin MUST NOT become a remote MCP tool');
+    if(nativeLease){
+      // A distinct OS process, not just a second connection in this process,
+      // holds the exact same canonical resource. Core must not dispatch.
+      const factory=linux?'createV012HostGlobalOperationLease':'createV012WindowsHostGlobalOperationLease';
+      const script='import {'+factory+' as create} from '
+        +JSON.stringify(new URL('../src/v012-host-global-operation-lease.mjs',import.meta.url).href)
+        +';import {createV012SharedPhysicalRootFence as fence} from '
+        +JSON.stringify(new URL('../src/v012-shared-physical-root-fence.mjs',import.meta.url).href)
+        +';const l=await create({directory:process.argv[1],hostId:"host-1"});'
+        +'const f=fence({nativeHostLease:{hostId:"host-1",withLease:(k,w)=>l.withLease(k,w)},'
+        +'hostId:"host-1",allowedRoots:[process.argv[2]],resolveTrustedRouteRoot:()=>process.argv[2]});'
+        +'await f.withWorkflowRootLease(process.argv[2],'
+        +'async()=>{console.log("HELD");await new Promise(resolve=>process.stdin.once("data",resolve));});l.close();';
+      const child=spawn(process.execPath,['--input-type=module','-e',script,nativeRoot,fs.realpathSync.native(root)],
+        {stdio:['pipe','pipe','inherit']});
+      const exited=new Promise(resolve=>{
+        child.once('error',()=>resolve(null));
+        child.once('exit',code=>resolve(code));
+      });
+      let output='';
+      try{
+        await new Promise((resolve,reject)=>{
+          const timer=setTimeout(()=>reject(Error('independent lease timeout')),20000);
+          child.stdout.on('data',buf=>{output+=buf;if(output.includes('HELD')){
+            clearTimeout(timer);resolve();
+          }});
+          child.once('exit',code=>{clearTimeout(timer);reject(Error('lease child exited '+code));});
+          child.once('error',error=>{clearTimeout(timer);reject(error);});
+        });
+        const blocked=await send(31,'read_text',{path:approved});
+        assert.equal(blocked.status,503);
+        assert.equal(state.effects,0,'no Core dispatch while independent process holds lease');
+        const observed=await send(32,'operation_status',{});
+        assert.equal(observed.status,200,'signed control-plane observation remains available while a writer holds the root');
+        assert.equal(observed.body.result.isError,false);
+        const cancelled=await send(33,'operation_cancel',{});
+        assert.equal(cancelled.status,200,'signed cancellation does not require the project effect lock');
+        assert.equal(state.controlEffects,2);
+      }finally{
+        if(child.exitCode===null&&!child.killed){
+          child.stdin.on('error',()=>{});
+          child.stdin.end('release');
+        }
+        const timer=setTimeout(()=>child.kill(),10000);
+        try{assert.equal(await exited,0);}finally{clearTimeout(timer);}
+      }
+    }
     const first=await send(3,'read_text',{path:approved});
     assert.equal(first.status,200);
     assert.equal(first.body.result.isError,false);
@@ -842,7 +1068,26 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
     const replay=await send(4,'read_text',{path:approved});
     assert.equal(replay.status,200);
     assert.equal(state.effects,1,'same operation must be at-most-once');
+    // The true private Core pipeline must deny a previously authorized
+    // Worker immediately after owner-approved native grant revocation,
+    // before any synthetic worker-stub revocation toggles.
+    const promptsBeforeRevoke=state.consents;
+    const revokedByOwner=await runtime.ownerAdministration.revokeCanaryWorker();
+    assert.equal(revokedByOwner.revoked,true);
+    assert.equal(revokedByOwner.alreadyInactive,false);
+    assert.equal(state.consents,promptsBeforeRevoke+1,
+      'revocation must obtain one fresh OS-native owner approval');
+    assert.equal((await runtime.ownerAdministration.inspect()).workerActive,false);
+    const deniedByGrant=await send(42,'read_text',{path:approved});
+    assert.equal(deniedByGrant.status,503,
+      'native owner Worker grant revocation denies real Core dispatch');
+    assert.equal(state.effects,1,'revocation must not trigger side effects');
+    assert.equal((await runtime.ownerAdministration.revokeCanaryWorker()).alreadyInactive,true);
+    assert.equal(state.consents,promptsBeforeRevoke+1,'revoke retry is idempotent');
     state.allow=false;
+    const deniedObservation=await send(6,'operation_status',{});
+    assert.equal(deniedObservation.status,503,'observation still requires a current native owner and Worker grant');
+    assert.equal(state.controlEffects,2);
     const revoked=await send(5,'read_text',{path:approved});
     assert.equal(revoked.status,503);
     assert.equal(state.effects,1);
@@ -850,6 +1095,9 @@ test('v0.12 protected Core composition uses J01 and signed worker before real re
   }finally{
     await runtime?.close();
     receiptStore.close();
+    nativeLease?.close();
+    if(nativeRoot&&!linux)fs.rmSync(nativeRoot,{recursive:true,force:true});
+    if(adminDir)fs.rmSync(adminDir,{recursive:true,force:true});
     f.dispose();
     fs.rmSync(root,{recursive:true,force:true});
   }
@@ -900,7 +1148,7 @@ test('real full-catalog 0.12 owner-local protected boot stays fail-closed withou
     assert.equal(result.status,0,(result.stderr||'').slice(-1024));
     const proof=JSON.parse((result.stdout||'').trim());
     assert.equal(proof.result,'RC012_OWNER_LOCAL_PROTECTED_SOURCE_CANARY_PASS');
-    assert.equal(proof.version,'0.12.0-dev.9');
+    assert.equal(proof.version,CORE_VERSION);
     assert.equal(proof.protectedIngressWired,true);
     assert.equal(proof.protectedIngressReady,false);
     assert.equal(proof.tlsClientAuthenticated,true);
@@ -911,6 +1159,51 @@ test('real full-catalog 0.12 owner-local protected boot stays fail-closed withou
     assert.equal(proof.installedCoreChanged,false);
   }finally{
     fs.rmSync(dir,{recursive:true,force:true});
+    f.dispose();
+  }
+});
+
+test('PRIVATE TLS bootstrap returns 401 only for pinned initialize without native attestation; no grants or catalog',async t=>{
+  let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture generator unavailable');}
+  let server,ready=false,bindings=0,effects=0;
+  const now=Date.now();
+  try{
+    server=createV2CandidatePrivateTunnelHttpsGateway({
+      certificatePem:f.serverCert,privateKeyPem:f.serverKey,clientCaPem:f.ca,
+      expectedClientLeafDerSha256:f.clientSha,profileId:'emad',now:()=>now,
+      resolveTransportIdentity:async()=>ready?tdata(now):null,
+      privateOwnerPair:{
+        expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
+        resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
+        resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat-1'}),
+        ownerStack:{requestOwnerBinding:async()=>{bindings++;throw Error('not granted');}},
+        operationGate:{execute:async()=>{effects++;throw Error('not granted');}}
+      }
+    }).createUnboundTlsServer();
+    await new Promise((resolve,reject)=>server.listen(0,'127.0.0.1',resolve).once('error',reject));
+    const port=server.address().port;
+    const rpc=(method,params={})=>({jsonrpc:'2.0',id:1,method,params});
+    const init=rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'fixture',version:'1'}});
+    const send=(msg,headers={})=>privatePairRequest(port,f.clientCert,f.clientKey,msg,headers,f.ca);
+    const denied=await send(init);
+    assert.equal(denied.status,401);
+    assert.deepEqual(denied.body,{error:'trusted_transport_required'});
+    assert.equal((await privatePairRequest(port,f.alienCert,f.alienKey,init,{},f.ca)).status,403);
+    assert.notEqual((await privatePairRequest(port,null,null,init,{},f.ca)).status,200);
+    for(const msg of [rpc('tools/list'),rpc('tools/call',{name:'v2_private_owner_bind',arguments:{}}),
+      rpc('tools/call',{name:'v2_workflow_step',arguments:{}}),rpc('server/discover')]){
+      assert.equal((await send(msg)).status,403);
+    }
+    assert.equal((await send(init,{Authorization:'Bearer synthetic-invalid'})).status,403);
+    assert.equal(bindings,0);assert.equal(effects,0);
+    ready=true;
+    assert.equal((await send(init)).status,200);
+    const list=await send(rpc('tools/list'));
+    assert.equal(list.status,200);
+    assert.deepEqual(list.body.result.tools.map(x=>x.name),['v2_private_owner_bind','v2_workflow_step']);
+    assert.equal(bindings,0);assert.equal(effects,0);
+  }finally{
+    if(server?.listening)await new Promise(resolve=>server.close(resolve));
     f.dispose();
   }
 });

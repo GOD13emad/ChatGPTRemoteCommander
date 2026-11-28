@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { access } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { resolveLinuxGuiBackend } from './gui-linux-session-route.mjs';
 import { performance } from 'node:perf_hooks';
 import { GUI_RULES, guiError, guiToolDefinitions, validateGuiInput } from './gui-contract.mjs';
 import { createGuiProcessClient, runGuiProcess } from './gui-process.mjs';
@@ -17,38 +17,33 @@ const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const stopFile = path.join(project, 'var', 'GUI_STOP');
 const globalStopFile = process.platform === 'linux' ? path.join(process.env.XDG_STATE_HOME || path.join(process.env.HOME || '', '.local', 'state'), 'chatgpt-remote-commander', 'GUI_STOP') : null;
 const windowsHelper = path.join(project, 'tools', 'gui-control.ps1');
-// Select a native helper for the *actual session*, never GNOME Mutter on KDE.
-const kdeDesktop = (() => {
-  if (process.platform === 'linux' && process.env.RC_FORCE_KDE_PORTAL === '1') return true;
-  if (/(?:^|:)(?:KDE|plasma)(?=:|$)/i.test(
-    [process.env.XDG_CURRENT_DESKTOP ?? '', process.env.XDG_SESSION_DESKTOP ?? ''].join(':'))) return true;
-  if (process.platform !== 'linux') return false;
-  try {
-    const uid = process.getuid();
-    const sessions = execFileSync('/usr/bin/loginctl', ['list-sessions','--no-legend','--no-pager'],
-      { encoding:'utf8', timeout:2500, maxBuffer:32768 });
-    for (const line of sessions.split('\n')) {
-      const [sid, owner] = line.trim().split(/\s+/);
-      if (String(owner) !== String(uid) || !/^[A-Za-z0-9]+$/.test(sid || '')) continue;
-      const detail = execFileSync('/usr/bin/loginctl', ['show-session',sid,
-        '-p','Desktop','-p','Type','-p','Active'],
-        { encoding:'utf8', timeout:2500, maxBuffer:8192 });
-      if (/^Desktop=KDE$/m.test(detail) && /^Type=wayland$/m.test(detail) &&
-          /^Active=yes$/m.test(detail)) return true;
-    }
-  } catch { /* Missing session metadata never grants input. */ }
-  return false;
-})();
-const linuxHelper = path.join(project, 'tools', kdeDesktop ?
+// A legacy force flag is only a KDE hint, never proof of a Wayland seat.
+const selectedLinux = process.platform==='linux'
+  ? resolveLinuxGuiBackend() : null;
+const kdeDesktop = selectedLinux?.backend==='kde-wayland';
+const kdeOwnerX11 = selectedLinux?.backend==='kde-x11-readonly';
+const linuxHelper = path.join(project, 'tools', kdeOwnerX11 ?
+  'gui-control-x11.py' : kdeDesktop ?
   'gui-control-kde-portal.py' : 'gui-control-linux.py');
 const backendSpec = platform => platform === 'win32'
   ? { file: 'pwsh.exe', args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', windowsHelper, '-Server'], oneShotArgs: ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', windowsHelper] }
   : platform === 'linux'
-    ? { file: 'python3', args: [linuxHelper, '--server'], oneShotArgs: [linuxHelper] }
+    ? selectedLinux?.backend==='blocked' ? null : { file: 'python3', args: [linuxHelper, '--server'], oneShotArgs: [linuxHelper] }
     : null;
 const defaultBackend = backendSpec(process.platform);
-const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args, timeoutForRequest: request => kdeDesktop && request.action==='screenshot' ? 60000 : 15000 }) : null;
+const persistentHelper = defaultBackend ? createGuiProcessClient({ file: defaultBackend.file, args: defaultBackend.args, timeoutForRequest: request => (kdeDesktop || kdeOwnerX11) && request.action==='screenshot' ? 60000 : 15000 }) : null;
 const invokeDefault = request => {
+  if (selectedLinux && selectedLinux.backend!=='gnome') {
+    const current=resolveLinuxGuiBackend();
+    // Never silently carry a prior GUI lease across a seat/backend change.
+    if (selectedLinux.backend==='blocked' || current.backend!==selectedLinux.backend ||
+        current.sessionId!==selectedLinux.sessionId || current.display!==selectedLinux.display) {
+      persistentHelper?.close();
+      if (request.action==='status') return Promise.resolve({ok:true,available:false,inputAvailable:false,
+        reason:'GUI_NATIVE_SESSION_REBIND_REQUIRED'});
+      throw guiError('GUI_NATIVE_SESSION_REBIND_REQUIRED');
+    }
+  }
   if (persistentHelper) return persistentHelper.invoke(request);
   if (!defaultBackend) throw guiError('GUI_PLATFORM_BACKEND_UNSUPPORTED');
   return runGuiProcess(request, { file: defaultBackend.file, args: defaultBackend.oneShotArgs });
@@ -223,6 +218,7 @@ export function createGuiController({ platform = process.platform, now = () => p
         const ttlSeconds = input.ttlSeconds ?? 60;
         let policy = null;
         if (mode === 'takeover') {
+          if (status.inputAvailable===false) throw guiError('GUI_NATIVE_INPUT_UNAVAILABLE');
           const admissionEmergencyRevision = emergencyRevision;
           const requestedInput = { pointer:cfg.allowMouse === true, keyboard:cfg.allowKeyboard === true };
           const grant = nativeTakeoverProvider
@@ -327,6 +323,7 @@ export function createGuiController({ platform = process.platform, now = () => p
       const request = { ...parameters, action: rule.action, stopFile }; // Fixed dispatch LAST, never user-controllable.
       if (isInput) request.expected = observed;
       if (name === 'gui_screenshot') {
+        if(session.portalAdmissionFailed) throw guiError('GUI_PORTAL_NEW_SESSION_REQUIRED');
         request.maxWidth = Math.min(parameters.maxWidth ?? 1600, bound(cfg.maxScreenshotWidth, 320, 1920, 1600));
         request.maxBytes = bound(cfg.maxScreenshotBytes, 262144, 4194304, 2097152);
       }
@@ -344,6 +341,15 @@ export function createGuiController({ platform = process.platform, now = () => p
       let result;
       try { result = await invokeNative(request); }
       catch (error) {
+        // A refusal/cancelled admission is not a retry signal. The same GUI
+        // lease cannot reopen Portal dialogs after a failed screenshot.
+        if (name==='gui_screenshot' && session && ['PORTAL_PERMISSION_NOT_GRANTED',
+          'PORTAL_CONSENT_CANCELLED','PORTAL_CONSENT_TIMEOUT','PORTAL_REQUEST_FAILED',
+          'PORTAL_RESPONSE_UNKNOWN'].includes(error?.guiCode)) {
+          session.portalAdmissionFailed=true;
+          frame=null;
+          closeInvoke();
+        }
         if (isInput) {
           // Exact Linux click pre-dispatch rejection only; no input was ever applied.
           const linuxNotApplied = platform === 'linux' && name === 'gui_mouse_click' &&

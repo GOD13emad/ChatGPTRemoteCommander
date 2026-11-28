@@ -30,7 +30,18 @@ async function listen(server){
   throw new Error('SAFE_TEST_PORT_UNAVAILABLE');
 }
 function close(server){return new Promise(resolve=>server.close(resolve));}
-async function freePort(){const s=http.createServer();const p=await listen(s);await close(s);return p;}
+// Bind the actual fixture router; a released probe port is not a reservation.
+async function startFixtureRouter(stateFile,{firstPort=null}={}){
+  for(let attempt=0;attempt<500;attempt+=1){
+    const port=attempt===0&&firstPort!==null?firstPort:portCursor++;
+    if(portCursor>45000)portCursor=20000;
+    try{return {router:await startRouter({listenPort:port,stateFile}),port};}
+    catch(error){
+      if(error?.code!=='EADDRINUSE' && !(process.platform==='win32'&&error?.code==='EACCES'))throw error;
+    }
+  }
+  throw new Error('SAFE_TEST_ROUTER_PORT_UNAVAILABLE');
+}
 function backend(label){
   return http.createServer(async(req,res)=>{
     const chunks=[];for await(const c of req)chunks.push(c);
@@ -81,11 +92,12 @@ test('stable router owns modern tools-list subscription across generation cutove
   const root=temp();let router,a,b,sub;
   try{
     a=backend('A');b=backend('B');
-    const aPort=await listen(a),bPort=await listen(b),routerPort=await freePort();
+    const aPort=await listen(a),bPort=await listen(b);
     const stateFile=path.join(root,'router.json');
     const base={schema:1,profile:'default',generation:1,active:{port:aPort,version:'0.9.4',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()};
     writeRouterStateAtomic(stateFile,base);
-    router=await startRouter({listenPort:routerPort,stateFile});
+    const bound=await startFixtureRouter(stateFile);router=bound.router;
+    const routerPort=bound.port;
 
     const discover=await post(routerPort,{jsonrpc:'2.0',id:1,method:'server/discover',params:{_meta:meta()}},'server/discover');
     assert.equal(discover.status,200);
@@ -115,6 +127,26 @@ test('stable router owns modern tools-list subscription across generation cutove
     if(router)await router.close();
     if(a)await close(a);
     if(b)await close(b);
+    fs.rmSync(root,{recursive:true,force:true});
+  }
+});
+
+test('fixture router retries a real occupied loopback port without disrupting the listener',async()=>{
+  const root=temp();let occupied,router;
+  try{
+    occupied=backend('occupied');
+    const port=await listen(occupied);
+    const stateFile=path.join(root,'router.json');
+    writeRouterStateAtomic(stateFile,{schema:1,profile:'default',generation:1,active:{port,version:'0.9.4',commit:'a'.repeat(40),configSha256:'1'.repeat(64)},updatedAt:new Date().toISOString()});
+    await assert.rejects(startRouter({listenPort:port,stateFile}),{code:'EADDRINUSE'});
+    const result=await startFixtureRouter(stateFile,{firstPort:port});router=result.router;
+    assert.notEqual(result.port,port);
+    const response=await post(port,{jsonrpc:'2.0',id:3,method:'tools/list'},'tools/list');
+    assert.equal(response.status,200);
+    assert.equal(response.body.result.backend,'occupied');
+  }finally{
+    if(router)await router.close();
+    if(occupied){occupied.closeAllConnections();await close(occupied);}
     fs.rmSync(root,{recursive:true,force:true});
   }
 });

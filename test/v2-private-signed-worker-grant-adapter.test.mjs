@@ -45,7 +45,8 @@ function fixture(patch={}){
     hostId:'pc1',profileId:'profileA',principalId:'accountA',
     expectedTunnelIdHash:TUNNEL,expectedOwnerSidHash:OWNER,
     issuer:'commander.local',audience:'remote-commander',now:()=>state.now,
-    workerRegistry:{get:async()=>{state.reads++;return state.envelope;}},
+    workerRegistry:{get:async()=>{state.reads++;return state.envelope;},
+      isRevoked:async()=>false},
     workerAuthority:{authorizeWorker:async()=>{
       state.calls++;
       return state.permission?{authorized:true,workerId,keyId,bindingId:BINDING,
@@ -128,7 +129,7 @@ test('signed worker adapter composes with exact private operation gate, lease an
 test('signed private worker verifier requires trusted authority and canonical registry',()=>{
   const f=fixture();
   for(const p of [
-    {workerAuthority:null},{workerRegistry:null},
+    {workerAuthority:null},{workerRegistry:null},{workerRegistry:{get:async()=>null}},
     {resolveCurrentWorkerId:null},{resolveCurrentOwnerRoute:null},
     {expectedTunnelIdHash:null},{expectedOwnerSidHash:null}
   ])assert.throws(()=>createV2PrivateSignedWorkerGrantAdapter({...f.dependency,...p}),
@@ -157,4 +158,52 @@ test('current worker and owner route callbacks receive the independently verifie
   assert.equal(await check(f.request()),true);
   assert.equal(routeChecks,2);
   assert.equal(workerChecks,2);
+});
+
+test('worker grant expiration during final registration lookup fails closed',async()=>{
+  const f=fixture();
+  const expiry=NOW+1000;
+  f.state.envelope=f.register({expiresAtMs:expiry});
+  f.dependency.workerAuthority.authorizeWorker=async()=>({
+    authorized:true,workerId:f.workerId,keyId:f.state.envelope.keyId,
+    bindingId:BINDING,capabilityPolicyDigest:POLICY,grantRevision:1,
+    expiresAtMs:expiry
+  });
+  let reads=0;
+  f.dependency.workerRegistry.get=async()=>{
+    if(++reads===2)f.state.now=expiry;
+    return f.state.envelope;
+  };
+  const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
+  assert.equal(await check(f.request()),false);
+});
+
+test('final registration substitution with stale valid signature denies',async()=>{
+  const f=fixture();
+  const initial=f.state.envelope;
+  let reads=0;
+  f.dependency.workerRegistry.get=async()=>{
+    if(++reads===2) return {
+      ...initial,claims:{...initial.claims,grantRevision:2}
+    };
+    return initial;
+  };
+  const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
+  assert.equal(await check(f.request()),false,
+    'the final persisted registration must still have a valid signed payload');
+});
+
+test('revocation while final trusted route resolves never admits a signed worker',async()=>{
+  const f=fixture();
+  let routeReads=0;
+  let revoked=false;
+  f.dependency.workerRegistry.isRevoked=async(workerId,bindingId)=>
+    workerId===f.workerId&&bindingId===BINDING&&revoked;
+  f.dependency.resolveCurrentOwnerRoute=async()=>{
+    if(++routeReads===2)revoked=true;
+    return route();
+  };
+  const check=createV2PrivateSignedWorkerGrantAdapter(f.dependency);
+  assert.equal(await check(f.request()),false,
+    'revocation after the initial native authorization must block final admission');
 });

@@ -296,7 +296,7 @@ test('owner-pair J01 binding does not enable signed Worker, native lease or Core
   for(const sink of [
     'resolveTrustedToolRoute:denied','resolveCurrentOwnerRoute:denied',
     'resolveCurrentWorkerId:denied','workerAuthority:{authorizeWorker:denied}',
-    'workerRegistry:{get:denied}','withLease:denied'
+    'workerRegistry:{get:denied,isRevoked:denied}','withLease:denied'
   ])assert.ok(fsText.includes(sink),sink);
   assert.ok(fsText.includes('resolveOwnerRoute:pairBinding.resolveOwnerRoute'));
   for(const file of ['src/native-owner-session-provider-windows.mjs',

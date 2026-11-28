@@ -52,6 +52,7 @@ export function createV2PrivateSignedWorkerGrantAdapter({
       typeof v==='string'&&HASH.test(v))
     ||typeof workerAuthority?.authorizeWorker!=='function'
     ||typeof workerRegistry?.get!=='function'
+    ||typeof workerRegistry?.isRevoked!=='function'
     ||[resolveCurrentWorkerId,resolveCurrentOwnerRoute,now].some(v=>
       typeof v!=='function'))
     fail('V2_PRIVATE_SIGNED_WORKER_BOOTSTRAP_REQUIRED');
@@ -108,9 +109,27 @@ export function createV2PrivateSignedWorkerGrantAdapter({
       const finalRoute=normalizeV2Route(await resolveCurrentOwnerRoute(owner));
       const finalWorker=await resolveCurrentWorkerId(owner);
       const finalSigned=await workerRegistry.get(workerId);
-      return sameRoute(r,finalRoute)&&finalWorker===workerId
-        &&finalSigned?.signature===signed.signature
-        &&owner.expiresAtMs>now();
+      // A matching signature string alone is not proof that the final
+      // durable record still carries the data it signed. Reverify the
+      // actual stored envelope after awaiting the owner and Worker checks;
+      // reject a changed claim/key/public identity even if it copies the
+      // previous signature field.
+      const finalVerified=verifyWorkerRegistration(finalSigned,{
+        issuer,audience,now
+      });
+      // Durable revocation can commit while the final native route,
+      // worker identity and signed registration are being read. Signed
+      // bytes remain valid even after the independent registry revokes.
+      // Recheck revocation at the last asynchronous admission boundary.
+      const finalRevoked=await workerRegistry.isRevoked(workerId,c.bindingId);
+      return finalRevoked===false
+        &&sameRoute(r,finalRoute)&&finalWorker===workerId
+        &&finalSigned.signature===signed.signature
+        &&finalVerified.keyId===verified.keyId
+        &&finalVerified.claims.workerId===workerId
+        &&finalVerified.claims.bindingId===c.bindingId
+        &&finalVerified.claims.grantRevision===c.grantRevision
+        &&Math.min(owner.expiresAtMs,d.expiresAtMs)>now();
     }catch{return false;}
   };
 }

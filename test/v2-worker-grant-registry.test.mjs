@@ -224,6 +224,48 @@ test('worker grant event history is append-only and owner admin rejection has no
   }finally{f.close();}
 });
 
+test('grant transactions revalidate expiry and enrollment after asynchronous owner approval',async t=>{
+  await t.test('expired enrollment is not recorded',async()=>{
+    const f=fixture();
+    try{
+      const expiry=f.state.now+1000;
+      f.registry.authorizeAdministration=async()=>{f.state.now=expiry;return true;};
+      await assert.rejects(grantEnrollment(f,f.context,0,expiry),/V2_WORKER_GRANT_EXPIRY_INVALID/);
+      assert.equal(f.registry.readWorkerGrant(f.context),null);
+      assert.equal(f.registry.workerGrantEvents(f.context).length,0);
+    }finally{f.close();}
+  });
+  await t.test('expired tool approval is not recorded',async()=>{
+    const f=fixture();
+    try{
+      await grantEnrollment(f);
+      const expiry=f.state.now+1000;
+      f.registry.authorizeAdministration=async()=>{f.state.now=expiry;return true;};
+      await assert.rejects(grantTool(f,f.context,route(),'read_text',0,expiry),
+        /V2_WORKER_TOOL_GRANT_EXPIRY_INVALID/);
+      assert.equal(f.registry.readWorkerToolGrant(route(),f.context,'read_text'),null);
+      assert.equal(f.registry.workerToolGrantEvents(route(),f.context,'read_text').length,0);
+    }finally{f.close();}
+  });
+  await t.test('concurrent revocation during approval prevents tool registration',async()=>{
+    const f=fixture();
+    let peer;
+    try{
+      await grantEnrollment(f);
+      peer=new V2GrantRegistry({directory:path.join(f.root,'secure'),
+        now:()=>f.state.now,authorizeAdministration:async()=>true});
+      f.registry.authorizeAdministration=async()=>{
+        await peer.changeWorkerGrant({workerContext:f.context,status:'REVOKED',
+          expectedRevision:1,actor:'owner-1',reason:'owner revoked worker'});
+        return true;
+      };
+      await assert.rejects(grantTool(f),/V2_WORKER_GRANT_NOT_ACTIVE/);
+      assert.equal(f.registry.readWorkerToolGrant(route(),f.context,'read_text'),null);
+      assert.equal(f.registry.workerToolGrantEvents(route(),f.context,'read_text').length,0);
+    }finally{peer?.close();f.close();}
+  });
+});
+
 test('V1-07 adapter returns the exact owner grant and composes owner, base and worker grants',async()=>{
   const f=fixture();
   try{
@@ -314,6 +356,71 @@ test('V2 schema v2 upgrades additively to v3 and preserves existing route grants
     assert.equal(registry.db.prepare('PRAGMA user_version').get().user_version,3);
     assert.equal(registry.readWorkerGrant(workerContext()),null);
   }finally{registry.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('transient SQLite journal disappearance does not fail grant admission or relax alias checks',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-grant-journal-race-'));
+  const directory=path.join(root,'secure');
+  fs.mkdirSync(directory,{recursive:true,mode:0o700});
+  const canonicalDirectory=fs.realpathSync.native(directory);
+  const journal=path.join(canonicalDirectory,'v2-access.sqlite-journal');
+  const originalExists=fs.existsSync;
+  const create=()=>new V2GrantRegistry({directory,authorizeAdministration:()=>true});
+  try{
+    // Deterministic stale presence result: the rollback journal is gone at
+    // lstat time, as observed during two-process CI concurrency.
+    fs.existsSync=(entry)=>entry===journal ? true : originalExists(entry);
+    let registry;
+    try{
+      registry=create();
+      assert.equal(registry.db.prepare('PRAGMA journal_mode').get().journal_mode,'delete');
+    }finally{
+      registry?.close();
+      fs.existsSync=originalExists;
+    }
+    // A present non-regular journal still fails closed.
+    fs.mkdirSync(journal);
+    assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);
+  }finally{
+    fs.existsSync=originalExists;
+    fs.rmSync(root,{recursive:true,force:true});
+  }
+});
+
+test('unlinked regular SQLite sidecar is rechecked without weakening alias guards',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-grant-unlinked-sidecar-'));
+  const directory=path.join(root,'secure');
+  fs.mkdirSync(directory,{recursive:true,mode:0o700});
+  const canonicalDirectory=fs.realpathSync.native(directory);
+  const journal=path.join(canonicalDirectory,'v2-access.sqlite-journal');
+  const db=path.join(canonicalDirectory,'v2-access.sqlite');
+  const original=fs.lstatSync;
+  // Model the transient POSIX stat result; Windows also verifies the
+  // pathname recheck and fail-closed branches without requiring POSIX unlink.
+  const unlinked=Object.freeze({isFile:()=>true,isSymbolicLink:()=>false,nlink:0});
+  const hardlinked=Object.freeze({isFile:()=>true,isSymbolicLink:()=>false,nlink:2});
+  const symbolic=Object.freeze({isFile:()=>false,isSymbolicLink:()=>true,nlink:1});
+  const create=()=>new V2GrantRegistry({directory,authorizeAdministration:()=>true});
+  try{
+    let calls=0;
+    fs.lstatSync=(entry,...args)=>entry===journal&&calls++===0 ? unlinked:original(entry,...args);
+    let registry;
+    try{registry=create();assert.equal(calls,2);assert.equal(registry.db.prepare('PRAGMA journal_mode').get().journal_mode,'delete');}
+    finally{fs.lstatSync=original;registry?.close();}
+    for(const result of [unlinked,hardlinked,symbolic]){
+      let reads=0;
+      fs.lstatSync=(entry,...args)=>entry===journal ? (++reads===1?unlinked:result):original(entry,...args);
+      try{assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);assert.equal(reads,2);}
+      finally{fs.lstatSync=original;}
+    }
+    let dbReads=0;
+    fs.lstatSync=(entry,...args)=>entry===db ? (++dbReads,unlinked):original(entry,...args);
+    try{assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);assert.equal(dbReads,1);}
+    finally{fs.lstatSync=original;}
+    fs.writeFileSync(journal,'synthetic');
+    fs.linkSync(journal,path.join(root,'linked-journal'));
+    assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);
+  }finally{fs.lstatSync=original;fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test('separate Node processes cannot both win the same initial worker-grant revision',async()=>{

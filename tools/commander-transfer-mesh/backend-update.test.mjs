@@ -7,10 +7,16 @@ import crypto from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
+// Keep synthetic owner roots private independently of the developer's shell umask.
+process.umask(0o077);
+
 const tool=path.join(path.dirname(fileURLToPath(import.meta.url)),'backend-update.mjs');
 const candidate=path.join(path.dirname(fileURLToPath(import.meta.url)),'durable-send.mjs');
 const shaFile=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const expectedCandidate='3d7c740fcf8b43bfce4f3a470d286b0de6cc6c59b1aeeeef624381b74c1cca66';
+// Historical four-peer candidate: 3d7c740fcf8b43bfce4f3a470d286b0de6cc6c59b1aeeeef624381b74c1cca66.
+// Five-peer alias-only QA candidate: a4374ccd34db6a75d2e0f68ff63093295473ff2d89746eb869d88e7b0d32a674.
+// Root-custody hardening plus retained five-peer support.
+const expectedCandidate='999b3a2a199f9f0f0bfeee5cd52cb909f6171c1c3d1fa5d8f60c4fa3edd96d3d';
 const proc=(...args)=>spawnSync(process.execPath,[tool,...args],{encoding:'utf8',timeout:15000,windowsHide:true});
 function fixture(callback){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r16-backend-tx-'));
@@ -44,6 +50,7 @@ test('source candidate SHA is pinned and V2 capabilities are available',()=>{
  const c=spawnSync(process.execPath,[candidate,'capabilities'],{encoding:'utf8',timeout:5000});
  assert.equal(c.status,0,c.stderr);
  const v=JSON.parse(c.stdout);assert.equal(v.contractVersion,2);assert.equal(v.admissionQuotas,true);
+ assert.deepEqual(v.supportedPeers,['PC','Linux','MMZ','EmadServer','Amirreza']);
 });
 test('preflight plans without touching backend, journal, config, or existing payload',()=>fixture(f=>{
  const r=f.runPlan();assert.equal(r.status,0,message(r));const j=JSON.parse(r.stdout);
@@ -141,4 +148,15 @@ test('exact backup supports rollback even if apply receipt was not persisted',()
  assert.equal(shaFile(f.backup),f.oldSha);
  assert.equal(shaFile(f.journal),f.jobSha);
  assert.equal(shaFile(f.payload),f.payloadSha);
+}));
+
+test('fifth MMZ node supports the same planned atomic backend update and rollback',()=>fixture(f=>{
+ fs.writeFileSync(f.node,JSON.stringify({schema:'ctmesh-node-v1',alias:'MMZ'}));
+ const plan=f.runPlan();assert.equal(plan.status,0,message(plan));
+ assert.equal(JSON.parse(plan.stdout).alias,'MMZ');
+ const applied=f.apply();assert.equal(applied.status,0,message(applied));
+ assert.equal(shaFile(f.old),f.newSha);
+ const restored=f.rollback();assert.equal(restored.status,0,message(restored));
+ assert.equal(shaFile(f.old),f.oldSha);
+ assert.equal(shaFile(f.journal),f.jobSha);
 }));

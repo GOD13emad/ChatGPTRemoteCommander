@@ -1,3 +1,4 @@
+import {CORE_VERSION} from '../src/runtime-version.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
@@ -395,7 +396,7 @@ test('PRIVATE MCP supports stateless modern 2026-07-28 discovery, list and exact
   assert.equal(found.data.result.resultType,'complete');
   assert.ok(found.data.result.supportedVersions.includes('2026-07-28'));
   assert.equal(found.data.result.cacheScope,'private');
-  assert.equal(found.data.result._meta['io.modelcontextprotocol/serverInfo'].version,'0.12.0-dev.9');
+  assert.equal(found.data.result._meta['io.modelcontextprotocol/serverInfo'].version,CORE_VERSION);
   assert.equal(f.state.bound,0);
   const list=modernMessage('tools/list');
   const tools=await f.send(list,modernOptions(list));

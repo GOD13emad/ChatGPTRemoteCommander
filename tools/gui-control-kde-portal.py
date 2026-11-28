@@ -187,8 +187,14 @@ class Portal:
             if "response" not in box:
                 raise PortalError("PORTAL_CONSENT_TIMEOUT")
             result, data = box["response"]
+            # XDG Request.Response: 1 is cancellation; 2 is another
+            # failure. Do not misreport an internal failure as user denial.
+            if result == 1:
+                raise PortalError("PORTAL_CONSENT_CANCELLED")
+            if result == 2:
+                raise PortalError("PORTAL_REQUEST_FAILED")
             if result != 0:
-                raise PortalError("PORTAL_PERMISSION_NOT_GRANTED")
+                raise PortalError("PORTAL_RESPONSE_UNKNOWN")
             return {k: v.unpack() if isinstance(v, GLib.Variant) else v
                     for k, v in data.items()}
         finally:

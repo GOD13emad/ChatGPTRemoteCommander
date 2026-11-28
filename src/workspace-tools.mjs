@@ -24,9 +24,13 @@ function desktopType(platform=process.platform,env=process.env){
  if(platform==='linux')return env.XDG_SESSION_TYPE==='wayland'||!!env.WAYLAND_DISPLAY?'wayland':env.DISPLAY?'x11':'headless';
  return 'headless';
 }
-function driverBinary(platform=process.platform,env=process.env){
- if(platform==='win32')return path.join(env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'ChatGPTRemoteCommander','adapters','cua-driver','v0.38.0','cua-driver.exe');
- return path.join(os.homedir(),'.local','share','chatgpt-remote-commander','adapters','cua-driver','v0.38.0','cua-driver');
+export function resolvePinnedWorkspaceDriverExecutable(platform=process.platform){
+ // The owner profile is an OS identity; do not trust caller-supplied LOCALAPPDATA
+ // to choose which executable Commander launches. Nonstandard layouts fail closed.
+ if(platform==='win32')return path.win32.join(os.homedir(),'AppData','Local',
+   'ChatGPTRemoteCommander','adapters','cua-driver','v0.38.0','cua-driver.exe');
+ return path.join(os.homedir(),'.local','share',
+   'chatgpt-remote-commander','adapters','cua-driver','v0.38.0','cua-driver');
 }
 export async function defaultOwnerSession({platform=process.platform,env=process.env}={}){
  if(platform==='win32'){
@@ -48,7 +52,12 @@ export function resolveOwnerCuaPipe(env=process.env){
  return socket;
 }
 export async function defaultCuaCall(tool,args,{platform=process.platform,env=process.env,workspaceSeat=null,screenshotFile=null}={}){
- const executable=driverBinary(platform,env);
+ const executable=resolvePinnedWorkspaceDriverExecutable(platform);
+ // Reject a symlink or non-file before executing the owner-local adapter.
+ try{
+  const st=await fs.lstat(executable);
+  if(!st.isFile()||st.isSymbolicLink())throw fail('WORKSPACE_DRIVER_NOT_INSTALLED');
+ }catch{throw fail('WORKSPACE_DRIVER_NOT_INSTALLED');}
  // This exact pinned adapter is provided by the verified local Commander install.
  // Never accept a caller-supplied executable, socket or CDP endpoint.
  let output;
@@ -172,7 +181,7 @@ export const workspaceToolDefinitions=[
    additionalProperties:false},annotations:mutating},
  {name:'workspace_target_reconcile',description:'Acknowledge only one uncertain target after a fresh observation. No action is replayed and no other app is affected.',inputSchema:{
    type:'object',properties:{pid:{type:'integer',minimum:1},windowId:{type:'integer',minimum:1},
-     snapshotId:{type:'string',pattern:'^[sb][0-9a-f]{8}$'},
+     snapshotId:{type:'string',pattern:'^[sbn][0-9a-f]{8}$'},
      surface:{type:'string',enum:['window','browser','native']},workspaceSeat:{type:'string',enum:['a','b']},
      targetGoneVerified:{type:'boolean'},
      determination:{type:'string',enum:['EFFECT_OBSERVED','NO_EFFECT_OBSERVED']}},

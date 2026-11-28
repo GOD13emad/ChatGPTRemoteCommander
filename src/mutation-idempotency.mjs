@@ -54,6 +54,19 @@ export class MutationIdempotencyStore {
     return { enabled: true, durable: true, rawArgumentsStored: false,
       states: Object.fromEntries(rows.map(row => [row.state, Number(row.count)])) };
   }
+  // Read only a single trusted receipt state, without exposing raw input,
+  // result or credentials. Callers must still prove their selected resource
+  // and current owner authority before treating SUCCEEDED as a terminal fact.
+  readRequestState(requestId) {
+    if (typeof requestId !== 'string' || !REQUEST_ID.test(requestId))
+      fail('MUTATION_REQUEST_ID_REQUIRED');
+    const row = this.db.prepare('SELECT state FROM mutations WHERE scope=? AND request_id=?')
+      .get(this.scope, requestId);
+    if (!row) return null;
+    if (!['PREPARED','SUCCEEDED','UNCERTAIN','DENIED'].includes(row.state))
+      fail('MUTATION_STATE_CONFLICT');
+    return row.state;
+  }
   begin({ requestId, tool, input }) {
     if (typeof requestId !== 'string' || !REQUEST_ID.test(requestId)) fail('MUTATION_REQUEST_ID_REQUIRED');
     const inputHash = digest(stableJson({ tool, input }));
@@ -62,6 +75,7 @@ export class MutationIdempotencyStore {
       if (existing) {
         if (existing.tool !== tool || existing.input_hash !== inputHash) fail('MUTATION_REQUEST_ID_CONFLICT');
         if (existing.state === 'SUCCEEDED') return { duplicate: true, result: JSON.parse(existing.result_json) };
+        if (existing.state === 'DENIED') fail('MUTATION_PRE_EFFECT_DENIED');
         fail('MUTATION_OUTCOME_UNCERTAIN');
       }
       const now = new Date().toISOString();
@@ -85,9 +99,38 @@ export class MutationIdempotencyStore {
     this.db.prepare(`UPDATE mutations SET state='UNCERTAIN',updated_at=?
       WHERE scope=? AND request_id=? AND state='PREPARED'`).run(new Date().toISOString(), this.scope, requestId);
   }
-  async execute({ requestId, tool, input }, effect) {
+  // Only this local store-controlled boundary may record a proven denial.
+  // Do not infer "no effect" from arbitrary error codes returned by a tool.
+  // Keep the original input hash: a denied ID must never become executable
+  // later, even with a renewed grant or changed arguments.
+  #denyBeforeEffect(requestId) {
+    this.transaction(() => {
+      const changed=this.db.prepare(
+        "UPDATE mutations SET state='DENIED',updated_at=? WHERE scope=? AND request_id=? AND state='PREPARED'"
+      ).run(new Date().toISOString(),this.scope,requestId);
+      if(changed.changes!==1)fail('MUTATION_STATE_CONFLICT');
+    });
+  }
+  async execute(details, effect) {
+    return this.#execute(details,null,effect);
+  }
+  // Trusted in-process preflight ONLY: no tool effect is called until it
+  // completes. A crash/failed denial write retains PREPARED quarantine.
+  async executeWithPreflight(details, preflight, effect) {
+    if(typeof preflight!=='function'||typeof effect!=='function')
+      fail('MUTATION_PREFLIGHT_REQUIRED');
+    return this.#execute(details,preflight,effect);
+  }
+  async #execute({ requestId, tool, input }, preflight, effect) {
     const begun = this.begin({ requestId, tool, input });
     if (begun.duplicate) return begun.result;
+    if(preflight){
+      try{await preflight();}
+      catch(error){
+        this.#denyBeforeEffect(requestId);
+        throw error;
+      }
+    }
     try {
       const result = await effect();
       return this.succeed(requestId, result);

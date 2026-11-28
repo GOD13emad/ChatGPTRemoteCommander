@@ -1,4 +1,5 @@
 import os from 'node:os';
+import {boundedCommandTimeout} from './command-timeout-limits.mjs';
 import { synchronousCommandInput } from './retry-guard.mjs';
 import { effectivePowerMode } from './effective-power-mode.mjs';
 import { assertNoCodexCommand, assertNoCodexShellDelegation, codexLaunchAuthorized, commanderChildEnv } from './no-codex-policy.mjs';
@@ -9,7 +10,7 @@ import {
   appendFile, copyFile, cp, lstat, mkdir, opendir, readFile, readdir,
   realpath, rename, rm, stat, writeFile
 } from 'node:fs/promises';
-import { isWithin } from './security-v0.3.mjs';
+import { isWithin, isWithinCanonical } from './security-v0.3.mjs';
 import { withPathLocks } from './locks.mjs';
 import { guardFileWrite } from './file-write-guard.mjs';
 import { IS_WINDOWS, defaultBackupRoot, expandPathValue, shellName, shellSpec, spawnShell, terminateProcessTree } from './platform.mjs';
@@ -59,7 +60,7 @@ async function nearestExistingAncestor(candidate) {
 export async function resolveExistingTarget(ctx, userPath, base = ctx.roots[0]) {
   const candidate = lexicalTarget(ctx, userPath, base);
   const resolved = await realpath(candidate);
-  if (power(ctx).fullFilesystem !== true && !isWithin(resolved, ctx.roots)) {
+  if (power(ctx).fullFilesystem !== true && !isWithinCanonical(resolved, ctx.roots)) {
     throw new Error('resolved path escapes allowed roots');
   }
   return resolved;
@@ -71,7 +72,7 @@ export async function resolveWritableTarget(ctx, userPath, base = ctx.roots[0]) 
     const info = await lstat(candidate);
     if (info.isSymbolicLink()) throw new Error('symbolic-link writes are not allowed');
     const resolved = await realpath(candidate);
-    if (power(ctx).fullFilesystem !== true && !isWithin(resolved, ctx.roots)) {
+    if (power(ctx).fullFilesystem !== true && !isWithinCanonical(resolved, ctx.roots)) {
       throw new Error('resolved path escapes allowed roots');
     }
     return resolved;
@@ -81,7 +82,7 @@ export async function resolveWritableTarget(ctx, userPath, base = ctx.roots[0]) 
 
   const parentCandidate = path.dirname(candidate);
   const { ancestor, suffix } = await nearestExistingAncestor(parentCandidate);
-  if (power(ctx).fullFilesystem !== true && !isWithin(ancestor, ctx.roots)) {
+  if (power(ctx).fullFilesystem !== true && !isWithinCanonical(ancestor, ctx.roots)) {
     throw new Error('parent path escapes allowed roots');
   }
 
@@ -587,7 +588,7 @@ export async function prepareShellCommand(ctx, input) {
   const info = await stat(cwd);
   if (!info.isDirectory()) throw new Error('cwd is not a directory');
   const cfg = power(ctx);
-  const timeoutMs = Math.max(1000, Math.min(Number(input.timeoutMs ?? cfg.maxCommandMs ?? 300000), Number(cfg.maxCommandMs ?? 300000)));
+  const timeoutMs = boundedCommandTimeout(input.timeoutMs, cfg.maxCommandMs ?? 300000);
   const outputLimit = Math.max(4096, Math.min(Number(cfg.maxOutputBytes ?? 1048576), 8388608));
   const spec = shellSpec(command);
   return { file: spec.file, args: spec.args, cwd, timeoutMs, outputLimit, allowCodex };

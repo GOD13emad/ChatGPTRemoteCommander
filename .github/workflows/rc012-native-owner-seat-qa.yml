@@ -1,0 +1,30 @@
+name: RC012 Linux Native Owner Seat QA (NoPromote)
+
+on:
+  pull_request:
+    paths:
+      - 'tools/owner-native-session-run-linux.mjs'
+      - 'test/owner-native-session-run-linux.test.mjs'
+      - '.github/workflows/rc012-native-owner-seat-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-native-seat:
+    name: Owner seat contract (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Validate native owner session launcher
+        run: node --check tools/owner-native-session-run-linux.mjs
+      - name: Deny wrong seat and prove owner-local launcher contract
+        run: node --test test/owner-native-session-run-linux.test.mjs

@@ -1,3 +1,4 @@
+import {CORE_VERSION} from '../src/runtime-version.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -43,7 +44,7 @@ test('privileged MCP transfer tools reject anonymous and forged transport before
   assert.equal(healthy,true,`transfer-mesh fixture did not become healthy within 30000ms; last=${lastHealthError}; stderr=${stderr}`);
   assert.equal(child.exitCode,null,'transfer-mesh fixture exited after health readiness');
   const health=await (await fetch('http://127.0.0.1:'+serverPort+'/health',{signal:AbortSignal.timeout(1000)})).json();
-  assert.equal(health.version,'0.12.0-dev.9');
+  assert.equal(health.version,CORE_VERSION);
   assert.equal(health.instance.profile,'transfer-mesh-http-test');
   assert.equal(health.instance.isolated,true);
   assert.equal(health.privilegedLegacyHttpQuarantined,true);
@@ -74,7 +75,13 @@ test('privileged MCP transfer tools reject anonymous and forged transport before
   await assert.rejects(fs.access(path.join(pilot,'pairs','Linux','transfers','http-denied-001','payload.bin')));
   await assert.rejects(fs.access(path.join(pilot,'pairs','Linux','transfers','http-denied-002','payload.bin')));
  }finally{
-  if(child){child.kill();await Promise.race([once(child,'exit').catch(()=>{}),wait(1500)]);}
-  await fs.rm(home,{recursive:true,force:true});
+  if(child&&child.exitCode===null&&child.signalCode===null){
+   const exited=once(child,'exit');
+   child.kill();
+   await Promise.race([exited,wait(5000)]);
+   assert.ok(child.exitCode!==null||child.signalCode!==null,'owned transfer HTTP fixture did not exit');
+  }
+  // Windows may retain transient cwd/file handles briefly after the owned child exits.
+  await fs.rm(home,{recursive:true,force:true,maxRetries:20,retryDelay:150});
  }
 });

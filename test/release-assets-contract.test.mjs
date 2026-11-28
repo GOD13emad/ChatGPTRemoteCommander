@@ -180,6 +180,16 @@ for (const required of ['OWNER_WORKSPACE_RELEASE_PATH_ESCAPE','OWNER_WORKSPACE_B
 }
 
 
+// A provenance-aware launcher must authenticate the pinned executable before any version probe.
+const cuaVersionProbeAt=ownerLauncher.indexOf('& $cua --version');
+if (cuaVersionProbeAt !== -1) {
+  const cuaManifestHashGuardAt=ownerLauncher.indexOf("throw 'OWNER_WORKSPACE_CUA_HASH_MISMATCH'");
+  const cuaPinnedProvenanceGuardAt=ownerLauncher.indexOf("throw 'OWNER_WORKSPACE_CUA_PROVENANCE_INVALID'");
+  if (!(cuaManifestHashGuardAt >= 0 && cuaPinnedProvenanceGuardAt > cuaManifestHashGuardAt &&
+        cuaVersionProbeAt > cuaPinnedProvenanceGuardAt))
+    throw new Error('OWNER_LAUNCHER_CUA_VERIFICATION_MUST_PRECEDE_EXECUTION');
+}
+
 // R11: unsigned Windows distribution requires exact version opt-in, source provenance
 // and release notes. Authenticode status remains visible; no false signing claims.
 for (const m of [

@@ -5,7 +5,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
-import {evaluatePeerConnectivity} from '../tools/commander-transfer-mesh/doctor.mjs';
+import {evaluatePeerConnectivity,assessDaemonIdentity,isExpectedPeerFolder} from '../tools/commander-transfer-mesh/doctor.mjs';
 
 const peers={
  PC:'EFE6R4U-O3B6JVV-N4OKZFL-7X4U24W-A5GFD4G-TM4OPRK-AXBDALA-OCJUBQ6',
@@ -60,4 +60,59 @@ test('standalone doctor fails closed on unconfigured installation',()=>{
   assert.equal(body.connectivityReady,false);
   assert.equal(body.expectedPeers,4);
  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+test('the doctor never launches the untrusted daemon binary in an environment-selected pilot root', {
+  skip:process.platform!=='linux'
+},()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-doctor-untrusted-bin-'));
+  const marker=path.join(root,'binary-was-launched');
+  try{
+    fs.mkdirSync(path.join(root,'bin'));
+    fs.mkdirSync(path.join(root,'state'));
+    fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC',deviceID:peers.PC}));
+    fs.writeFileSync(path.join(root,'state','config.xml'),'<configuration><gui><apikey>synthetic-doctor-only</apikey></gui></configuration>');
+    const exe=path.join(root,'bin','syncthing');
+    fs.writeFileSync(exe,'#!/bin/sh\nprintf executed > "$CTMESH_TEST_MARKER"\nprintf "%s\n" "'+peers.PC+'"\n',{mode:0o700});
+    const script=fileURLToPath(new URL('../tools/commander-transfer-mesh/doctor.mjs',import.meta.url));
+    const r=spawnSync(process.execPath,[script],{
+      env:{...process.env,COMMANDER_TRANSFER_HOME:root,CTMESH_TEST_MARKER:marker},
+      encoding:'utf8',timeout:10000
+    });
+    assert.equal(r.error,undefined,String(r.error));
+    assert.equal(r.status,1,r.stderr);
+    const report=JSON.parse(r.stdout);
+    assert.equal(report.ok,false);
+    assert.equal(report.connectivityReady,false);
+    assert.equal(fs.existsSync(marker),false,'diagnostic must not run an executable supplied by pilot root');
+  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+test('peer folder membership binds both verified local and expected peer IDs to the exact pair root',()=>{
+ const root=path.join(os.tmpdir(),'ctmesh-pair-audit');
+ const options={localDeviceId:peers.PC,peerId:peers.MMZ,root,peerName:'MMZ'};
+ const folder={paused:false,devices:[{deviceID:peers.PC},{deviceID:peers.MMZ}],path:path.join(root,'pairs','MMZ')};
+ assert.equal(isExpectedPeerFolder(folder,options),true);
+ assert.equal(isExpectedPeerFolder({...folder,devices:[{deviceID:peers.Amirreza},{deviceID:peers.MMZ}]},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,devices:[{deviceID:peers.PC},{deviceID:peers.PC}]},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,paused:true},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,path:path.join(root,'private')},options),false);
+ assert.equal(isExpectedPeerFolder({...folder,devices:[null,{deviceID:peers.MMZ}]},options),false);
+});
+
+test('authenticated Syncthing REST status and version preserve doctor identity and version semantics',()=>{
+  assert.equal(assessDaemonIdentity({status:{myID:peers.PC},version:{version:'v1.29.6'},alias:'PC'}),'syncthing v1.29.6');
+  assert.equal(assessDaemonIdentity({status:{myID:peers.MMZ},version:{version:'v2.0.0-rc.1'},alias:'MMZ'}),'syncthing v2.0.0-rc.1');
+});
+test('doctor rejects forged daemon identity, wrong alias and malformed version',()=>{
+  const valid={status:{myID:peers.PC},version:{version:'v1.29.6'},alias:'PC'};
+  for(const changed of [
+    {status:{myID:peers.MMZ}},
+    {status:{myID:undefined}},
+    {alias:'unknown'},
+    {version:{version:'v1.29.6\nmalicious'}},
+    {version:{version:undefined}},
+    {version:{version:'../../bad'}}
+  ]){
+    assert.throws(()=>assessDaemonIdentity({...valid,...changed}),/identity mismatch|Invalid Syncthing version/);
+  }
 });

@@ -1,12 +1,14 @@
 // Durable workflow adapter. Stored memory is data, never authority.
 // Autonomous scheduler may reconcile evidence automatically, but it never blind-replays mutations.
 import { WorkflowStore, fail } from './workflow-store.mjs';
+import {createWorkflowStoreWorkerIdentityRegistry} from './worker-identity-store.mjs';
 import { deriveCapabilitySet, FULL_WORKFLOW_EXECUTION_TOOLS } from './capability-profile.mjs';
 import path from 'node:path';
 import { createProjectEngine } from './project-engine.mjs';
 import { createCommandPlanner } from './project-planner.mjs';
 import { createTeamPlanner } from './project-team.mjs';
 import { codexLaunchAuthorized } from './no-codex-policy.mjs';
+import { applyProjectRunnerConfig } from './project-runner-config.mjs';
 import { processContainmentAvailable } from './process-containment.mjs';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
@@ -105,31 +107,37 @@ const DIRECT_SESSION_ONLY_GUI = new Set([
   'gui_type_text','gui_key_press','gui_focus_window'
 ]);
 
-export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null }) {
-  const settings = config.durableWorkflows;
+export function createWorkflowTools({ config, roots, device, configSha256, lookup, validateSchema, dispatch, planner: injectedPlanner, deliveryStore = null, conversationController = null, physicalRootFence = null }) {
+  const disabledCapabilities = config.capabilityProfile?.disabledCapabilities;
+  const engineExplicitlyDisabled = Array.isArray(disabledCapabilities) && disabledCapabilities.includes('workflow.project_engine');
+  const runnerPolicy = injectedPlanner && !engineExplicitlyDisabled
+    ? { config, status: config.durableWorkflows?.runner?.enabled === true ? 'PRESERVED_INJECTED_PLANNER' : 'RUNNER_DISABLED' }
+    : applyProjectRunnerConfig(config);
+  const effectiveConfig = runnerPolicy.config;
+  const settings = effectiveConfig.durableWorkflows;
   if (settings?.enabled !== true) fail('WORKFLOW_DISABLED');
   if (typeof settings.directory !== 'string') fail('WORKFLOW_DIRECTORY_REQUIRED');
   const tools = settings.executionTools ?? ['system_status', 'list_directory', 'read_text'];
   if (!Array.isArray(tools) || tools.length > SAFE_KNOWN.size || tools.some(t => !SAFE_KNOWN.has(t))) fail('WORKFLOW_INVALID_TOOL_POLICY');
   const allowed = new Set(tools);
   const authority = {
-    profileId: config.capabilityProfile?.id ?? config.instance?.profile ?? 'default',
-    tier: config.capabilityProfile?.tier ?? (config.powerMode?.enabled && config.powerMode?.fullFilesystem ? 'FULL_POWER' : 'STANDARD'),
-    capabilities: deriveCapabilitySet(config)
+    profileId: effectiveConfig.capabilityProfile?.id ?? effectiveConfig.instance?.profile ?? 'default',
+    tier: effectiveConfig.capabilityProfile?.tier ?? (effectiveConfig.powerMode?.enabled && effectiveConfig.powerMode?.fullFilesystem ? 'FULL_POWER' : 'STANDARD'),
+    capabilities: deriveCapabilitySet(effectiveConfig)
   };
   const defaultExecutionProfile = settings.executionProfile?.default ?? {};
   const schedulerPolicy = settings.scheduler ?? { enabled:false };
   const store = new WorkflowStore({
     directory: settings.directory, rootLeaseDirectory: settings.rootLeaseDirectory ?? settings.directory,
     allowedRoots: roots, device, configSha256,
-    authority, executionProfile: defaultExecutionProfile, schedulerPolicy
+    authority, executionProfile: defaultExecutionProfile, schedulerPolicy, physicalRootFence
   });
   let engine=null;
   const runtimeStatus=()=>{
     const base=store.capabilities();
-    if(!engine)return base;
+    if(!engine)return {...base,runnerConfigured:false,runnerPolicyStatus:runnerPolicy.status};
     const runner=engine.status();
-    const flags={runnerConfigured:true,automaticExecution:schedulerPolicy.enabled===true&&settings.runner.autoTick===true,
+    const flags={runnerConfigured:true,runnerPolicyStatus:runnerPolicy.status,automaticExecution:schedulerPolicy.enabled===true&&settings.runner.autoTick===true,
       automaticContinuationScope:settings.runner.autoTick===true?'ENROLLED_PROJECT_EXECUTION':'RECOVERY_AND_MANUAL_RUN_TICKS'};
     return {...base,...flags,schedulerState:{...base.schedulerState,...flags},projectEngine:runner};
   };
@@ -275,7 +283,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
       const execution=engine&&settings.runner.autoTick===true?await engine.tick():null;
       const delivery=engine?reconcileProjectDeliveries():null;
       const conversation=await reconcileWorkflowChatHandoffs();
-      return {recovered,reconciled,ready,blocked,delivery,conversation,...(engine?{
+      return {recovered,reconciled,ready,blocked,delivery,conversation,runnerPolicyStatus:runnerPolicy.status,...(engine?{
         runnerConfigured:true,automaticExecution:schedulerPolicy.enabled===true&&settings.runner.autoTick===true,
         automaticContinuationScope:settings.runner.autoTick===true?'ENROLLED_PROJECT_EXECUTION':'RECOVERY_AND_MANUAL_RUN_TICKS',execution
       }:{runnerConfigured:false,automaticExecution:false,automaticContinuationScope:'RECOVERY_AND_READINESS_ONLY'}),status:engine?runtimeStatus().schedulerState:store.schedulerStatus()};
@@ -291,6 +299,10 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   }
 
   const api = {
+    // Trusted local Core-only seam. Not an MCP tool or a second durable
+    // worker store: the existing machine-global WorkflowStore is authoritative
+    // for signed registration, native revocation and append-only receipts.
+    ownerWorkerRegistry:createWorkflowStoreWorkerIdentityRegistry(store),
     definitions: [...WORKFLOW_TOOL_DEFINITIONS, ...PROJECT_ENGINE_TOOL_DEFINITIONS],
     close: () => { if(timer)clearInterval(timer); const pending=engine?.close(); if(pending?.then)return pending.then(()=>store.close());store.close(); },
     schedulerTick,
@@ -427,7 +439,7 @@ export function createWorkflowTools({ config, roots, device, configSha256, looku
   if(conversationController)queueMicrotask(()=>{reconcileWorkflowChatHandoffs().catch(()=>{});});
   if(settings.runner?.enabled===true) {
     try {
-      const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider,{allowCodex:codexLaunchAuthorized(config)});
+      const basePlanner=injectedPlanner??createCommandPlanner(settings.runner.provider,{allowCodex:codexLaunchAuthorized(effectiveConfig)});
       const planner=settings.runner.team===undefined?basePlanner:createTeamPlanner({planner:basePlanner,
         workers:settings.runner.team.workers,maxParallel:settings.runner.team.maxParallel});
       const requested=settings.runner.allowedTools??['list_directory','read_text','file_info','write_text','create_directory'];

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { resolveNativePackageOutput, verifyNativePackageOutput } from '../tools/native-package-output-guard.mjs';
 
@@ -59,7 +59,13 @@ const linuxOnlyTest = process.platform === 'linux' ? test : test.skip;
 linuxOnlyTest('one native Linux package installs one dpkg-owned code root shared by all owner profiles',()=>{
   assert.equal(spawnSync('bash',['-n',builderPath]).status,0);
   assert.match(source,/dpkg-deb --root-owner-group --build/);
-  assert.match(source,/git -C "\$ROOT" archive --format=tar "\$HEAD"/);
+  assert.doesNotMatch(source,/git -C "\$ROOT" archive --format=tar "\$HEAD"/,
+    'native Core must not embed whole tracked repository');
+  assert.match(source,/node "\$ROOT\/packaging\/unified\/prepare\.mjs"/,
+    'both GUI and Linux Core must use one reviewed source allowlist');
+  assert.match(source,/cp -a -- "\$PUBLIC_CORE\/\." "\$APP\/"/);
+  assert.match(source,/RC012_NATIVE_PUBLIC_CORE_ALLOWLIST_PASS/);
+  assert.match(source,/validateCore\(installed\)/);
   assert.match(source,/PACKAGE_DIR=\/usr\/lib\/chatgpt-remote-commander/);
   assert.match(source,/native-package-output-guard\.mjs" absent/);
   assert.match(source,/EXPECTED_PACKAGE_SHA256/);
@@ -196,4 +202,98 @@ test('native Linux QA package pins Node 22 October 2026 security release',()=>{
   assert.match(source,/actual_manifest_line/);
   assert.match(source,/sha256sum -c --status/);
   assert.doesNotMatch(source,/^NODE_VERSION=22\.23\.3$/m);
+});
+
+linuxOnlyTest('native Debian package version equals canonical dev train and advances dev.14',()=>{
+  const declaration=source.match(/^DEB_VERSION="[^"\n]+"$/m);
+  assert.ok(declaration,'builder must derive a Debian-compatible version from the canonical source');
+  assert.match(source,/^Version: \$DEB_VERSION$/m,'native dpkg control must use derived version');
+  const out=spawnSync('bash',['-c',declaration[0]+';printf "%s" "$DEB_VERSION"','rc012-package-version-test'],{
+    encoding:'utf8',env:{...process.env,VERSION:'0.12.0-dev.15'}
+  });
+  assert.equal(out.status,0,out.stderr);
+  assert.equal(out.stdout,'0.12.0~dev.15');
+  const monotonic=spawnSync('dpkg',['--compare-versions',out.stdout,'gt','0.12.0~dev.14']);
+  assert.equal(monotonic.status,0,'dev.15 must upgrade an installed dev.14 package');
+});
+
+linuxOnlyTest('optional native desktop dependencies survive unified DEB control merge',()=>{
+  const merger=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  assert.match(source,/^Recommends: python3, python3-pil, python3-gi, xdotool, x11-utils$/m);
+  const start=merger.indexOf('def field(s,name,required=True):');
+  const end=merger.indexOf("if field(gui_control,'Package')",start);
+  assert.ok(start>=0&&end>start);
+  assert.match(merger,/gui_control,recommends=merge_relationship\(gui_control,native_control,'Recommends',False\)/);
+  const fixture=[
+    merger.slice(start,end),
+    "native='Depends: libc6, ca-certificates\\nRecommends: python3, python3-pil, python3-gi, xdotool, x11-utils\\nDescription: Native\\n'",
+    "gui='Depends: libgtk-3-0,\\n ca-certificates\\nRecommends: libappindicator3-1,\\n python3\\nDescription: GUI\\n multiline text\\n'",
+    "s,deps=merge_relationship(gui,native,'Depends',True)",
+    "s,rec=merge_relationship(s,native,'Recommends',False)",
+    "assert deps==['libc6','ca-certificates','libgtk-3-0']",
+    "assert rec==['python3','python3-pil','python3-gi','xdotool','x11-utils','libappindicator3-1']",
+    "assert 'Description: GUI\\n multiline text\\n' in s",
+    "s2,_=merge_relationship('Depends: libc6\\nDescription: GUI\\n',native,'Recommends',False)",
+    "assert 'Recommends: python3, python3-pil, python3-gi, xdotool, x11-utils\\n' in s2",
+    "try: field('Depends: libc6\\nDepends: curl\\n','Depends')",
+    "except SystemExit as error: assert str(error)=='RC012_MERGE_DUPLICATE_CONTROL Depends'",
+    "else: raise AssertionError('duplicate control accepted')"
+  ].join('\n');
+  const run=spawnSync('/usr/bin/python3',['-c',fixture],{encoding:'utf8',timeout:5000});
+  assert.equal(run.status,0,run.stderr||run.stdout);
+});
+
+linuxOnlyTest('native and merged dpkg builders strip group-write bits and verify every installed file',()=>{
+  const merger=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  assert.match(source,/find "\$DEB" -type f -exec chmod go-w/);
+  assert.match(source,/verify-native-package-permissions\.py/);
+  assert.match(merger,/find "\$WORK\/native" -type d -exec chmod go-w/);
+  assert.match(merger,/find "\$WORK\/native" -type f -exec chmod go-w/);
+  assert.match(merger,/verify-native-package-permissions\.py/);
+  const verifier=path.join(root,'tools/verify-native-package-permissions.py');
+  assert.ok(fs.statSync(verifier).isFile());
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-deb-modes-fixture-'));
+  const pkg=path.join(tmp,'pkg'),files=path.join(pkg,'usr/share/rc012-fixture');
+  const output=path.join(tmp,'fixture.deb');
+  try{
+    fs.mkdirSync(files,{recursive:true,mode:0o755});
+    fs.mkdirSync(path.join(pkg,'DEBIAN'),{mode:0o755});
+    // dpkg requires 0755+ even when the invoking QA worker uses umask 077.
+    fs.chmodSync(path.join(pkg,'DEBIAN'),0o755);
+    fs.writeFileSync(path.join(pkg,'DEBIAN/control'),
+      'Package: rc012-package-permission-fixture\nVersion: 1.0\nArchitecture: all\nMaintainer: QA fixture\nDescription: local permission test\n');
+    const weak=path.join(files,'0.bin');
+    for(let i=0;i<110;i++){
+      const target=path.join(files,String(i)+'.bin');
+      fs.writeFileSync(target,randomBytes(128));
+      fs.chmodSync(target,i===0?0o664:0o644);
+    }
+    const build=()=>spawnSync('dpkg-deb',['--root-owner-group','--build',pkg,output],{encoding:'utf8',timeout:12000});
+    let result=build();
+    assert.equal(result.status,0,result.stderr);
+    let verify=spawnSync('python3',[verifier,output],{encoding:'utf8',timeout:12000});
+    assert.equal(verify.status,4,verify.stderr);
+    assert.match(verify.stderr,/GROUP_OR_WORLD_WRITABLE/);
+    fs.chmodSync(weak,0o644);
+    result=build();
+    assert.equal(result.status,0,result.stderr);
+    verify=spawnSync('python3',[verifier,output],{encoding:'utf8',timeout:12000});
+    assert.equal(verify.status,0,verify.stderr);
+    assert.match(verify.stdout,/RC012_PACKAGE_CONTENT_PERMISSIONS_PASS/);
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+linuxOnlyTest('merged DEB Installed-Size is recomputed from final payload',()=>{
+  const merger=fs.readFileSync(path.join(root,'packaging/unified/merge-native-deb.sh'),'utf8');
+  const iterStart=merger.indexOf('def iter_entries(path):');
+  const iterEnd=merger.indexOf('for src,rel in iter_entries(gui):',iterStart);
+  const sizeStart=merger.indexOf('def installed_size_kib(root):');
+  const sizeEnd=merger.indexOf('size_kib=installed_size_kib(native)',sizeStart);
+  assert.ok(iterStart>=0&&iterEnd>iterStart&&sizeStart>=0&&sizeEnd>sizeStart);
+  assert.ok(merger.includes("size_kib=installed_size_kib(native)\ngui_control=set_installed_size(gui_control,size_kib)\n(native/'DEBIAN/control').write_text(gui_control)"));
+  const fixture=['import os,pathlib,stat,subprocess,tempfile',
+    merger.slice(iterStart,iterEnd),merger.slice(sizeStart,sizeEnd),
+    "with tempfile.TemporaryDirectory(prefix=\"rc012-size-fixture-\") as tmp:\n    root=pathlib.Path(tmp)/\"pkg\"; root.mkdir()\n    control=root/\"DEBIAN\"; control.mkdir(mode=0o755); control.chmod(0o755)\n    (control/\"metadata\").write_bytes(b\"x\"*8192)\n    payload=root/\"usr\"; payload.mkdir()\n    (payload/\"core\").write_bytes(b\"x\"*1025)\n    os.link(payload/\"core\",payload/\"core-hardlink\")\n    (payload/\"gui\").write_bytes(b\"y\"*2049)\n    (payload/\"link\").symlink_to(\"core\")\n    (payload/\"empty\").mkdir()\n    size=installed_size_kib(root)\n    assert size==9,size\n    raw=\"Package: rc012-size-fixture\\nVersion: 1.0\\nArchitecture: all\\nMaintainer: QA fixture\\nInstalled-Size: 1\\nDescription: fixture\\n continuation\\n\"\n    assert \"Installed-Size: 9\\n\" in set_installed_size(raw,size)\n    assert set_installed_size(raw,size).count(\"Installed-Size:\")==1\n    assert \"Installed-Size: 9\\n\" in set_installed_size(raw.replace(\"Installed-Size: 1\\n\",\"\"),size)\n    assert \"Installed-Size: 9\\n\" in set_installed_size(raw.replace(\"Installed-Size: 1\",\"installed-size: 1\"),size)\n    assert \" continuation\\n\" in set_installed_size(raw,size)\n    try: set_installed_size(raw+\"installed-size: 2\\n\",size)\n    except SystemExit as error: assert str(error)==\"RC012_MERGE_DUPLICATE_CONTROL Installed-Size\"\n    else: raise AssertionError(\"duplicate size accepted\")\n    (control/\"metadata\").unlink()\n    (control/\"control\").write_text(set_installed_size(raw,size))\n    out=pathlib.Path(tmp)/\"fixture.deb\"\n    subprocess.run([\"dpkg-deb\",\"--root-owner-group\",\"--build\",str(root),str(out)],check=True,capture_output=True)\n    actual=subprocess.check_output([\"dpkg-deb\",\"--field\",str(out),\"Installed-Size\"],text=True).strip()\n    assert actual==\"9\",actual\n"].join('\n');
+  const run=spawnSync('/usr/bin/python3',['-c',fixture],{encoding:'utf8',timeout:12000});
+  assert.equal(run.status,0,run.stderr||run.stdout);
 });

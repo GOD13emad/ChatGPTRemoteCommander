@@ -77,7 +77,9 @@ function Refresh-Monitor{
         $st=Invoke-Cli ([string]$route.active.configPath) 'status'
         $list=@(Invoke-Cli ([string]$route.active.configPath) 'list')
         $ss=$st.schedulerState
-        $summaries+=("${profile}: scheduler=$($ss.enabled), automaticExecution=$($st.automaticExecution), runner=$($st.runnerConfigured), nonterminal=$($ss.persistedNonterminal), interrupted=$($ss.interrupted), reconcile=$($ss.reconciliationRequired), leases=$($ss.currentLeases)")
+        $blocking=if($null -eq $ss.rootLeasesBlocking){'UNVERIFIED'}else{$ss.rootLeasesBlocking}
+        $expired=if($null -eq $ss.expiredLeasesRequiringReconciliation){'UNVERIFIED'}else{$ss.expiredLeasesRequiringReconciliation}
+        $summaries+=("${profile}: scheduler=$($ss.enabled), automaticExecution=$($st.automaticExecution), runner=$($st.runnerConfigured), nonterminal=$($ss.persistedNonterminal), interrupted=$($ss.interrupted), reconcile=$($ss.reconciliationRequired), activeLeases=$($ss.currentLeases), blockingRootLeases=$blocking, expiredRootLeases=$expired")
         foreach($w in $list){
           $rows+=[pscustomobject]@{
             Profile=$profile;Id=[string]$w.id;Lifecycle=[string]$w.lifecycle;Revision=[int]$w.revision

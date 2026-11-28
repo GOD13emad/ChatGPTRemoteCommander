@@ -28,7 +28,7 @@ if (-not $releaseDir.StartsWith($releaseRoot + [IO.Path]::DirectorySeparatorChar
 if (-not (Test-Path -LiteralPath $releaseDir -PathType Container)) { throw 'OWNER_WORKSPACE_CANDIDATE_RELEASE_MISSING' }
 
 $packagePath = Join-Path $releaseDir 'package.json'
-$trainPath = Join-Path $releaseDir 'docs\release-train-0.11.json'
+$trainPath = Join-Path $releaseDir 'docs\release-train-0.12.json'
 $brokerPath = Join-Path $releaseDir 'tools\workspace-owner-broker.mjs'
 $launcherPath = Join-Path $releaseDir 'tools\launch-owner-workspace.ps1'
 foreach ($file in @($packagePath,$trainPath,$brokerPath,$launcherPath)) {
@@ -37,7 +37,7 @@ foreach ($file in @($packagePath,$trainPath,$brokerPath,$launcherPath)) {
 $package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
 $train = Get-Content -LiteralPath $trainPath -Raw | ConvertFrom-Json
 $version = [string]$package.version
-if ($version -notmatch '^0\.11\.0-dev\.[1-9][0-9]*$' -or [string]$train.sourceVersion -cne $version -or
+if ($version -notmatch '^0\.12\.0-dev\.[1-9][0-9]*$' -or [string]$train.sourceVersion -cne $version -or
     $train.publishApproved -ne $false -or $train.autoupdateApproved -ne $false -or $train.installedPromotionApproved -ne $false) {
   throw 'OWNER_WORKSPACE_CANDIDATE_NOT_NOPROMOTE'
 }
@@ -65,14 +65,40 @@ if (-not $NodePath) { $NodePath = (Get-Command node.exe -ErrorAction Stop).Sourc
 $node = [IO.Path]::GetFullPath($NodePath)
 if (-not (Test-Path -LiteralPath $node -PathType Leaf)) { throw 'OWNER_WORKSPACE_CANDIDATE_NODE_MISSING' }
 $nodeVersion = (& $node --version).Trim()
-if ($nodeVersion -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$' -or [version]($nodeVersion.TrimStart('v')) -lt [version]'22.0.0') {
+if ($nodeVersion -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$' -or [version]($nodeVersion.TrimStart('v')) -lt [version]'22.13.0') {
   throw 'OWNER_WORKSPACE_CANDIDATE_NODE_VERSION_INVALID'
 }
 $nodeHash = (Get-FileHash -LiteralPath $node -Algorithm SHA256).Hash.ToLowerInvariant()
 
+$cuaPinPath = Join-Path $releaseDir 'tools\cua-driver-pin.json'
+$cuaMetaPath = Join-Path $stateRoot 'adapters\cua-driver\v0.38.0\cua-driver-installed.json'
+$cuaReceiptPath = Join-Path $stateRoot 'adapters\cua-driver\v0.38.0\.verified-archive-sha256'
 $cua = Join-Path $stateRoot 'adapters\cua-driver\v0.38.0\cua-driver.exe'
-if (-not (Test-Path -LiteralPath $cua -PathType Leaf)) { throw 'OWNER_WORKSPACE_CANDIDATE_CUA_MISSING' }
+foreach ($file in @($cuaPinPath,$cuaMetaPath,$cuaReceiptPath,$cua)) {
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw 'OWNER_WORKSPACE_CANDIDATE_CUA_PROVENANCE_MISSING' }
+}
+$cuaPin = Get-Content -LiteralPath $cuaPinPath -Raw | ConvertFrom-Json
+$cuaArch = if ($env:PROCESSOR_ARCHITEW6432 -eq 'ARM64' -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+$cuaAssetPin = $cuaPin.assets.PSObject.Properties[('windows-' + $cuaArch)].Value
+$cuaMeta = Get-Content -LiteralPath $cuaMetaPath -Raw | ConvertFrom-Json
 $cuaHash = (Get-FileHash -LiteralPath $cua -Algorithm SHA256).Hash.ToLowerInvariant()
+$cuaReceipt = (Get-Content -LiteralPath $cuaReceiptPath -Raw).Trim().ToLowerInvariant()
+if ([string]$cuaPin.version -cne '0.38.0' -or
+    [string]$cuaPin.releaseTag -cne 'cua-driver-rs-v0.38.0' -or
+    [string]$cuaMeta.version -cne [string]$cuaPin.version -or
+    [string]$cuaMeta.releaseTag -cne [string]$cuaPin.releaseTag -or
+    [string]$cuaMeta.upstreamCommit -cne [string]$cuaPin.upstreamCommit -or
+    [string]$cuaMeta.asset -cne [string]$cuaAssetPin.file -or
+    [string]$cuaMeta.assetSha256 -cne [string]$cuaAssetPin.sha256 -or
+    [string]$cuaMeta.binarySha256 -cne [string]$cuaAssetPin.binarySha256 -or
+    $cuaReceipt -cne [string]$cuaAssetPin.sha256 -or
+    $cuaHash -cne [string]$cuaAssetPin.binarySha256) {
+  throw 'OWNER_WORKSPACE_CANDIDATE_CUA_PROVENANCE_INVALID'
+}
+$cuaVersionText = (& $cua --version 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or $cuaVersionText -cne ('cua-driver ' + [string]$cuaPin.version)) {
+  throw 'OWNER_WORKSPACE_CANDIDATE_CUA_PROVENANCE_INVALID'
+}
 
 $profile = 'emad-owner-candidate'
 $candidateConfig = [ordered]@{}
@@ -102,6 +128,9 @@ $manifest = [ordered]@{
   nodeVersion = $nodeVersion
   nodeSha256 = $nodeHash
   cuaDriverPath = [IO.Path]::GetFullPath($cua)
+  cuaDriverVersion = [string]$cuaPin.version
+  cuaDriverUpstreamCommit = [string]$cuaPin.upstreamCommit
+  cuaDriverAssetSha256 = [string]$cuaAssetPin.sha256
   cuaDriverSha256 = $cuaHash
 }
 $manifestText = ($manifest | ConvertTo-Json -Depth 10) + [Environment]::NewLine
@@ -145,7 +174,9 @@ $receipt = $result | Out-String | ConvertFrom-Json
 if ($receipt.ok -ne $true -or $receipt.channel -ne 'candidate' -or [int]$receipt.port -ne $CandidatePort -or
     [string]$receipt.ownerSid -cne $ownerSid -or [string]$receipt.brokerSha256 -cne $brokerHash -or
     [string]$receipt.launcherSha256 -cne $launcherHash -or
-    [string]$receipt.nodeVersion -cne $nodeVersion -or [string]$receipt.nodeSha256 -cne $nodeHash) {
+    [string]$receipt.nodeVersion -cne $nodeVersion -or [string]$receipt.nodeSha256 -cne $nodeHash -or
+    [string]$receipt.cuaDriverVersion -cne [string]$cuaPin.version -or
+    [string]$receipt.cuaDriverSha256 -cne $cuaHash) {
   throw 'OWNER_WORKSPACE_CANDIDATE_SELFTEST_RECEIPT_MISMATCH'
 }
 [ordered]@{

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessMigration,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
+import {classifyLinuxNativeExecStart,assessMigration,isLinuxOwnerGraphicalRebindUnit,isLinuxOwnerCommanderLegacyTunnelUnit,candidateNativeDebianVersion,inspectLocalPlatform,readLinuxOwnerTunnelBinding,verifyLinuxPrivateProfileBackup,inspectLinuxNativeCorePayload,parseMainTunnelBinding,classifyObservedRouterStatus,classifyWindowsUninstallRegistryResponse,classifyWindowsUnifiedNsisRegistryResponse,readWindowsOwnerTunnelBinding,windowsOwnerDpapiVerifyOutputAccepted} from '../packaging/unified/migration-preflight.mjs';
 import {planOwnerPrivateTunnelCutover} from '../tools/plan-owner-private-tunnel-cutover.mjs';
 
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -36,6 +36,78 @@ test('Windows exact owner selector has no default or cross-profile credential fa
   }
  }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
+
+for(const kind of ['Windows','Linux']){
+ test(kind+' profile preflight rejects changed descriptor and bounds read before parsing', {
+  skip:kind==='Linux'&&process.platform!=='linux'
+ },()=>{
+  const home=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-profile-read-contract-'));
+  const directory=kind==='Windows'?path.join(home,'tunnel-client'):path.join(home,'.config','tunnel-client');
+  const file=path.join(directory,'fixture.yaml');
+  const yaml=port=>['mcp:','  server_urls:','    - channel: main',
+    '      url: "http://127.0.0.1:'+port+'/mcp"'].join('\n');
+  const read=()=>kind==='Windows'
+    ?readWindowsOwnerTunnelBinding({appData:home,profileName:'fixture'})
+    :readLinuxOwnerTunnelBinding({home,ownerUid:process.getuid(),profileName:'fixture'});
+  const write=()=>fs.writeFileSync(file,yaml(48833),{mode:0o600});
+  const originalOpen=fs.openSync,originalReadFile=fs.readFileSync,originalRead=fs.readSync;
+  const invalid={profilePresent:true,valid:false};
+  try{
+   fs.mkdirSync(directory,{recursive:true,mode:0o700});
+   write();
+   assert.deepEqual(read(),{profilePresent:true,valid:true,port:48833,tls:false});
+   let swapped=false,bytes=0,pathReads=0;
+   fs.openSync=function(target,...args){
+    if(target===file&&!swapped){
+     swapped=true;
+     fs.renameSync(file,file+'.original');
+     fs.writeFileSync(file,yaml(48834),{mode:0o600});
+    }
+    return originalOpen.call(this,target,...args);
+   };
+   fs.readFileSync=function(target,...args){
+    if(target===file)pathReads++;
+    return originalReadFile.call(this,target,...args);
+   };
+   fs.readSync=function(fd,buffer,offset,length,position){
+    const n=originalRead.call(this,fd,buffer,offset,length,position);
+    bytes+=n;return n;
+   };
+   const replaced=read();
+   assert.equal(swapped,true);
+   assert.deepEqual(replaced,invalid);
+   assert.equal(pathReads,0,'unbound path read must not occur');
+   assert.equal(bytes,0,'changed inode must be refused before reading');
+   fs.openSync=originalOpen;fs.readFileSync=originalReadFile;fs.readSync=originalRead;
+   fs.unlinkSync(file);fs.renameSync(file+'.original',file);
+   // Grow a validated file immediately after open, before reading.
+   let grown=false;
+   fs.openSync=function(target,...args){
+    const fd=originalOpen.call(this,target,...args);
+    if(target===file&&!grown){
+     grown=true;fs.appendFileSync(file,'#'+'x'.repeat(20000));
+    }
+    return fd;
+   };
+   bytes=0;
+   fs.readSync=function(fd,buffer,offset,length,position){
+    const n=originalRead.call(this,fd,buffer,offset,length,position);bytes+=n;return n;
+   };
+   assert.deepEqual(read(),invalid);
+   assert.equal(grown,true);assert.equal(bytes,0);
+   fs.openSync=originalOpen;fs.readSync=originalRead;
+   write();
+   // Short reads of a stable descriptor must still decode the complete YAML.
+   fs.readSync=function(fd,buffer,offset,length,position){
+    return originalRead.call(this,fd,buffer,offset,Math.min(length,3),position);
+   };
+   assert.deepEqual(read(),{profilePresent:true,valid:true,port:48833,tls:false});
+  }finally{
+   fs.openSync=originalOpen;fs.readFileSync=originalReadFile;fs.readSync=originalRead;
+   fs.rmSync(home,{recursive:true,force:true});
+  }
+ });
+}
 
 test('owner-local legacy Commander tunnels are discovered by executable identity, not host names',()=>{
  const home='/home/owner';
@@ -326,16 +398,32 @@ test('Windows tunnel target on old Core is explicit NoPromote even if other gate
  assert.ok(latest.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
 });
 
+test('Windows owner-scoped router observation recognizes MMZ only with an exact selected profile',()=>{
+  const status={router:true,listenPort:47836,sourceSha256:'f'.repeat(64),
+    schema:1,profile:'MMZ',generation:19,activePort:48836,
+    activeVersion:'0.11.0-dev.23'};
+  const accepted=classifyObservedRouterStatus(status,47836,'0.11.0-dev.23','MMZ');
+  assert.deepEqual(accepted,{detected:true,mappingMatches:true,
+    backendPort:48836,backendVersion:'0.11.0-dev.23',generation:19});
+  const declined={detected:false,mappingMatches:false};
+  for(const selected of ['default','another-owner',undefined,'../MMZ',1])
+    assert.deepEqual(classifyObservedRouterStatus(status,47836,'0.11.0-dev.23',selected),declined);
+  assert.deepEqual(classifyObservedRouterStatus({...status,profile:'default'},
+    47836,'0.11.0-dev.23','MMZ'),declined);
+  assert.deepEqual(classifyObservedRouterStatus(status,47836,'0.12.0-dev.13','MMZ'),
+    {...accepted,mappingMatches:false});
+});
+
 test('stable-router backend mapping reports chain without trusting mutable owner profile fields',()=>{
  const status={router:true,listenPort:47831,sourceSha256:'f'.repeat(64),
    schema:1,profile:'default',generation:43,
    activePort:48834,activeVersion:'0.11.0-dev.23',
    token:'DO_NOT_EMIT',configPath:'C:/secret'};
- const observed=classifyObservedRouterStatus(status,47831,'0.11.0-dev.23');
+ const observed=classifyObservedRouterStatus(status,47831,'0.11.0-dev.23','default');
  assert.deepEqual(observed,{detected:true,mappingMatches:true,
    backendPort:48834,backendVersion:'0.11.0-dev.23',generation:43});
  assert.doesNotMatch(JSON.stringify(observed),/token|secret|config/i);
- const mismatched=classifyObservedRouterStatus(status,47831,'0.12.0-dev.1');
+ const mismatched=classifyObservedRouterStatus(status,47831,'0.12.0-dev.1','default');
  assert.equal(mismatched.detected,true);
  assert.equal(mismatched.mappingMatches,false);
  const rejected=[
@@ -349,7 +437,7 @@ test('stable-router backend mapping reports chain without trusting mutable owner
    {...status,activeVersion:'0.13.0-dev.1'}
  ];
  for(const entry of rejected)assert.deepEqual(
-   classifyObservedRouterStatus(entry,47831,'0.11.0-dev.23'),
+   classifyObservedRouterStatus(entry,47831,'0.11.0-dev.23','default'),
    {detected:false,mappingMatches:false});
 });
 test('router mismatch adds its own hard blocker even with synthetic successful booleans',()=>{
@@ -458,6 +546,7 @@ test('private URL MCP binding cannot pass privileged cutover through plaintext o
  assert.ok(!protectedDirect.blocked.includes('PRIVATE_TUNNEL_HTTPS_MTLS_ROUTE_REQUIRED'));
  assert.ok(!protectedDirect.blocked.includes('PRIVATE_STABLE_ROUTER_MTLS_INCOMPATIBLE'));
  assert.deepEqual(protectedDirect.blocked,[]);
+ assert.equal(protectedDirect.existingInstalled,false);
  assert.equal(protectedDirect.decision,'NO_PROMOTE',
    'only external native acceptance can promote even when all facts self-report true');
 });
@@ -480,6 +569,40 @@ test('synthetic fully positive private flags never authorize install or bypass J
    'J01_NATIVE_OWNER_CONSENT_UNVERIFIED'));
  assert.ok(assessMigration({...f,privatePrivilegedIngressReady:false}).blocked.includes(
    'PRIVATE_PRIVILEGED_INGRESS_NOT_WIRED'));
+});
+
+test('live Windows owner Router without installer key is never treated as clean install',()=>{
+ const r=assessMigration({platform:'win32',inventoryReliable:true,
+   connectionMode:'private-tunnel',legacyInnoPresent:false,
+   nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+   tunnelProfilePresent:true,tunnelProfileValid:true,
+   tunnelTargetPort:47831,tunnelTargetVersion:'0.11.0-dev.23',
+   tunnelTargetTls:false,routerDetected:true,routerMappingMatches:true,
+   routerBackendPort:48834,routerBackendVersion:'0.11.0-dev.23'});
+ assert.equal(r.existingInstalled,true);
+ assert.equal(r.ownerRegisteredInstallerFamily,'none');
+ assert.ok(r.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+ assert.ok(!r.blocked.includes('LEGACY_INNO_TO_NSIS_TRANSACTION_MISSING'));
+ assert.equal(r.decision,'NO_PROMOTE');
+ // Native observed MMZ and saeed-emad Windows tunnels reach a 0.11 Core
+ // directly, with NO Stable Router. Neither is a fresh install.
+ for(const targetPort of [47836,47834]){
+   const direct=assessMigration({platform:'win32',inventoryReliable:true,
+     connectionMode:'private-tunnel',legacyInnoPresent:false,
+     nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+     tunnelProfilePresent:true,tunnelProfileValid:true,
+     tunnelTargetPort:targetPort,tunnelTargetVersion:'0.11.0-dev.23',
+     tunnelTargetTls:false,routerDetected:false});
+   assert.equal(direct.existingInstalled,true);
+   assert.ok(direct.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+   assert.equal(direct.decision,'NO_PROMOTE');
+ }
+ const fresh=assessMigration({platform:'win32',inventoryReliable:true,
+   connectionMode:'private-tunnel',legacyInnoPresent:false,
+   nativeUnifiedNsisPresent:false,ownerRegisteredInstallerFamily:'none',
+   routerDetected:false});
+ assert.equal(fresh.existingInstalled,false);
+ assert.ok(!fresh.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
 });
 
 test('registered owner PowerShell uninstaller is distinct from Inno and cannot trigger blind removal',()=>{
@@ -674,6 +797,28 @@ test('Linux encrypted backup guard independently decrypts an exact owner-local r
   const save=()=>fs.writeFileSync(receiptFile,JSON.stringify(payload),{mode:0o600});
   save();
   assert.equal(verify(),true);
+  // Ambient PATH cannot select the system credential or hashing executables.
+  const fakeBin=path.join(home,'untrusted-executables');
+  fs.mkdirSync(fakeBin,{mode:0o700});
+  const marker=path.join(home,'unexpected-exec-marker');
+  for(const name of ['sha256sum','systemd-creds','cut'])
+    fs.writeFileSync(path.join(fakeBin,name),
+      '#!/bin/sh\nprintf exec >> "$RC020_PATH_MARKER"\nexit 91\n',{mode:0o700});
+  const priorPath=process.env.PATH;
+  const priorMarker=process.env.RC020_PATH_MARKER;
+  let safe;
+  try{
+    process.env.PATH=fakeBin+path.delimiter+(priorPath??'');
+    process.env.RC020_PATH_MARKER=marker;
+    safe=verify();
+  }finally{
+    if(priorPath===undefined)delete process.env.PATH;else process.env.PATH=priorPath;
+    if(priorMarker===undefined)delete process.env.RC020_PATH_MARKER;
+    else process.env.RC020_PATH_MARKER=priorMarker;
+  }
+  assert.equal(fs.existsSync(marker),false,
+    'preflight must never run attacker-selectable executables from PATH');
+  assert.equal(safe,true,'owner-scoped backup remains valid with untrusted PATH');
   assert.equal(verify({profileName:'other-owner'}),false);
   assert.equal(verify({recoveryDir:undefined}),false);
   fs.chmodSync(sourceFile,0o644);
@@ -723,23 +868,23 @@ test('one native DEB derives its version from the exact same source and GUI trai
   ]) assert.equal(candidateNativeDebianVersion(source,gui),null,
     String(source)+' / '+String(gui));
 });
-test('Debian dev.9 candidate is strictly ahead of dev.6 without implying installed admission',{skip:process.platform!=='linux'},()=>{
+test('Debian current candidate advances installed dev.15 without implying owner admission',{skip:process.platform!=='linux'},()=>{
  const app=JSON.parse(fs.readFileSync(path.join(repo,'package.json'),'utf8'));
  const gui=JSON.parse(fs.readFileSync(path.join(repo,'packaging/unified/package.json'),'utf8'));
  const train=JSON.parse(fs.readFileSync(path.join(repo,'docs/release-train-0.12.json'),'utf8'));
- assert.equal(app.version,'0.12.0-dev.9');
+ assert.match(app.version,/^0\.12\.0-dev\.(?:19|[2-9][0-9])$/);
  assert.equal(app.version,gui.version);
  assert.equal(train.sourceVersion,app.version);
  assert.equal(train.installedPromotionApproved,false);
  assert.equal(train.publishApproved,false);
  const cand=candidateNativeDebianVersion(app.version,gui.version);
- assert.equal(cand,'0.12.0~dev.9');
+ assert.equal(cand,app.version.replace('-dev.','~dev.'));
  for(const [lower,relation,upper,expected] of [
-   ['0.12.0~dev.6','lt',cand,0],
-   [cand,'gt','0.12.0~dev.6',0],
+   ['0.12.0~dev.15','lt',cand,0],
+   [cand,'gt','0.12.0~dev.15',0],
    [cand,'eq',cand,0],
    [cand,'lt','0.12.0',0],
-   ['0.12.0~dev.6','gt',cand,1]
+   ['0.12.0~dev.15','gt',cand,1]
  ]){
    const r=spawnSync('dpkg',['--compare-versions',lower,relation,upper],{encoding:'utf8'});
    assert.equal(r.status,expected,lower+' '+relation+' '+upper+' '+r.stderr);
@@ -789,4 +934,108 @@ test('Windows owner DPAPI six-file proof is strictly bound to native success rec
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,marker+' extra'),false);
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(0,'RC012_WINDOWS_OWNER_DPAPI_RESTORE_SIMULATION_PASS files=6'),false);
   assert.equal(windowsOwnerDpapiVerifyOutputAccepted(null,marker),false);
+});
+test('Windows read-only DPAPI preflight pins machine PowerShell independently of ambient ProgramFiles',async()=>{
+  const {windowsOwnerDpapiPowerShellExecutable}=await import(
+    '../packaging/unified/migration-preflight.mjs');
+  assert.equal(typeof windowsOwnerDpapiPowerShellExecutable,'function',
+    'the DPAPI executable selector must be explicit and independently testable');
+  const expected=path.win32.join('C:\\Program Files','PowerShell','7','pwsh.exe');
+  const old=process.env.ProgramFiles;
+  try{
+    for(const forged of ['Z:\\untrusted\\PowerShell\\7',
+      'C:\\Users\\untrusted\\bin','..\\outside','']){
+      process.env.ProgramFiles=forged;
+      assert.equal(windowsOwnerDpapiPowerShellExecutable(),expected);
+    }
+  }finally{
+    if(old===undefined)delete process.env.ProgramFiles;
+    else process.env.ProgramFiles=old;
+  }
+  const actual=fs.readFileSync(modulePath,'utf8');
+  assert.doesNotMatch(actual,/const exe=path\.win32\.join\(programFiles,/,
+    'never derive the executable from user-controllable ProgramFiles');
+});
+
+test('read-only inventory counts graphical rebind auxiliary separately while retaining every blocker',()=>{
+ const r=assessMigration({platform:'linux',inventoryReliable:true,nativePackageInstalled:true,
+   units:[{kind:'core',active:true,enabled:true,knownExecutable:false},
+     {kind:'auxiliary',active:false,enabled:true,knownExecutable:false}]});
+ assert.equal(r.activeCoreUnits,1);
+ assert.equal(r.enabledCoreUnits,1);
+ assert.equal(r.enabledAuxiliaryUnits,1);
+ assert.equal(r.unmappedUnits,2);
+ assert.ok(r.blocked.includes('ENABLED_AUTOSTART_EXECUTABLE_UNMAPPED'));
+ assert.ok(r.blocked.includes('ACTIVE_SERVICE_EXECUTABLE_UNMAPPED'));
+ assert.equal(r.decision,'NO_PROMOTE');
+});
+
+ test('graphical rebind classification requires the exact corresponding owner-local service command',()=>{
+ const home='/home/owner';const unit='chatgpt-remote-commander-emad-mmz-graphical-rebind.service';
+ const fixture={unit,home,fragmentPath:home+'/.config/systemd/user/'+unit,
+   execStart:'{ path=/usr/bin/systemctl ; argv[]=/usr/bin/systemctl --user try-restart chatgpt-remote-commander-emad-mmz.service ; ignore_errors=no ; }'};
+ assert.equal(isLinuxOwnerGraphicalRebindUnit(fixture),true);
+ for(const bad of [{unit:'chatgpt-remote-commander-other-graphical-rebind.service'},
+   {fragmentPath:'/etc/systemd/user/'+unit},{home:'relative'},
+   {execStart:fixture.execStart.replace('try-restart','restart')},
+   {execStart:fixture.execStart.replace('emad-mmz.service','other.service')},
+   {execStart:fixture.execStart.replace('path=/usr/bin/systemctl','path=/bin/sh')},
+   {execStart:fixture.execStart.replace('.service ;','.service other.service ;')}]){
+  assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,...bad}),false);
+ }
+});
+
+
+test('graphical rebind inventory rejects multiple ExecStart entries and truncated records',()=>{
+ const home='/home/fixture';
+ const unit='chatgpt-remote-commander-fixture-graphical-rebind.service';
+ const start='{ path=/usr/bin/systemctl ; argv[]=/usr/bin/systemctl --user try-restart chatgpt-remote-commander-fixture.service ; ignore_errors=no ; }';
+ const fixture={unit,home,fragmentPath:home+'/.config/systemd/user/'+unit};
+ const other='{ path=/usr/bin/true ; argv[]=/usr/bin/true ; ignore_errors=no ; }';
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start}),true);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start+' '+other}),false);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.split('ignore_errors')[0]}),false);
+ assert.equal(isLinuxOwnerGraphicalRebindUnit({...fixture,execStart:start.replace(' ; }',' ; pid=0 ; status=0/0 }')}),true);
+});
+
+test('native Linux executable inventory rejects path mentions and noncanonical service commands',()=>{
+ const root='/usr/lib/chatgpt-remote-commander';
+ const node=root+'/runtime/node',launch=root+'/tunnel/native-tunnel-launch.sh';
+ const record=(exe,argv)=>'{ path='+exe+' ; argv[]='+argv+' ; ignore_errors=no ; }';
+ const core={unit:'chatgpt-remote-commander@MMZ-v012.service',
+   fragmentPath:'/usr/lib/systemd/user/chatgpt-remote-commander@.service',
+   execStart:record(node,node+' '+root+'/app/src/server-v0.3.mjs')};
+ const tunnel={unit:'chatgpt-remote-commander-tunnel@mmz-linux.service',
+   fragmentPath:'/usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service',
+   execStart:record(launch,launch+' mmz-linux')};
+ assert.equal(classifyLinuxNativeExecStart(core),'core');
+ assert.equal(classifyLinuxNativeExecStart(tunnel),'tunnel');
+ for(const bad of [
+   {...core,execStart:record('/bin/bash','/bin/bash '+node)},
+   {...core,execStart:record(node+'-fake',node+'-fake '+root+'/app/src/server-v0.3.mjs')},
+   {...core,execStart:record(node,node+' /tmp/fixture.mjs')},
+   {...core,execStart:core.execStart+' '+record('/usr/bin/true','/usr/bin/true')},
+   {...core,execStart:core.execStart.slice(0,-1)},
+   {...core,fragmentPath:'/home/fixture/.config/systemd/user/chatgpt-remote-commander@.service'},
+   {...core,unit:'chatgpt-remote-commander-other.service'},
+   {...tunnel,execStart:record(launch,launch+' other-profile')},
+   {...tunnel,execStart:record('/bin/bash','/bin/bash '+launch+' mmz-linux')}
+ ])assert.equal(classifyLinuxNativeExecStart(bad),null);
+ // systemctl includes live process metadata in the same brace-delimited record.
+ assert.equal(classifyLinuxNativeExecStart({...core,execStart:core.execStart.replace(' ; }',' ; start_time=[Wed] ; pid=123 ; code=(null) ; status=0/0 }')}),'core');
+});
+
+test('observed 0.10.26 direct Windows Core is an existing legacy installation, never fresh',()=>{
+  const result=assessMigration({
+    platform:'win32',connectionMode:'private-tunnel',inventoryReliable:true,
+    legacyInnoPresent:false,nativeUnifiedNsisPresent:false,
+    ownerRegisteredInstallerFamily:'none',tunnelProfilePresent:true,
+    tunnelProfileValid:true,tunnelTargetPort:48931,tunnelTargetTls:false,
+    tunnelTargetVersion:'0.10.26',routerDetected:false
+  });
+  assert.equal(result.existingInstalled,true);
+  assert.equal(result.ownerTunnelTargetRuntimeVersion,'0.10.26');
+  assert.ok(result.blocked.includes('OWNER_LIVE_RUNTIME_INSTALLER_IDENTITY_UNVERIFIED'));
+  assert.ok(result.blocked.includes('OWNER_TUNNEL_STILL_TARGETS_LEGACY_OR_UNKNOWN_CORE'));
+  assert.equal(result.decision,'NO_PROMOTE');
 });

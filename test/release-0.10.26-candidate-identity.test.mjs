@@ -15,7 +15,10 @@ test('candidate source runtime and plugin identity agree without public release 
  const cs=read('desktop/RemoteCommanderDashboard/RemoteCommanderDashboard.csproj');
  for(const p of ['plugin-template/plugin.json','plugin-template/.codex-plugin/plugin.json'])
    assert.equal(json(p).version,current,p);
- assert.ok(server.includes("const VERSION = '"+current+"';"));
+ if(current.startsWith('0.12.')){
+   assert.ok(server.includes("import {CORE_VERSION as VERSION} from './runtime-version.mjs'"));
+   assert.ok(read('src/runtime-version.mjs').includes("export const CORE_VERSION='"+current+"';"));
+ }else assert.ok(server.includes("const VERSION = '"+current+"';"));
  assert.ok(cs.includes('<Version>'+current+'</Version>'));
  if(current===newVersion){
    assert.ok(cs.includes('<FileVersion>0.10.26.0</FileVersion>'));

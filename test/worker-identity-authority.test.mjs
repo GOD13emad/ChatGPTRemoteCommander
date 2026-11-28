@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync } from 'node:crypto';
+import {signV012NativeWorkerEnrollment} from '../src/v012-native-worker-registration-signer.mjs';
 import {
   createWorkerIdentityAuthority, deriveWorkerId, verifyWorkerRegistration
 } from '../src/worker-identity-authority.mjs';
@@ -29,6 +30,7 @@ function fixture(options={}){
       controlPlanePollOk:true,healthzStatus:200,readyzStatus:200,
       lastPollAtMs:1_799_999_999_000,expiresAtMs:1_800_000_060_000,lastPollAtMsOverride:null
     },
+    transportTtlMs:60000,deviceTtlMs:300000,
     policyDigest:D,grantRevoked:false,grantRevision:1,grantMissingRevision:false,grantPolicyDigest:null,grantExpiresAtMs:null,
     allowedTools:new Set(['worker.register','worker.revoke','read_text']),
     onAuthorize:null
@@ -78,8 +80,12 @@ function fixture(options={}){
   };
   const authority=createWorkerIdentityAuthority({
     hostId:'aliemad-labtop',profileId:'emad',issuer:'commander.local',audience:'remote-commander',
-    resolveDeviceIdentity:async()=>{const {attestedAtMsOverride,...device}=state.device;return{...device,attestedAtMs:attestedAtMsOverride??state.now-1000,expiresAtMs:state.now+300000};},
-    resolveTransportIdentity:async()=>{const {lastPollAtMsOverride,...transport}=state.transport;return{...transport,lastPollAtMs:lastPollAtMsOverride??state.now-1000,expiresAtMs:state.now+60000};},
+    resolveDeviceIdentity:async()=>{const {attestedAtMsOverride,...device}=state.device;
+      if(options.advanceClockDuringDeviceAttestation&&!state.deviceClockAdvanced){state.now+=1;state.deviceClockAdvanced=true;}
+      return{...device,attestedAtMs:attestedAtMsOverride??
+        (options.advanceClockDuringDeviceAttestation?state.now:state.now-1000),
+        expiresAtMs:state.now+state.deviceTtlMs};},
+    resolveTransportIdentity:async()=>{const {lastPollAtMsOverride,...transport}=state.transport;return{...transport,lastPollAtMs:lastPollAtMsOverride??state.now-1000,expiresAtMs:state.now+state.transportTtlMs};},
     resolveOwnerContext:async()=>({...state.context}),
     resolveOwnerGrant:async request=>ownerGrant(request),
     resolveCapabilityPolicyDigest:async()=>state.policyDigest,
@@ -117,6 +123,86 @@ test('registers a stable Ed25519 worker identity without storing private or tunn
   assert.equal(JSON.stringify(envelope).includes('CONTROL_PLANE_API_KEY'),false);
   assert.equal(JSON.stringify(envelope).includes('tunnel_'),false);
   assert.equal(f.registry.inspect().records.size,1);
+});
+
+test('short-lived native Tunnel proof must be re-attested on each call, not expire the enrolled Worker',async()=>{
+ const f=fixture();
+ f.state.transportTtlMs=2000;
+ f.state.deviceTtlMs=2000;
+ const signed=await f.authority.registerWorker({privateKey:pair().privateKey});
+ assert.ok(signed.claims.expiresAtMs>f.state.now+15000,
+   'identity lifetime follows native owner J01 and grant, not one 2s attestation sample');
+ f.state.now+=3000;
+ const result=await f.authority.authorizeWorker({
+   workerId:signed.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ });
+ assert.equal(result.authorized,true);
+ f.state.transportTtlMs=0;
+ await assert.rejects(f.authority.authorizeWorker({
+   workerId:signed.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ }));
+});
+
+test('one-shot native signer envelope interoperates with current J01 and exact grant, without sending a private key to Core',async()=>{
+ const f=fixture(),keys=pair();
+ const now=f.state.now;
+ const intent={
+   hostId:'aliemad-labtop',profileId:'emad',
+   principalId:'owner-1',conversationId:'chat-1',
+   bindingId:bindingA,ownerSidHash:B,
+   deviceIdHash:A,tunnelIdHash:C,
+   capabilityPolicyDigest:D,grantRevision:1,
+   expiresAtMs:now+60000
+ };
+ const externalSigned=signV012NativeWorkerEnrollment({
+   intent,privateKey:keys.privateKey,now
+ });
+ const accepted=await f.authority.registerSignedWorker({envelope:externalSigned});
+ assert.equal(accepted.signature,externalSigned.signature);
+ assert.equal(Object.hasOwn(accepted,'privateKey'),false);
+ const permission=await f.authority.authorizeWorker({
+   workerId:accepted.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ });
+ assert.equal(permission.authorized,true);
+ f.state.allowedTools.delete('read_text');
+ await rejectsCode(f.authority.authorizeWorker({
+   workerId:accepted.claims.workerId,
+   invocation:{tool:'read_text',arguments:{path:'read-only-qa'}}
+ }), 'WORKER_IDENTITY_ACTION_NOT_AUTHORIZED');
+});
+
+test('signed Worker enrollment from an independent key holder requires fresh native grant and current route',async()=>{
+ const original=fixture(),keys=pair();
+ const signed=await original.authority.registerWorker({privateKey:keys.privateKey});
+ const live=fixture();
+ const enrolled=await live.authority.registerSignedWorker({envelope:signed});
+ assert.equal(enrolled.signature,signed.signature);
+ assert.equal(live.registry.inspect().records.size,1);
+ const repeat=await live.authority.registerSignedWorker({envelope:signed});
+ assert.equal(repeat.signature,enrolled.signature);
+ assert.equal(live.registry.inspect().records.size,1);
+ const denied=fixture();
+ denied.state.allowedTools.delete('worker.register');
+ await rejectsCode(denied.authority.registerSignedWorker({envelope:signed}),
+   'WORKER_IDENTITY_REGISTER_NOT_AUTHORIZED');
+ assert.equal(denied.registry.inspect().records.size,0);
+ const changedOwner=fixture();
+ changedOwner.state.context={...changedOwner.state.context,ownerSidHash:E};
+ await assert.rejects(changedOwner.authority.registerSignedWorker({envelope:signed}));
+ assert.equal(changedOwner.registry.inspect().records.size,0);
+ const changedGrant=fixture();
+ changedGrant.state.grantRevision=2;
+ await rejectsCode(changedGrant.authority.registerSignedWorker({envelope:signed}),
+   'WORKER_IDENTITY_OWNER_GRANT_CHANGED');
+ assert.equal(changedGrant.registry.inspect().records.size,0);
+ const tampered=fixture();
+ await assert.rejects(tampered.authority.registerSignedWorker({
+   envelope:{...signed,signature:'A'.repeat(86)}
+ }));
+ assert.equal(tampered.registry.inspect().records.size,0);
 });
 
 test('workerId is stable across chat grants but changes with key, device, profile or OS owner',()=>{
@@ -529,4 +615,76 @@ test('expired registrations can be verified for replacement but never authorized
     issuer:'commander.local',audience:'remote-commander',now:()=>f.state.now,allowExpired:true
   });
   assert.equal(old.claims.workerId,first.claims.workerId);
+});
+
+test('WorkerIdentityAuthority rechecks revocation after final durable registry read',async()=>{
+  const f=fixture();
+  const {envelope,workerId}=await enroll(f);
+  const existingGet=f.registry.get.bind(f.registry);
+  let reads=0,revoked=false;
+  f.registry.get=async id=>{
+    const value=await existingGet(id);
+    if(++reads===2){
+      const receipt=await f.registry.revoke(workerId,envelope.claims.bindingId,
+        {revocationId:'race-revoked',reasonCode:'during-final-get'},
+        {expectedSignature:envelope.signature});
+      assert.equal(receipt,true);
+      revoked=true;
+    }
+    return value;
+  };
+  await rejectsCode(f.authority.authorizeWorker({
+    workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
+  }),'WORKER_IDENTITY_REVOKED');
+  assert.equal(reads,2);
+  assert.equal(revoked,true);
+  assert.equal(await f.registry.isRevoked(workerId,envelope.claims.bindingId),true);
+});
+
+test('WorkerIdentityAuthority rejects expiry while final registration is read',async()=>{
+  const f=fixture();
+  const {envelope,workerId}=await enroll(f);
+  const existingGet=f.registry.get.bind(f.registry);
+  let reads=0;
+  f.registry.get=async id=>{
+    const value=await existingGet(id);
+    if(++reads===2)f.state.now=envelope.claims.expiresAtMs;
+    return value;
+  };
+  await assert.rejects(f.authority.authorizeWorker({
+    workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
+  }));
+  assert.equal(reads,2);
+});
+
+test('WorkerIdentityAuthority rejects uncertain final revocation status',async()=>{
+  const f=fixture();
+  const {workerId}=await enroll(f);
+  const original=f.registry.isRevoked.bind(f.registry);
+  let calls=0;
+  f.registry.isRevoked=async(id,bindingId)=>{
+    calls++;
+    // The durable registry returning unavailable, null or malformed state
+    // is NEVER a proof of an active Worker enrollment.
+    if(calls===3)return undefined;
+    return original(id,bindingId);
+  };
+  await rejectsCode(f.authority.authorizeWorker({
+    workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
+  }),'WORKER_IDENTITY_REVOKED');
+  assert.equal(calls,3);
+});
+
+
+test('native device sampled asynchronously is not falsely future-stamped',async()=>{
+ const f=fixture({advanceClockDuringDeviceAttestation:true});
+ const signed=await f.authority.registerWorker({privateKey:pair().privateKey});
+ assert.equal(f.registry.inspect().records.size,1);
+ assert.equal(signed.claims.deviceProvider,'native-key-store');
+});
+test('genuinely future-stamped native device is still rejected',async()=>{
+ const f=fixture();
+ f.state.device.attestedAtMsOverride=f.state.now+5000;
+ await rejectsCode(f.authority.registerWorker({privateKey:pair().privateKey}),
+   'WORKER_IDENTITY_DEVICE_UNVERIFIED');
 });

@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {createOwnerPrivatePairBootstrap}
   from '../src/rc012-owner-enrolled-no-grant-bootstrap-linux.mjs';
 import {createV012PrivateCoreRuntime}
-  from '/usr/lib/chatgpt-remote-commander/app/src/v012-private-core-runtime.mjs';
+  from '../src/v012-private-core-runtime.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 function post({port,ca,cert,key,method,name,timeoutMs=5000}){
@@ -81,7 +81,7 @@ async function main(){
     // Explicit one-time owner-visible diagnostic; no prompt by default.
     if(process.env.RC012_CORE_BROKER_J01_BIND_REQUEST==='OWNER_VISIBLE_J01_BIND_ONLY'){
       const bind=await post({port:opts.port,ca,cert,key,
-        method:'tools/call',name:'v2_private_owner_bind',timeoutMs:40000});
+        method:'tools/call',name:'v2_private_owner_bind',timeoutMs:135000});
       console.log('RC012_NATIVE_OWNER_J01_PAIR_BIND_PROBE',JSON.stringify({
         status:bind.kind==='http'?bind.status:null,
         tlsAuthorized:bind.authorized===true,

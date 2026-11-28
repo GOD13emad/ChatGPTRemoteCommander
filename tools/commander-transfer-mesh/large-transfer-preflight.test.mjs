@@ -61,3 +61,22 @@ test('modern worker capability and no transfer job provide read-only preflight r
   assert.equal(run.status,x.safeToAttempt?0:2);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('MMZ preflight counts existing reservations and rejects the legacy four-peer backend',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-preflight-mmz-'));
+ try{
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'PC'}));
+  const jobs=path.join(root,'jobs','MMZ');fs.mkdirSync(jobs,{recursive:true});
+  fs.writeFileSync(path.join(jobs,'reserved.json'),JSON.stringify({bytes:1024,status:'QUEUED'}));
+  const worker=path.join(root,'durable-send.mjs');
+  fs.writeFileSync(worker,"console.log(JSON.stringify({schema:'ctmesh-durable-v1',contractVersion:2,admissionQuotas:true,supports:['enqueue','job-status','resume','cancel']}));");
+  const run=peer=>spawnSync(process.execPath,[file,'--root',root,'--peer',peer,'--role','send','--bytes','1024'],{encoding:'utf8',timeout:10000});
+  let result=run('MMZ');assert.equal(result.status,2,result.stderr);
+  let x=JSON.parse(result.stdout);assert.equal(x.checks.compatibleDurableBackend,false);assert.equal(x.pendingBytes,'1024');
+  fs.copyFileSync(fileURLToPath(new URL('./durable-send.mjs',import.meta.url)),worker);
+  result=run('MMZ');x=JSON.parse(result.stdout);assert.equal(x.checks.compatibleDurableBackend,true);assert.equal(x.pendingBytes,'1024');
+  fs.writeFileSync(path.join(root,'node.json'),JSON.stringify({alias:'MMZ'}));
+  result=run('PC');x=JSON.parse(result.stdout);assert.equal(x.alias,'MMZ');assert.equal(x.checks.compatibleDurableBackend,true);
+  assert.equal(x.pendingBytes,'1024');assert.equal(x.networkValidated,false);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});

@@ -544,11 +544,13 @@ test('KDE portal exact pre-dispatch attestation is accepted but extra fields are
   }finally{client?.close();await fs.rm(folder,{recursive:true,force:true});}
 });
 test('KDE native helper is bundled and dispatch stays bound to KDE session and explicit runtime flag',async()=>{
-  for(const file of ['gui-control-kde-portal.py','kde_portal_runtime.py','kde_workspace_observer.py','kde_emergency_stop.py']){
+  for(const file of ['gui-control-kde-portal.py','gui-control-x11.py','kde_portal_runtime.py','kde_workspace_observer.py','kde_emergency_stop.py']){
     assert.ok((await fs.stat(new URL('../tools/'+file,import.meta.url))).isFile());
   }
   const source=await fs.readFile(new URL('../src/gui-tools-windows.mjs',import.meta.url),'utf8');
-  assert.ok(source.includes("execFileSync('/usr/bin/loginctl'"));
+  const route=await fs.readFile(new URL('../src/gui-linux-session-route.mjs',import.meta.url),'utf8');
+  assert.ok(route.includes("run('/usr/bin/loginctl'"));
+  assert.ok(source.includes("resolveLinuxGuiBackend()"));
   assert.ok(source.includes("'gui-control-kde-portal.py' : 'gui-control-linux.py'"));
   assert.ok(source.includes("cfg.kdePortalRuntime===true"));
   assert.ok(source.includes('request.nativeOperationId=pendingHandle.id'));
@@ -629,4 +631,35 @@ test('emergency during native admission releases provisional protection before a
     explicitUserAuthorization:'Current task explicit takeover request'
   }),/GUI_EMERGENCY_RELEASE_DURING_ADMISSION/);
   assert.equal(released,1);
+});
+
+test('Portal cancellation or backend failure cannot repeat admission on the same GUI lease',async()=>{
+  for(const code of ['PORTAL_PERMISSION_NOT_GRANTED','PORTAL_CONSENT_CANCELLED',
+    'PORTAL_CONSENT_TIMEOUT','PORTAL_REQUEST_FAILED','PORTAL_RESPONSE_UNKNOWN']){
+    let attempts=0;
+    const s=setup({platform:'linux',closeInvoke:()=>{},invoke:async req=>{
+      if(req.action==='screenshot'){
+        attempts++;
+        throw Object.assign(Error(code),{guiCode:code});
+      }
+      return {ok:true,available:true};
+    }});
+    const {lease}=await s.run('gui_session_begin');
+    await assert.rejects(s.run('gui_screenshot',{lease}),new RegExp(code));
+    await assert.rejects(s.run('gui_screenshot',{lease}),/GUI_PORTAL_NEW_SESSION_REQUIRED/);
+    assert.equal(attempts,1);
+    await s.run('gui_session_end',{lease});
+    const fresh=await s.run('gui_session_begin');
+    await assert.rejects(s.run('gui_screenshot',{lease:fresh.lease}),new RegExp(code));
+    assert.equal(attempts,2);
+  }
+});
+
+test('read-only X11 observer cannot create a takeover or invoke the native approval provider',async()=>{
+  let approvals=0;
+  const s=setup({platform:'linux',takeoverProvider:async()=>{approvals++;return null;},
+    invoke:async()=>({ok:true,available:true,inputAvailable:false,backend:'kde-x11-xdotool-readonly'})});
+  await assert.rejects(s.run('gui_session_begin',{mode:'takeover',explicitUserAuthorization:'Synthetic test consent'}),/GUI_NATIVE_INPUT_UNAVAILABLE/);
+  assert.equal(approvals,0);
+  assert.equal((await s.run('gui_session_begin')).mode,'observe');
 });

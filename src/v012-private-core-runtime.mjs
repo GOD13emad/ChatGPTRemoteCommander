@@ -13,6 +13,7 @@ import {createV2PrivatePairOperationGate}
 import {createV101G1PrivatePairRuntime}
   from './v101-g1-loopback-runtime.mjs';
 import {validateJsonSchema} from './schema-validator.mjs';
+import {createV012OwnerGrantAdminUnix} from './v012-owner-grant-admin-unix.mjs';
 
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -26,12 +27,15 @@ function validWorkerSecurity(s){
     &&typeof s.withLease==='function'
     &&typeof s.workerAuthority?.authorizeWorker==='function'
     &&typeof s.workerRegistry?.get==='function'
+    &&typeof s.workerRegistry?.isRevoked==='function'
     &&typeof s.receiptStore?.execute==='function';
 }
+// Core's trusted receiptStore is injected by server-v0.3 and is shared with
+// BOTH bootstrap modes; it must not be mistaken for a competing Worker grant.
 const WORKER_CALLBACK_FIELDS=Object.freeze([
   'resolveTrustedToolRoute','resolveCurrentOwnerRoute',
   'resolveCurrentWorkerId','withLease','workerAuthority',
-  'workerRegistry','receiptStore'
+  'workerRegistry'
 ]);
 
 /**
@@ -52,7 +56,7 @@ const WORKER_CALLBACK_FIELDS=Object.freeze([
  *   lifecycle and durable worker store; no automatic grants are issued.
  */
 export function createV012PrivateCoreRuntime({
-  port,identity,tls,security,core,now=Date.now
+  port,identity,tls,security,core,nativeHostLease=null,physicalRootFence=null,now=Date.now
 }={}){
   if(!Number.isInteger(port)||port<0||port>65535
     ||!identity||!tls||!security||!core
@@ -69,7 +73,24 @@ export function createV012PrivateCoreRuntime({
     ||typeof security.directory!=='string'
     ||!path.isAbsolute(security.directory))
     fail('V012_PRIVATE_CORE_BOOTSTRAP_REQUIRED');
+  // Installed owner bootstrap may pin an OS-validated shared host lease.
+  // Never replace the native lease with a per-process Worker mock once pinned.
+  if(nativeHostLease!==null
+    &&(typeof nativeHostLease?.withLease!=='function'
+      ||typeof nativeHostLease?.close!=='function'
+      ||nativeHostLease.hostId!==identity.hostId))
+    fail('V012_PRIVATE_NATIVE_HOST_LEASE_INVALID');
+  if(nativeHostLease!==null
+    &&(typeof physicalRootFence?.withDirectRouteLease!=='function'
+      ||typeof physicalRootFence?.withWorkflowRootLease!=='function'))
+    fail('V012_PRIVATE_SHARED_PHYSICAL_ROOT_FENCE_REQUIRED');
+  if(nativeHostLease===null&&physicalRootFence!==null)
+    fail('V012_PRIVATE_NATIVE_HOST_LEASE_REQUIRED');
   const factory=security.bindWorkerToNativeOwner;
+  const ownerAdminFactory=security.createOwnerGrantAdministration;
+  if(ownerAdminFactory!==undefined
+    &&(typeof ownerAdminFactory!=='function'||typeof factory!=='function'))
+    fail('V012_PRIVATE_OWNER_ADMIN_FACTORY_REQUIRED');
   if(factory!==undefined
     ? typeof factory!=='function'
       ||WORKER_CALLBACK_FIELDS.some(key=>Object.hasOwn(security,key))
@@ -117,11 +138,17 @@ export function createV012PrivateCoreRuntime({
         hostId:identity.hostId,profileId:identity.profileId,
         principalId:identity.principalId,
         expectedTunnelIdHash:identity.expectedTunnelIdHash,
-        expectedOwnerSidHash:identity.expectedOwnerSidHash
-      })}))
+        expectedOwnerSidHash:identity.expectedOwnerSidHash,
+        // The Worker authority must attest the EXACT same host-pinned
+        // transport as Core, never a separately selected client callback.
+        resolveTransportIdentity:identity.resolveTransportIdentity
+      }),receiptStore:security.receiptStore}))
       :security;
     if(!validWorkerSecurity(worker))
       fail('V012_PRIVATE_CORE_WORKER_BOOTSTRAP_REQUIRED');
+    if(factory&&security.receiptStore!==undefined
+      &&worker.receiptStore!==security.receiptStore)
+      fail('V012_PRIVATE_CORE_RECEIPT_STORE_MISMATCH');
     const verifyExactNativeGrant=createV2PrivateSignedWorkerGrantAdapter({
       hostId:identity.hostId,profileId:identity.profileId,
       principalId:identity.principalId,
@@ -142,17 +169,61 @@ export function createV012PrivateCoreRuntime({
       resolveOwnerContext:route=>
         ownerStack.resolveOwnerContext(route.conversationId),
       readCurrentOwnerSidHash:readOwner,verifyExactNativeGrant,
-      withLease:worker.withLease,receiptStore:worker.receiptStore,now,
-      execute:async(route,args,tool)=>{
+      withLease:nativeHostLease?.withLease??worker.withLease,
+      withRouteLease:physicalRootFence===null?null:
+        (route,work,tool)=>{
+          // Control-plane observation/cancellation cannot enter the project
+          // sink. Exact Native Worker grants still apply; a running writer
+          // must remain observable and cancellable without taking its lock.
+          const control=['system_status','operation_status','operation_result','operation_cancel'].includes(tool);
+          const definition=names.get(tool);
+          if(control&&(definition?.annotations?.readOnlyHint===true
+            ||tool==='operation_cancel'&&definition?.annotations?.idempotentHint===true)){
+            const key=JSON.stringify([1,route.hostId,route.target.kind,route.target.id]);
+            return nativeHostLease.withLease(key,work);
+          }
+          return physicalRootFence.withDirectRouteLease(route,work);
+        },
+      receiptStore:worker.receiptStore,now,
+      execute:async(route,args,tool,nativeAuthorization)=>{
         if(!names.has(tool)
           ||validateJsonSchema(args,names.get(tool).inputSchema).length!==0)
           fail('V012_PRIVATE_CORE_TOOL_DENIED');
         // This IS the installed Core dispatcher, not a mock, legacy HTTP
         // proxy, second plugin or separate process with weaker access checks.
-        return core.dispatch(tool,args,route);
+        return core.dispatch(tool,args,route,nativeAuthorization);
       }
     });
-    return createV101G1PrivatePairRuntime({
+    // The optional native-administration controller is strictly local to
+    // this Core instance. Neither MCP tools nor the HTTPS gateway receive
+    // it; all its grant mutations must independently request native consent.
+    const localOwnerAdministration=ownerAdminFactory?.(Object.freeze({
+      ownerStack,identity:Object.freeze({
+        hostId:identity.hostId,profileId:identity.profileId,
+        principalId:identity.principalId,
+        expectedOwnerSidHash:identity.expectedOwnerSidHash,
+        expectedTunnelIdHash:identity.expectedTunnelIdHash
+      }),
+      worker:Object.freeze({
+        workerAuthority:worker.workerAuthority,
+        workerRegistry:worker.workerRegistry
+      })
+    }));
+    if(ownerAdminFactory&&[
+      'inspect','approveWorker','approveReadOnlyCanary',
+      'revokeCanaryWorker'
+    ].some(k=>typeof localOwnerAdministration?.[k]!=='function'))
+      fail('V012_PRIVATE_OWNER_ADMIN_RESULT_INVALID');
+    if(security.ownerAdminSocketPath!==undefined&&!ownerAdminFactory)
+      fail('V012_PRIVATE_OWNER_ADMIN_FACTORY_REQUIRED');
+    // A user-private Unix socket can request ONLY fixed owner-native consent
+    // actions. No identity/tool/route is supplied by its peer.
+    const localOwnerSocket=security.ownerAdminSocketPath===undefined?null:
+      createV012OwnerGrantAdminUnix({
+        socketPath:security.ownerAdminSocketPath,
+        administration:localOwnerAdministration
+      });
+    const protectedRuntime=createV101G1PrivatePairRuntime({
       port,
       hostOptions:{
         certificatePem:tls.certificatePem,
@@ -173,6 +244,32 @@ export function createV012PrivateCoreRuntime({
           resolveTrustedToolRoute:worker.resolveTrustedToolRoute
         }
       }
+    });
+    if(!ownerAdminFactory)return protectedRuntime;
+    return Object.freeze({
+      get status(){return protectedRuntime.status;},
+      async start(){
+        try{
+          const state=await protectedRuntime.start();
+          await localOwnerSocket?.start();
+          return state;
+        }catch(error){
+          await localOwnerSocket?.close().catch(()=>{});
+          await protectedRuntime.close().catch(()=>{});
+          throw error;
+        }
+      },
+      async close(){
+        // Close the owner stack concurrently with the local socket, so a
+        // pending approval cannot commit after this Core begins shutdown.
+        const outcomes=await Promise.allSettled([
+          localOwnerSocket?.close(),protectedRuntime.close()
+        ]);
+        const failed=outcomes.find(x=>x.status==='rejected');
+        if(failed)throw failed.reason;
+      },
+      // Local-only authority; never included in the MCP tool catalog.
+      ownerAdministration:localOwnerAdministration
     });
   }catch(error){
     ownerStack?.close();

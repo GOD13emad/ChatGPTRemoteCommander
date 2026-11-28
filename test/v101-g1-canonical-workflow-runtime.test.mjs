@@ -6,6 +6,8 @@ import path from 'node:path';
 import https from 'node:https';
 import {spawnSync} from 'node:child_process';
 import {generateKeyPairSync} from 'node:crypto';
+import {WorkflowStore} from '../src/workflow-store.mjs';
+import {executeV2WorkflowStep} from '../src/v2-workflow-gateway.mjs';
 import {createV2NativeOwnerAssertionIssuer} from '../src/v2-caller-assertion.mjs';
 import {createV101CanonicalWorkflowDispatcherFactory,
   createV101G1CanonicalWorkflowRuntime
@@ -265,4 +267,44 @@ test('signed native owner assertion completes one authorized canonical WorkflowS
   });
   assert.equal(second.result.isError,true);
   assert.equal(effects,1);
+});
+
+
+test('canonical gateway preserves the acquired WorkflowStore fence context',async()=>{
+  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc012-gateway-fence-')));
+  let store;
+  try{
+    store=new WorkflowStore({
+      directory:path.join(root,'memory'),allowedRoots:[root],device:'host-a',
+      configSha256:'1'.repeat(64),authority:{profileId:'profile-a',tier:'FULL_POWER',
+        capabilities:['filesystem.full','workflow.durable','workflow.scheduler']}
+    });
+    store.create({id:'root-1',root,goal:'Synthetic fence propagation',
+      acceptance:['No missing fence context'],steps:[{id:'step-1',title:'Inspect'}]});
+    let captured=null,active=0;
+    await executeV2WorkflowStep({
+      route:route(),stepId:'step-1',expectedRevision:1,tool:'read_text',
+      arguments:{path:'synthetic'},workflowStore:store,
+      observedCaller:async()=>({hostId:'host-a',profileId:'profile-a',
+        principalId:'principal-1',conversationId:'owner-chat-1'}),
+      grantRegistry:{isAllowed:()=>true},
+      authorizeTool:async()=>true,
+      dispatch:async(_tool,_args,_state,scope)=>{
+        captured=scope;active=store.schedulerStatus().rootLeasesBlocking;
+        return {ok:true};
+      }
+    });
+    assert.equal(active,1);
+    assert.ok(captured,'trusted dispatch must receive the already-held WorkflowStore fence');
+    assert.equal(Object.isFrozen(captured),true);
+    assert.equal(captured.workflowId,'root-1');
+    assert.equal(captured.stepId,'step-1');
+    assert.equal(captured.revision,1);
+    assert.ok(Number.isSafeInteger(captured.fencingToken)&&captured.fencingToken>0);
+    assert.match(captured.leaseId,/^[a-f0-9]{64}$/);
+    assert.match(captured.rootFingerprint,/^[a-f0-9]{64}$/);
+    assert.equal(store.schedulerStatus().rootLeasesBlocking,0);
+  }finally{
+    store?.close();fs.rmSync(root,{recursive:true,force:true});
+  }
 });

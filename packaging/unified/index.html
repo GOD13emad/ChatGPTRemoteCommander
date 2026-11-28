@@ -2,12 +2,70 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Remote Commander — Unified Pilot</title>
-<style>:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#141923;color:#edf0f6}body{max-width:760px;margin:5rem auto;padding:0 1.4rem}h1{font-size:1.8rem;margin-bottom:.3rem}.sub{color:#a7b4c5}section{background:#212a38;border:1px solid #344153;border-radius:12px;padding:1.4rem;margin-top:1.5rem}button{border:0;border-radius:8px;padding:.8rem 1.1rem;font-weight:600;cursor:pointer;background:#a6d4ff;color:#102235;margin-right:.6rem}button:disabled{opacity:.5;cursor:default}pre{white-space:pre-wrap;word-break:break-word;line-height:1.55}#result{min-height:2rem}small{color:#a7b4c5}</style></head><body>
-<h1>Remote Commander</h1><p class="sub">Unified Windows/Linux installer • source-pinned engineering pilot</p>
-<section><strong>Installation state</strong><pre id="status">Inspecting package…</pre></section>
-<section><strong>Live migration readiness (read-only)</strong><p>No install or access changes are triggered by this check.</p><pre id="migration" role="status">Inspecting active installation…</pre></section>
-<section><strong>Isolated Core preview</strong><p>Preview uses loopback-only transport, a temporary data root, and no privileged tools. It does not replace your active Commander.</p>
+<title>Remote Commander — Unified Workspace Pilot</title>
+<link rel="stylesheet" href="./workspace.css"></head><body>
+<div class="shell"><aside><span class="brand">Remote Commander</span>
+<nav aria-label="Workspace navigation">
+<a href="#overview">Overview</a>
+<a href="#migration-panel">Migration readiness</a>
+<a href="#preview-panel">Core preview</a>
+<a href="#browser-panel">Owned browser</a>
+<a href="#monitor-panel">CEF monitor</a>
+<a href="#workflows-panel">Workflows</a>
+<a href="#companion-panel">Browser companion</a>
+<a href="#addons-panel">Add-ons</a>
+</nav></aside><main>
+<p class="eyebrow">Engineering preview · No promotion</p>
+<h1>Commander workspace</h1><p class="sub">Unified Windows/Linux installer • source-pinned engineering pilot</p>
+<section id="overview" aria-labelledby="overview-title"><h2 id="overview-title">Installation state</h2><pre id="status">Inspecting package…</pre></section>
+<section id="migration-panel" aria-labelledby="migration-panel-title"><h2 id="migration-panel-title">Live migration readiness (read-only)</h2><p>No install or access changes are triggered by this check.</p><pre id="migration" role="status">Inspecting active installation…</pre></section>
+<section id="preview-panel" aria-labelledby="preview-panel-title"><h2 id="preview-panel-title">Isolated Core preview</h2><p>Preview uses loopback-only transport, a temporary data root, and no privileged tools. It does not replace your active Commander.</p>
 <button id="start" type="button">Start isolated preview</button><button id="stop" type="button" disabled>Stop preview</button><pre id="result" role="status" aria-live="polite"></pre></section>
+<section id="browser-panel" aria-labelledby="browser-panel-title"><h2 id="browser-panel-title">ChatGPT in owned Browser Core (experimental)</h2>
+<p>Opens ChatGPT in the isolated Electron Chromium preview, not the separate native CEF Glass runtime. Sign in normally; no existing browser cookies, passwords or profile are reused. A companion extension can observe tab presence, not issue commands.</p>
+<button id="chat-open" type="button">Open ChatGPT in Browser Core</button><button id="chat-popup" type="button">Pair internal extension</button>
+<pre id="chat-result" role="status"></pre></section>
+<section id="monitor-panel" aria-labelledby="monitor-panel-title"><h2 id="monitor-panel-title">Native CEF monitor — select a Core instance</h2>
+<p>Discover fresh local monitor records, choose the exact profile and port, and show the existing CEF root setting. No automatic launch, account binding, or permission grant.</p>
+<h3>Local profiles / instances</h3>
+<p id="profile-status" role="status">Discovering local records…</p>
+<ul id="profile-list" aria-label="Observed local profiles"></ul>
+<label for="monitor-instance">Core instance</label>
+<select id="monitor-instance"><option value="">Choose an instance</option></select>
+<button id="monitor-refresh" type="button">Refresh instances</button>
+<button id="monitor-select" type="button" disabled>Show selected CEF root</button>
+<p class="sub">Control Center · selected local instance, read-only. Reported availability is not permission to act.</p>
+<dl class="monitor-grid" aria-label="Selected instance status">
+<div><dt>GUI</dt><dd id="dashboard-gui">Not selected</dd></div>
+<div><dt>Background browser</dt><dd id="dashboard-browser">Not selected</dd></div>
+<div><dt>Workflow engine</dt><dd id="dashboard-workflows">Not selected</dd></div>
+<div><dt>Recorded workflow runs</dt><dd id="dashboard-runs">Not selected</dd></div>
+<div><dt>Reported extensions</dt><dd id="dashboard-extensions">Not selected</dd></div>
+<div><dt>Optional event relay</dt><dd id="dashboard-relay">Not selected</dd></div>
+<div><dt>Active operations</dt><dd id="dashboard-active">Not selected</dd></div>
+<div><dt>Locked keys</dt><dd id="dashboard-locks">Not selected</dd></div>
+</dl>
+<p id="dashboard-freshness" role="status">Select a local Core instance to inspect its snapshot.</p>
+<pre id="monitor-result" role="status" aria-live="polite"></pre></section>
+<section id="workflows-panel" aria-labelledby="workflows-panel-title"><h2 id="workflows-panel-title">Workspace / CoS workflow list</h2>
+<p>The engineering pilot reads the same private, generation-bound workspace page as native CEF Glass. Persisted workflow metadata is not live worker activity. Select or refresh the instance in <a href="#monitor-panel">Control Center</a>.</p>
+<p id="workspace-status" role="status">Not selected</p>
+<ul id="workspace-list" aria-label="Observed workflows"></ul></section>
+<section id="companion-panel" aria-labelledby="companion-panel-title"><h2 id="companion-panel-title">Browser Companion (opt-in)</h2><p>Pair a browser extension through an owner-visible, expiring code. Chrome, Edge and Brave can load the packaged folder via their extensions page. Firefox needs separate qualification. No automated ChatGPT messages or privileged tools are enabled.</p>
+<button id="companion-start" type="button">Start companion</button>
+<button id="companion-stop" type="button">Stop companion</button>
+<button id="companion-code" type="button">New pairing code</button>
+<button id="companion-folder" type="button">Open extension folder</button>
+<p><label for="companion-browser-target">Attach to an existing browser</label>
+<select id="companion-browser-target" aria-label="Choose browser"></select>
+<button id="companion-browser-open" type="button">Open selected browser extension manager</button></p>
+<p><small>In your chosen Chromium browser, enable Developer mode and choose Load unpacked. Select the extension folder bundled by this Installer. Enabling is always your choice. Firefox needs a separately tested and signed extension.</small></p>
+<pre id="companion-result" role="status" aria-live="polite"></pre></section>
+<section id="addons-panel" aria-labelledby="addons-panel-title"><h2 id="addons-panel-title">Control Center Add-ons</h2>
+<p>Catalog shared with the native Control Center. Planned availability is not installation, activation or owner authorization. Optional event-relay readiness is reported separately by the selected Core; it does not prove notification delivery.</p>
+<button id="addons-refresh" type="button">Refresh add-ons</button>
+<p id="addons-status" role="status">Inspecting committed catalog…</p>
+<dl id="addons-list" class="monitor-grid" aria-label="Planned add-ons"></dl></section>
 <p><small>Not a signed Stable release. Privileged access, ChatGPT account enrollment, MeshCentral and Playwright browser integration require separate acceptance.</small></p>
+</main></div>
 <script src="./renderer.js" defer></script></body></html>

@@ -7,6 +7,7 @@ import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
 import {verifyV012Publication,summarizeV012Readiness} from '../tools/verify-v012-publish-readiness.mjs';
+import {approvedRelease} from '../tools/universal-install/managed-updates.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const normalizeNewlines=text=>text.replace(/\r\n?/g,'\n');
 const workflow=normalizeNewlines(fs.readFileSync(path.join(root,'.github/workflows/release-sync.yml'),'utf8'));
@@ -52,7 +53,7 @@ test('R171 tag-only publication gate skips post-tag main without re-signing or r
  const invoke=(event,ref)=>{
    fs.writeFileSync(output,'');
    const env={...process.env,GITHUB_OUTPUT:output,GITHUB_EVENT_NAME:event,GITHUB_REF:ref};
-   const r=spawnSync(bash,['-c',script],{cwd:repo,env,encoding:'utf8',timeout:16000});
+   const r=spawnSync(bash,['-s'],{input:script,cwd:repo,env,encoding:'utf8',timeout:16000});
    assert.equal(r.error,undefined,String(r.error));
    return {r,output:fs.readFileSync(output,'utf8')};
  };
@@ -125,7 +126,7 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
  assert.match(current.stderr,/V108_V012_PUBLICATION_DENIED/);
  const ready={
    ...manifest,sourceVersion:'0.12.0',status:'RELEASE_APPROVED',
-   channel:'release',isStable:true,publishApproved:true,
+   channel:'stable',isStable:true,publishApproved:true,
    autoupdateApproved:true,installedPromotionApproved:true,releaseTag:'v0.12.0',
    components:manifest.components.map(x=>({...x,verified:true})),
    acceptance:Object.fromEntries(Object.keys(manifest.acceptance).map(k=>[k,true])),
@@ -136,6 +137,24 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
  };
  assert.equal(verifyV012Publication('0.12.0','v0.12.0',ready),
    'V108_V012_RELEASE_APPROVED_MANIFEST_PASS');
+ // Synthetic fixtures only: identical approved source train must satisfy publication and discovery.
+ const release=tag=>({tag_name:tag,draft:false,prerelease:false,assets:['Windows-x64.exe','Linux-amd64.deb'].map((suffix,i)=>({name:'Remote-Commander-Unified-'+tag.slice(1)+'-'+suffix,state:'uploaded',size:1500,digest:'sha256:'+String(i+1).repeat(64)}))});
+ assert.equal(approvedRelease({current:manifest.sourceVersion,releases:[release('v0.12.0')],
+   trainFor:()=>ready})?.tag,'v0.12.0');
+ const successor={...ready,sourceVersion:'0.12.1',releaseTag:'v0.12.1'};
+ assert.equal(verifyV012Publication('0.12.1','v0.12.1',successor),
+   'V108_V012_RELEASE_APPROVED_MANIFEST_PASS');
+ assert.equal(approvedRelease({current:'0.12.0',releases:[release('v0.12.1')],
+   trainFor:()=>successor})?.tag,'v0.12.1');
+ assert.equal(summarizeV012Readiness(successor).targetVersion,'0.12.1');
+ assert.equal(summarizeV012Readiness(successor).manifestEligibilityOnly,true);
+ for(const version of ['0.13.0','0.12.01','0.12.1-dev.1','0.11.99'])
+   assert.throws(()=>verifyV012Publication(version,'v'+version,
+     {...successor,sourceVersion:version,releaseTag:'v'+version}),/V108_V012_RELEASE_APPROVAL_DENIED/);
+ assert.equal(approvedRelease({current:manifest.sourceVersion,releases:[release('v0.12.0')],
+   trainFor:()=>manifest}),null);
+ assert.throws(()=>verifyV012Publication('0.12.1','v0.12.1',
+   {...successor,channel:'release'}),/V108_V012_RELEASE_APPROVAL_DENIED/);
  for(const patch of [
    {publishApproved:false},{autoupdateApproved:false},
    {installedPromotionApproved:false},{status:'INTEGRATION_CANDIDATE_NOT_FINAL'},
@@ -153,6 +172,8 @@ test('V1-08 v0.12 release requires exact accepted train before attestation and d
  ]){
    assert.throws(()=>verifyV012Publication('0.12.0','v0.12.0',{...ready,...patch}),
      /V108_V012_RELEASE_APPROVAL_DENIED/);
+   assert.equal(approvedRelease({current:manifest.sourceVersion,releases:[release('v0.12.0')],
+     trainFor:()=>({...ready,...patch})}),null);
  }
  assert.throws(()=>verifyV012Publication('0.12.0','v0.12.1',ready),
    /V108_V012_RELEASE_APPROVAL_DENIED/);
@@ -175,6 +196,9 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
  fs.mkdirSync(path.join(repo,'tools'));
  fs.copyFileSync(path.join(root,'tools','verify-v012-publish-readiness.mjs'),
    path.join(repo,'tools','verify-v012-publish-readiness.mjs'));
+ fs.mkdirSync(path.join(repo,'tools','universal-install'));
+ fs.copyFileSync(path.join(root,'tools','universal-install','release-admission-0.12.mjs'),
+   path.join(repo,'tools','universal-install','release-admission-0.12.mjs'));
  const assets=path.join(repo,'dist','release');
  fs.mkdirSync(assets,{recursive:true});
  const sums=[];
@@ -191,7 +215,7 @@ test('v0.12 annotated tag cannot bypass NoPromote train in actual release identi
    'tag','-a','v0.12.0','-m','synthetic not-approved tag');
  const out=path.join(dir,'result.txt');
  fs.writeFileSync(out,'');
- const result=spawnSync(bash,['-c',script],{
+ const result=spawnSync(bash,['-s'],{input:script,
    cwd:repo,env:{...process.env,GITHUB_OUTPUT:out,GITHUB_EVENT_NAME:'push',
      GITHUB_REF:'refs/tags/v0.12.0'},encoding:'utf8',timeout:16000
  });
@@ -244,4 +268,14 @@ test('v0.12 development QA provenance uses a separate trusted integration-only j
    'publishing job must refuse the development integration branch');
  assert.ok(publish.includes("steps.release_identity.outputs.accepted == 'true'"),
    'Stable tag-only publication gate must remain intact');
+});
+
+test('legacy publication must not distribute 0.12 even after the full admission gate',()=>{
+ const gate='node tools/verify-v012-publish-readiness.mjs "$version" "$tag"';
+ const stop='echo "::error::RC012_NATIVE_RELEASE_PIPELINE_REQUIRED" >&2';
+ assert.equal(workflow.split(stop).length-1,2);
+ for(const segment of workflow.split(gate).slice(1)){
+  assert.match(segment,/^\s*echo "::error::RC012_NATIVE_RELEASE_PIPELINE_REQUIRED" >&2\s*exit 1/);
+ }
+ assert.ok(script.indexOf(stop)<script.indexOf('accepted=true'));
 });

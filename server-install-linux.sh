@@ -54,7 +54,7 @@ install_bootstrap_packages() {
     local attempt=1
     while (( attempt <= 3 )); do
       if as_root apt-get -o Acquire::Retries=3 update &&
-         as_root apt-get -o Acquire::Retries=3 install -y git curl unzip tar xz-utils ca-certificates python3; then
+         as_root apt-get -o Acquire::Retries=3 install -y git curl unzip tar xz-utils ca-certificates python3 libx11-6 libxi6 libxkbcommon0; then
         return 0
       fi
       if (( attempt == 3 )); then

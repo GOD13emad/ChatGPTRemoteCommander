@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { buildProfileInstance, validateInstanceRecord } from './profile-instances.mjs';
 
 function atomicWrite(file, text) {
@@ -29,6 +30,7 @@ export function reconfigureProfileInstance({
   const oldConfigText = fs.readFileSync(configFile, 'utf8');
   const oldConfig = JSON.parse(oldConfigText);
   const oldRecord = validateInstanceRecord(JSON.parse(fs.readFileSync(recordFile, 'utf8')));
+  if (oldRecord.configSha256 !== createHash('sha256').update(oldConfigText, 'utf8').digest('hex')) throw new Error('PROFILE_RECONFIGURE_STALE_CONFIG_HASH');
   if (oldRecord.profile !== profile || oldConfig.instance?.profile !== profile || oldConfig.instance?.isolated !== true) throw new Error('PROFILE_RECONFIGURE_IDENTITY_MISMATCH');
   if (Number(oldConfig.port) !== Number(oldRecord.mcpPort)) throw new Error('PROFILE_RECONFIGURE_PORT_MISMATCH');
   const baseConfig = JSON.parse(fs.readFileSync(baseConfigPath, 'utf8'));

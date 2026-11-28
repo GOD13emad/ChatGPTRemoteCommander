@@ -42,13 +42,25 @@ function Get-CommanderBusy {
     if($r.result.isError -or -not$s -or -not$s.concurrency -or
        ($null -eq $s.concurrency.activeOperations) -or ($null -eq $s.concurrency.queued) -or -not$s.durableWorkflows -or
        -not$s.durableWorkflows.schedulerState -or
-       $null -eq $s.durableWorkflows.schedulerState.currentLeases){
+       $null -eq $s.durableWorkflows.schedulerState.currentLeases -or
+       $null -eq $s.durableWorkflows.schedulerState.rootLeasesBlocking -or
+       $null -eq $s.durableWorkflows.schedulerState.expiredLeasesRequiringReconciliation){
       throw 'HANDOFF_BUSY_STATE_UNVERIFIED'
     }
     $active=[int]$s.concurrency.activeOperations
     $queued=[int]$s.concurrency.queued
-    $leases=[int]$s.durableWorkflows.schedulerState.currentLeases
-    if($active -lt 0 -or $queued -lt 0 -or $leases -lt 0){throw 'HANDOFF_BUSY_STATE_INVALID'}
+    $scheduler=$s.durableWorkflows.schedulerState
+    # Old or malformed status is not proof of a safely idle root. Require
+    # exact nonnegative integral counters from the same scheduler snapshot.
+    foreach($count in @($scheduler.currentLeases,$scheduler.rootLeasesBlocking,$scheduler.expiredLeasesRequiringReconciliation)){
+      if((($count -isnot [int]) -and ($count -isnot [long])) -or $count -lt 0 -or $count -gt 9007199254740991){
+        throw 'HANDOFF_BUSY_STATE_INVALID'
+      }
+    }
+    $live=[long]$scheduler.currentLeases
+    $leases=[long]$scheduler.rootLeasesBlocking
+    $expired=[long]$scheduler.expiredLeasesRequiringReconciliation
+    if($active -lt 0 -or $queued -lt 0 -or $live -gt $leases -or $expired -ne ($leases-$live)){throw 'HANDOFF_BUSY_STATE_INVALID'}
     foreach($tool in @('gui_status','browser_status')){
       $probeBody=@{jsonrpc='2.0';id=2;method='tools/call';params=@{name=$tool;arguments=@{}}}|ConvertTo-Json -Depth 8 -Compress
       $probe=Invoke-RestMethod -Uri 'http://127.0.0.1:47831/mcp' -Method Post -ContentType 'application/json' -Body $probeBody -TimeoutSec 3

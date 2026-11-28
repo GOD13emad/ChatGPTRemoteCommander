@@ -76,6 +76,21 @@ function run(args, options = {}) {
   });
 }
 
+test('tunnel log runner rejects nonabsolute or nonfile executable before log mutation', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'rc-tunnel-launch-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  for (const exe of [path.basename(process.execPath), dir, path.join(dir, 'missing-executable')]) {
+    const log = path.join(dir, 'tunnel.log');
+    const status = path.join(dir, 'status.json');
+    const pidFile = path.join(dir, 'child.pid');
+    const result = await run([runner, '--log-file', log, '--status-file', status,
+      '--', exe, fixture, pidFile, '1', '1024']);
+    assert.equal(result.code, 2, result.stderr);
+    assert.match(result.stderr, /child executable must be an absolute executable file/);
+    for (const target of [log, status, pidFile]) assert.equal(fs.existsSync(target), false);
+  }
+});
+
 test('tunnel log runner rotates without restarting child and preserves the complete stream', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'rc-tunnel-log-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -164,4 +179,24 @@ test('binary failure diagnostics stay bounded while rejecting a one-byte mutatio
   const expected=Buffer.alloc(1048576,65),actual=Buffer.from(expected);actual[524288]=66;
   assert.throws(()=>assertBytesEqual(actual,expected,'injected mismatch'),error=>error.code==='ERR_ASSERTION'&&error.message.length<512&&JSON.parse(error.message).firstMismatch===524288);
   assertBytesEqual(expected,Buffer.from(expected),'identical');
+});
+
+test('tunnel logger preserves required control-plane credential but excludes unrelated OpenAI credential before child spawn', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'rc-tunnel-env-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const log = path.join(dir, 'tunnel.log');
+  const status = path.join(dir, 'status.json');
+  // Synthetic values only. Report presence booleans, never credential bytes.
+  const env = Object.fromEntries(Object.entries(process.env).filter(
+    ([key]) => !['CONTROL_PLANE_API_KEY', 'OPENAI_API_KEY'].includes(key.toUpperCase())
+  ));
+  env.CONTROL_PLANE_API_KEY = 'fixture-control-only';
+  env.OpenAI_Api_Key = 'fixture-unrelated';
+  const result = await run([
+    runner, '--log-file', log, '--status-file', status, '--',
+    process.execPath, '-e',
+    "console.log(JSON.stringify({control:process.env.CONTROL_PLANE_API_KEY==='fixture-control-only',unrelated:Object.keys(process.env).some(k=>k.toUpperCase()==='OPENAI_API_KEY')}))"
+  ], { env });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(await readFile(log, 'utf8')), { control: true, unrelated: false });
 });

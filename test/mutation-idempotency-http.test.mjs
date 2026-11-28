@@ -27,14 +27,17 @@ async function post(port, id, name, args, extraHeaders = {}) {
   assert.equal(response.status, 200);
   return body;
 }
-async function startServer(serverRoot, configPath) {
+async function startServer(serverRoot, configPath, fixturePort) {
+  if (!Number.isSafeInteger(fixturePort) || fixturePort < 1 || fixturePort > 65535)
+    throw new Error('HTTP_FIXTURE_PORT_INVALID');
+  const healthUrl = 'http://127.0.0.1:' + fixturePort + '/health';
   const child = spawn(process.execPath, [path.join(serverRoot, 'src', 'server-v0.3.mjs')], {
     cwd: serverRoot, env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath }, stdio:['ignore','pipe','pipe']
   });
   let stderr=''; child.stderr.on('data', c => { stderr += c.toString('utf8'); });
-  const config = JSON.parse(await fs.readFile(configPath, 'utf8'));
+
   for (let i=0;i<400;i+=1) {
-    try { const r=await fetch(`http://127.0.0.1:${config.port}/health`); if (r.ok) return { child, stderr:()=>stderr }; } catch {}
+    try { const r=await fetch(healthUrl); if (r.ok) return { child, stderr:()=>stderr }; } catch {}
     await wait(25);
   }
   child.kill();
@@ -69,7 +72,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     };
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
     if(!(await requireNonElevatedLegacyHttp(t,port))){
       assert.equal(await fs.readFile(target,'utf8'),'');
       return;
@@ -96,7 +99,7 @@ test('direct mutation requestId prevents duplicate append across lost ack and re
     assert.equal(await fs.readFile(target,'utf8'),'x');
 
     await stopServer(running.child); running=null;
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
     const afterRestart=await post(port,5,'write_text',args);
     assert.equal(afterRestart.result.isError,false);
     assert.deepEqual(afterRestart.result.structuredContent, first.result.structuredContent);
@@ -132,7 +135,7 @@ test('legacy cached client derives durable mutation idempotency from x-request-i
     };
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
     if(!(await requireNonElevatedLegacyHttp(t,port))){
       assert.equal(await fs.readFile(target,'utf8'),'');
       return;
@@ -164,7 +167,7 @@ test('legacy cached client derives durable mutation idempotency from x-request-i
     assert.equal(await fs.readFile(target,'utf8'),'xz');
 
     await stopServer(running.child); running=null;
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
     const afterRestart=await post(port,15,'write_text',{path:target,content:'x',mode:'append'},legacyHeaders);
     assert.equal(afterRestart.result.isError,false);
     assert.deepEqual(afterRestart.result.structuredContent,first.result.structuredContent);
@@ -198,7 +201,7 @@ test('full-power legacy HTTP denies anonymous and forged access before mutation 
     };
     const configPath=path.join(serverRoot,'config.json');
     await fs.writeFile(configPath,JSON.stringify(config,null,2));
-    running=await startServer(serverRoot,configPath);
+    running=await startServer(serverRoot,configPath,port);
     const health=await (await fetch(`http://127.0.0.1:${port}/health`)).json();
     assert.equal(health.privilegedLegacyHttpQuarantined,true);
     const requests=[
@@ -230,4 +233,11 @@ test('full-power legacy HTTP denies anonymous and forged access before mutation 
     if (running) await stopServer(running.child);
     await fs.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:50});
   }
+});
+
+test('test-only health probe refuses invalid port before any fixture config read', async () => {
+  await assert.rejects(
+    startServer('not-a-server', 'not-a-fixture-config.json', 0),
+    /HTTP_FIXTURE_PORT_INVALID/
+  );
 });

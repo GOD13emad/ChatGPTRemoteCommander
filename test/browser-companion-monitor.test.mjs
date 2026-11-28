@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, mkdir, readFile, stat, rm } from 'node:fs/promises';
-import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor } from '../src/browser-companion-monitor.mjs';
+import { mkdtemp, mkdir, readFile, stat, rm, symlink, writeFile } from 'node:fs/promises';
+import {ensureWindowsMonitorDirectories} from '../src/browser-companion-windows-private.mjs';
+import { defaultBrowserCompanionRoot, sanitizeMonitorSnapshot, writeBrowserCompanionMonitor, browserCompanionInstanceRoot, writeBrowserCompanionInstanceMonitor, startBrowserCompanionMonitor, listBrowserCompanionInstances, selectBrowserCompanionInstance } from '../src/browser-companion-monitor.mjs';
 
 test('default roots are platform-separated from Chromium profile data',()=>{
   assert.equal(defaultBrowserCompanionRoot({platform:'win32',env:{LOCALAPPDATA:'C:\\Users\\u\\AppData\\Local'},home:'C:\\Users\\u'}),'C:\\Users\\u\\AppData\\Local\\ChatGPTRemoteCommander\\browser-companion');
@@ -97,7 +98,7 @@ test('windows monitor writer uses a pre-created local root without POSIX mode as
   const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-win-'));
   const root=path.join(base,'browser-companion');
   try{
-    await mkdir(root);
+    await ensureWindowsMonitorDirectories([root]);
     const receipt=await writeBrowserCompanionMonitor(root,{
       identity:{deviceName:'host',profile:'default',version:'0.10.19',configSha256:'d'.repeat(64),port:48831,platform:'win32'},
       gui:{enabled:true,available:false,uncertain:false,reason:'TEST'},
@@ -110,4 +111,253 @@ test('windows monitor writer uses a pre-created local root without POSIX mode as
     assert.equal(parsed.identity.platform,'win32');
     assert.equal(parsed.observedAtEpochMs,3000);
   }finally{await rm(base,{recursive:true,force:true});}
+});
+
+
+const instanceFixture=(profile,port)=>({identity:{deviceName:'qa-host',profile,port,
+  version:'0.12.0-dev.13',configSha256:'a'.repeat(64),platform:process.platform}});
+test('instance scope is stable, platform-safe, and distinguishes same profile on different ports',()=>{
+  const root=process.platform==='win32'?'C:\\Users\\qa\\browser-companion':'/tmp/qa-monitor';
+  const a={profile:'default',port:51913};
+  assert.equal(browserCompanionInstanceRoot(root,a),browserCompanionInstanceRoot(root,{...a}));
+  assert.notEqual(browserCompanionInstanceRoot(root,a),browserCompanionInstanceRoot(root,{...a,port:51923}));
+  assert.notEqual(browserCompanionInstanceRoot(root,a),browserCompanionInstanceRoot(root,{...a,profile:'DEFAULT'}));
+  for(const profile of ['../escape','a/b','a\\b','..','',null])
+    assert.throws(()=>browserCompanionInstanceRoot(root,{profile,port:51913}),/INSTANCE_INVALID/);
+  assert.throws(()=>browserCompanionInstanceRoot(root,{profile:'qa',port:0}),/INSTANCE_INVALID/);
+});
+test('two independent instances never overwrite each other or the legacy monitor',async t=>{
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-scope-'));
+  const base=path.join(temp,'private');
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base]);else await mkdir(base,{mode:0o700});
+  t.after(()=>rm(temp,{recursive:true,force:true}));
+  const legacy=path.join(base,'commander-monitor.json');
+  await writeFile(legacy,'legacy-owner-state',{mode:0o600});
+  const a={profile:'default',port:51913},b={profile:'default',port:51923};
+  const [ra,rb]=await Promise.all([
+    writeBrowserCompanionInstanceMonitor(base,a,instanceFixture(a.profile,a.port),{now:()=>1000}),
+    writeBrowserCompanionInstanceMonitor(base,b,instanceFixture(b.profile,b.port),{now:()=>2000})]);
+  assert.notEqual(ra.target,rb.target);
+  assert.equal(JSON.parse(await readFile(ra.target,'utf8')).identity.port,a.port);
+  assert.equal(JSON.parse(await readFile(rb.target,'utf8')).identity.port,b.port);
+  assert.equal(await readFile(legacy,'utf8'),'legacy-owner-state');
+  await assert.rejects(()=>writeBrowserCompanionInstanceMonitor(base,a,instanceFixture(b.profile,b.port)),/INSTANCE_MISMATCH/);
+  const current=JSON.parse(await readFile(ra.target,'utf8'));
+  assert.equal(current.identity.port,a.port);
+});
+test('periodic server monitor remains bound to its exact instance and exposes only a scope identifier',async t=>{
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-loop-'));
+  const base=path.join(temp,'private');
+
+  const a={profile:'qa-a',port:51913},b={profile:'qa-b',port:51923};
+  const x=startBrowserCompanionMonitor({root:base,instance:a,snapshot:()=>instanceFixture(a.profile,a.port),intervalMs:60000});
+  const y=startBrowserCompanionMonitor({root:base,instance:b,snapshot:()=>instanceFixture(b.profile,b.port),intervalMs:60000});
+  t.after(async()=>{x.stop();y.stop();await rm(temp,{recursive:true,force:true})});
+  const until=Date.now()+10000;
+  while((!x.status().lastWriteAtEpochMs||!y.status().lastWriteAtEpochMs)&&Date.now()<until)
+    await new Promise(r=>setTimeout(r,20));
+  assert.ok(x.status().lastWriteAtEpochMs);assert.ok(y.status().lastWriteAtEpochMs);
+  assert.equal(x.status().scope,'INSTANCE');
+  assert.notEqual(x.status().scopeId,y.status().scopeId);
+  assert.match(x.status().scopeId,/^[a-f0-9]{64}$/);
+  assert.equal(JSON.parse(await readFile(path.join(browserCompanionInstanceRoot(base,a),'commander-monitor.json'),'utf8')).identity.profile,a.profile);
+  assert.equal(JSON.parse(await readFile(path.join(browserCompanionInstanceRoot(base,b),'commander-monitor.json'),'utf8')).identity.profile,b.profile);
+});
+test('unsafe instance directory symlink is rejected without chmod or writing its destination',{skip:process.platform!=='linux'},async t=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-link-'));
+  t.after(()=>rm(base,{recursive:true,force:true}));
+  const root=path.join(base,'companion'),outside=path.join(base,'outside');
+  await mkdir(root,{mode:0o700});await mkdir(outside,{mode:0o755});
+  const outsideMode=(await stat(outside)).mode&0o777;
+  await symlink(outside,path.join(root,'instances'),'dir');
+  await assert.rejects(()=>writeBrowserCompanionInstanceMonitor(root,{profile:'qa',port:51913},instanceFixture('qa',51913)),/ROOT_UNSAFE/);
+  assert.equal((await stat(outside)).mode&0o777,outsideMode);
+  assert.deepEqual(await (await import('node:fs/promises')).readdir(outside),[]);
+});
+
+test('invalid instance disables only optional monitor; no shared-root fallback',async t=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-invalid-'));
+  t.after(()=>rm(base,{recursive:true,force:true}));
+  let calls=0;
+  const ctl=startBrowserCompanionMonitor({root:base,instance:{profile:'../bad',port:51913},
+    snapshot:()=>{calls++;return instanceFixture('qa',51913)}});
+  t.after(()=>ctl.stop());
+  assert.equal(ctl.status().enabled,false);
+  assert.equal(ctl.status().scopeId,null);
+  assert.equal(ctl.status().lastError,'BROWSER_COMPANION_INSTANCE_INVALID');
+  assert.equal(calls,0);
+  assert.deepEqual(await (await import('node:fs/promises')).readdir(base),[]);
+});
+
+
+test('fresh instance discovery and explicit revalidation refuse stale, mismatched or unsafe records',async t=>{
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-picker-'));
+  const base=path.join(temp,'private');
+
+  t.after(()=>rm(temp,{recursive:true,force:true}));
+  const a={profile:'qa-a',port:51913},b={profile:'qa-b',port:51923},c={profile:'qa-c',port:51933};
+  await writeBrowserCompanionInstanceMonitor(base,a,instanceFixture(a.profile,a.port),{now:()=>1000});
+  await writeBrowserCompanionInstanceMonitor(base,b,instanceFixture(b.profile,b.port),{now:()=>2000});
+  const old=await writeBrowserCompanionInstanceMonitor(base,c,instanceFixture(c.profile,c.port),{now:()=>1});
+  const aId=path.basename(browserCompanionInstanceRoot(base,a));
+  const bId=path.basename(browserCompanionInstanceRoot(base,b));
+  const entries=await listBrowserCompanionInstances({base,now:10001});
+  assert.deepEqual(entries.map(x=>x.scopeId),[aId,bId]);assert.ok(entries.every(x=>!Object.hasOwn(x,'root')));
+  const selected=await selectBrowserCompanionInstance(aId,{base,now:10001});
+  assert.equal(selected.root,browserCompanionInstanceRoot(base,a));
+  assert.equal(selected.environmentVariable,'CGWA_COMPANION_ROOT');
+  assert.equal(selected.actionAuthorization,false);assert.equal(selected.nativeValidationRequired,true);
+  // Dashboard data uses the same validated instance, never the shared root.
+  const rich={...instanceFixture(a.profile,a.port),
+    gui:{enabled:true,available:true,uncertain:false,capabilities:{screenshot:true,mouse:false}},
+    browser:{enabled:true,available:true,uncertain:true},
+    workflows:{enabled:true,engineEnabled:true,runCount:7},
+    extensions:{items:[{id:'fixture',version:'1',secret:'PRIVATE'}]},
+    relay:{enabled:true,ready:true,extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false,adapterPath:'PRIVATE'},
+    workspace:{hasMore:true,workflows:[{id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true,root:'PRIVATE'}]},
+    operations:{active:2,lockedKeys:3}};
+  const updated=await writeBrowserCompanionInstanceMonitor(base,a,rich,{now:()=>1000});
+  const raw=JSON.parse(await readFile(updated.target,'utf8'));
+  raw.gui.reason='PRIVATE';raw.operations.active=Number.MAX_VALUE;
+  raw.extensions.items[0].id='PRIVATE';
+  await writeFile(updated.target,JSON.stringify(raw));
+  const dashboard=await selectBrowserCompanionInstance(aId,{base,now:10001});
+  assert.deepEqual(dashboard.summary,{
+    observedAtEpochMs:1000,
+    gui:{enabled:true,available:true,uncertain:false},
+    browser:{enabled:true,available:true,uncertain:true},
+    workflows:{enabled:true,engineEnabled:true,runCount:7},
+    extensionCount:1,
+    eventRelay:{enabled:true,ready:true,deliveryConfirmed:false},
+    workspace:{state:'OBSERVED',hasMore:true,items:[{id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true}]},
+    operations:{active:null,lockedKeys:3}
+  });
+  assert.doesNotMatch(JSON.stringify(dashboard.summary),/PRIVATE|configSha256|capabilities/);
+  assert.equal(dashboard.actionAuthorization,false);
+  const sidecar=path.join(path.dirname(updated.target),'commander-workspace.json');
+  const side=JSON.parse(await readFile(sidecar,'utf8'));
+  side.actionAllowed=true;
+  await writeFile(sidecar,JSON.stringify(side));
+  assert.equal((await selectBrowserCompanionInstance(aId,{base,now:10001})).summary.workspace.state,'UNVERIFIED');
+  side.actionAllowed=false;side.observedAtEpochMs++;
+  await writeFile(sidecar,JSON.stringify(side));
+  assert.equal((await selectBrowserCompanionInstance(aId,{base,now:10001})).summary.eventRelay.ready,null);
+  assert.ok((await listBrowserCompanionInstances({base,now:10001})).every(x=>!Object.hasOwn(x,'summary')));
+  await assert.rejects(()=>selectBrowserCompanionInstance(aId,{base,now:11000}),/STALE_OR_MISMATCH/);
+  await assert.rejects(()=>selectBrowserCompanionInstance('../escape',{base,now:10001}),/SELECTION_INVALID/);
+  const forged=JSON.parse(await readFile(old.target,'utf8'));forged.identity.profile=a.profile;forged.observedAtEpochMs=1000;forged.expiresAtEpochMs=11000;
+  await writeFile(old.target,JSON.stringify(forged));
+  assert.equal((await listBrowserCompanionInstances({base,now:10001})).length,2);
+});
+test('absent monitor root is not created by discovery',async t=>{
+  const base=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-no-create-'));
+  t.after(()=>rm(base,{recursive:true,force:true}));
+  assert.deepEqual(await listBrowserCompanionInstances({base:path.join(base,'missing')}),[]);
+  assert.deepEqual(await (await import('node:fs/promises')).readdir(base),[]);
+});
+
+
+test('Windows refuses pre-existing unsafe monitor ACL without modifying existing contents',{skip:process.platform!=='win32'},async t=>{
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-monitor-unsafe-acl-'));
+  t.after(()=>rm(temp,{recursive:true,force:true}));
+  const base=path.join(temp,'root');await mkdir(base);
+  const marker=path.join(base,'owner-marker');await writeFile(marker,'preserve');
+  // Establish whether the host's inherited ACL is already private. If so,
+  // use a read-only proof rather than weakening the fixture's permissions.
+  let unsafe=false;
+  try{await ensureWindowsMonitorDirectories([base],{create:false});}catch{unsafe=true;}
+  if(unsafe){
+    await assert.rejects(()=>writeBrowserCompanionInstanceMonitor(base,{profile:'qa',port:51913},instanceFixture('qa',51913)),/WINDOWS_PRIVATE_ROOT_UNPROVEN/);
+    assert.deepEqual(await (await import('node:fs/promises')).readdir(base),['owner-marker']);
+  }
+  assert.equal(await readFile(marker,'utf8'),'preserve');
+});
+
+test('monitor writer matches native UTF-16, version, and safe-counter bounds',()=>{
+  const s=sanitizeMonitorSnapshot({
+    identity:{deviceName:'x'.repeat(159)+'😀',profile:'default',
+      version:'0.12.0-dev.15+build.1',configSha256:'a'.repeat(64),port:48832,platform:'linux'},
+    gui:{enabled:true,available:true,backend:'b'.repeat(160),sessionType:'s'.repeat(160),reason:'r'.repeat(160)},
+    browser:{enabled:true,available:true,backend:'c'.repeat(160),reason:'d'.repeat(160)},
+    workflows:{enabled:true,engineEnabled:true,runCount:3},
+    extensions:{items:[{id:'project-execution-brain',version:'1.2.3+'+'v'.repeat(80)}]},
+    operations:{active:10001,lockedKeys:Number.MAX_SAFE_INTEGER}
+  },1000);
+  assert.equal(s.identity.deviceName,'x'.repeat(159));
+  assert.equal(s.identity.version,'0.12.0-dev.15+build.1');
+  assert.equal(s.gui.backend.length,160);
+  assert.equal(s.gui.sessionType.length,160);
+  assert.equal(s.browser.reason.length,160);
+  assert.equal(s.extensions.items[0].version.length,64);
+  assert.equal(s.operations.active,10001);
+  assert.equal(s.operations.lockedKeys,Number.MAX_SAFE_INTEGER);
+  const malformed=sanitizeMonitorSnapshot({
+    identity:{deviceName:'x'.repeat(159)+String.fromCharCode(0xD800),version:'0.12.0',profile:'default',port:48832},
+    operations:{active:Number.MAX_SAFE_INTEGER+1,lockedKeys:1.5}
+  },1000);
+  assert.equal(malformed.identity.deviceName,'x'.repeat(159)+'�');
+  assert.equal(malformed.operations.active,0);
+  assert.equal(malformed.operations.lockedKeys,0);
+});
+
+
+test('owner-private workspace page is generation bound and cannot grant actions', async t=>{
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-workspace-sidecar-'));
+  t.after(()=>rm(temp,{recursive:true,force:true,maxRetries:10,retryDelay:50}));
+  const base=path.join(temp,'private');
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base]);else await mkdir(base,{mode:0o700});
+  const a={profile:'qa-a',port:51913}, b={profile:'qa-b',port:51923};
+  const good={...instanceFixture(a.profile,a.port),relay:{enabled:true,ready:true,extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false},workspace:{hasMore:true,workflows:[
+    {id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true,lastFailure:'private detail',root:'/never/export'}
+  ]},actionAllowed:true};
+  const ra=await writeBrowserCompanionInstanceMonitor(base,a,good,{now:()=>1000});
+  const rb=await writeBrowserCompanionInstanceMonitor(base,b,instanceFixture(b.profile,b.port),{now:()=>2000});
+  assert.equal(ra.workspacePublished,true);assert.equal(rb.workspacePublished,true);
+  const read=async r=>JSON.parse(await readFile(path.join(path.dirname(r.target),'commander-workspace.json'),'utf8'));
+  const monitor=JSON.parse(await readFile(ra.target,'utf8'));
+  const ws=await read(ra);
+  assert.deepEqual(ws,{schema:2,kind:'COMMANDER_WORKSPACE_MONITOR',observedAtEpochMs:1000,expiresAtEpochMs:11000,
+    identity:{profile:'qa-a',port:51913,configSha256:'a'.repeat(64)},actionAllowed:false,
+    relay:{state:'PIN_READY',extensionId:'fixture-event',attempts:2,relayProcessExitedZero:1,dropped:0,inFlight:false,deliveryConfirmed:false},
+    workflows:{state:'OBSERVED',hasMore:true,items:[{id:'fixture-one',revision:3,lifecycle:'WAITING_CHAT',schedulerEnabled:true}]}});
+  assert.equal(monitor.observedAtEpochMs,ws.observedAtEpochMs);
+  assert.equal(Object.hasOwn(monitor,'workspace'),false);
+  assert.equal((await read(rb)).workflows.state,'UNVERIFIED');
+  assert.equal((await read(rb)).relay.state,'UNVERIFIED');
+  const claimed={...good,relay:{...good.relay,deliveryConfirmed:true}};
+  await writeBrowserCompanionInstanceMonitor(base,a,claimed,{now:()=>2500});
+  assert.equal((await read(ra)).relay.state,'UNVERIFIED');
+  if(process.platform==='linux')assert.equal((await stat(path.join(path.dirname(ra.target),'commander-workspace.json'))).mode&0o777,0o600);
+  const invalid={...good,workspace:{hasMore:false,workflows:[good.workspace.workflows[0],good.workspace.workflows[0]]}};
+  await writeBrowserCompanionInstanceMonitor(base,a,invalid,{now:()=>3000});
+  assert.deepEqual((await read(ra)).workflows,{state:'UNVERIFIED',hasMore:false,items:[]});
+});
+
+test('native monitor schema stays closed when workspace and relay are present',()=>{
+  const monitor=sanitizeMonitorSnapshot({workflows:{enabled:true,engineEnabled:true,runCount:3,runStates:{completed:3}},eventRelay:{enabled:true},workspace:{workflows:[]}});
+  assert.deepEqual(Object.keys(monitor).sort(),['schema','kind','observedAtEpochMs','expiresAtEpochMs','identity','gui','browser','workflows','extensions','operations'].sort());
+  assert.deepEqual(Object.keys(monitor.workflows).sort(),['enabled','engineEnabled','runCount'].sort());
+});
+
+test('project summary publishes only generation-bound recorded review and worker counts',async t=>{
+  const temp=await mkdtemp(path.join(os.tmpdir(),'rc-project-summary-'));
+  t.after(()=>rm(temp,{recursive:true,force:true,maxRetries:10,retryDelay:50}));
+  const base=path.join(temp,'private');
+  if(process.platform==='win32')await ensureWindowsMonitorDirectories([base]);else await mkdir(base,{mode:0o700});
+  const a={profile:'qa-summary',port:51913};
+  const input={...instanceFixture(a.profile,a.port),workflows:{enabled:true,engineEnabled:true,runCount:3},
+    projectRuns:[{verification:[{passed:true,path:'PRIVATE'}],pendingWorker:{status:'READY',artifact:'PRIVATE'}},
+    {verification:[{passed:false}],workerReceipts:[{path:'PRIVATE'}],pendingWorker:{status:'RESERVED'}},
+    {verification:[{passed:'true'}]}]};
+  const result=await writeBrowserCompanionInstanceMonitor(base,a,input,{now:()=>1000});
+  assert.equal(result.projectSummaryPublished,true);
+  const file=path.join(path.dirname(result.target),'commander-project-summary.json');
+  const raw=await readFile(file,'utf8'),data=JSON.parse(raw);
+  assert.deepEqual(data,{schema:1,kind:'COMMANDER_PROJECT_SUMMARY',observedAtEpochMs:1000,expiresAtEpochMs:11000,
+    identity:{profile:a.profile,port:a.port,configSha256:'a'.repeat(64)},actionAllowed:false,
+    counts:{runs:3,reviewPassed:1,reviewFailed:1,reviewUnknown:1,workerReady:1,workerReserved:1,workerImportedRuns:1}});
+  assert.doesNotMatch(raw,/PRIVATE/);
+  assert.equal((await writeBrowserCompanionInstanceMonitor(base,a,{...input,projectRuns:[]},{now:()=>2000})).projectSummaryPublished,false);
+  assert.equal(JSON.parse(await readFile(file,'utf8')).observedAtEpochMs,1000);
+  assert.equal(JSON.parse(await readFile(result.target,'utf8')).observedAtEpochMs,2000);
 });

@@ -92,8 +92,16 @@ export async function createLinuxSignedBrokerTransport({
   }
   const first=await fetchWitness();
   const expectedTunnelIdHash=first.tunnelIdHash;
+  // The owner Witness admits one challenge at a time. Preserve a separate
+  // fresh signed nonce and full proof verification for EVERY invocation.
+  let witnessTail=Promise.resolve();
+  const nextWitness=()=>{
+    const job=witnessTail.then(fetchWitness);
+    witnessTail=job.then(()=>{},()=>{});
+    return job;
+  };
   async function resolveTransportIdentity(){
-    const current=await fetchWitness();
+    const current=await nextWitness();
     if(current.tunnelIdHash!==expectedTunnelIdHash)
       fail('RC012_NATIVE_WITNESS_TUNNEL_INSTANCE_CHANGED');
     return Object.freeze({

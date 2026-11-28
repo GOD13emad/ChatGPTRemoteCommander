@@ -17,6 +17,7 @@ $specNames=@()
 $specTotals=@{}
 $phaseStarted=@()
 $phasePassed=@()
+$phaseSequenceValid=$true
 $failedPhaseIndex=$null
 $nativeTokenProbe=$null
 $httpQuarantine=$null
@@ -24,6 +25,10 @@ $asyncHttpFailurePhase=$null
 $asyncHttpFailureName=$null
 $asyncHttpFailureCode=$null
 $asyncHttpServerStartup=$null
+$asyncHttpLastPhase=$null
+$asyncHttpFailureAssertion=$null
+$asyncHttpCleanupFailurePhase=$null
+$asyncHttpCleanupFailureCode=$null
 $mcpTasksFailurePhase=$null
 $mcpTasksFailureName=$null
 $mcpTasksFailureCode=$null
@@ -56,7 +61,30 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
       $sourceSha=(Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
       $status='NON_TAP_FAILURE_UNCLASSIFIED'
       foreach($line in [IO.File]::ReadLines($source.FullName)){
-        if($line -match '^R157_ASYNC_HTTP_FAILURE_PHASE=([a-z0-9-]{1,64})$'){
+        $line=[regex]::Replace($line,'^\s*#\s+(?=R157_ASYNC_HTTP_)','')
+        if($line -cmatch '^R157_ASYNC_HTTP_LAST_PHASE=(fixture-setup|server-startup|native-token-and-quarantine|operation-start|idempotent-retry|operation-terminal|file-backed-result|large-output-start|large-output-terminal|large-output-result)$'){
+          $asyncHttpLastPhase=[string]$Matches[1]
+        } elseif($line -cmatch '^R157_ASYNC_HTTP_CLEANUP_FAILURE_PHASE=(server-stop|fixture-remove)$'){
+          $asyncHttpCleanupFailurePhase=[string]$Matches[1]
+        } elseif($line -cmatch '^R157_ASYNC_HTTP_CLEANUP_FAILURE_CODE=(EPERM|EACCES|EBUSY|ENOTEMPTY|ENOENT|UNCLASSIFIED)$'){
+          $asyncHttpCleanupFailureCode=[string]$Matches[1]
+        } elseif($line -cmatch '^R157_ASYNC_HTTP_FAILURE_ASSERTION=(\{.{1,1024}\})$'){
+          try{
+            $raw=ConvertFrom-Json -InputObject $Matches[1] -ErrorAction Stop
+            $op=if([string]$raw.operator -cin @('strictEqual','deepStrictEqual','equal','notEqual','notStrictEqual','ok')){[string]$raw.operator}else{$null}
+            $safeValues=@{}
+            foreach($key in @('actual','expected')){
+              $v=$raw.$key
+              if($v -is [string]){
+                if($v -cnotin @('QUEUED','RUNNING','SUCCEEDED','FAILED','TIMED_OUT','CANCELLED','UNCERTAIN','UNVERIFIED')){$v=$null}
+              }elseif($v -isnot [bool] -and $v -isnot [byte] -and $v -isnot [int16] -and $v -isnot [int32] -and $v -isnot [int64] -and $v -isnot [double]){
+                $v=$null
+              }
+              $safeValues[$key]=$v
+            }
+            $asyncHttpFailureAssertion=[ordered]@{operator=$op;actual=$safeValues.actual;expected=$safeValues.expected}
+          }catch{$asyncHttpFailureAssertion=$null}
+        } elseif($line -match '^R157_ASYNC_HTTP_FAILURE_PHASE=([a-z0-9-]{1,64})$'){
           $asyncHttpFailurePhase=[string]$Matches[1]
         } elseif($line -match '^R157_ASYNC_HTTP_FAILURE_NAME=([A-Za-z0-9_]{1,48})$'){
           $asyncHttpFailureName=[string]$Matches[1]
@@ -113,10 +141,14 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
         } elseif($line -match '^R157_ASYNC_HTTP_QUARANTINE=(true|false)$'){
           $httpQuarantine=([string]$Matches[1] -eq 'true')
         }
-        if($line -match '^RC_QUAL_PHASE_START_([0-9]{2})\s*$'){
-          if($phaseStarted.Count -lt 90){$phaseStarted+=([int]$Matches[1])}
-        } elseif($line -match '^RC_QUAL_PHASE_PASS_([0-9]{2})\s*$'){
-          if($phasePassed.Count -lt 90){$phasePassed+=([int]$Matches[1])}
+        if($line -match '^RC_QUAL_PHASE_START_([0-9]{2,3})\s*$'){
+          $index=[int]$Matches[1]
+          if($index -ne $phaseStarted.Count -or $phaseStarted.Count -ne $phasePassed.Count -or $index -ge 160){$phaseSequenceValid=$false}
+          if($phaseStarted.Count -lt 160){$phaseStarted+=$index}
+        } elseif($line -match '^RC_QUAL_PHASE_PASS_([0-9]{2,3})\s*$'){
+          $index=[int]$Matches[1]
+          if($index -ne $phasePassed.Count -or $phaseStarted.Count -ne ($phasePassed.Count+1) -or $index -ge 160){$phaseSequenceValid=$false}
+          if($phasePassed.Count -lt 160){$phasePassed+=$index}
         } elseif($line -match '^\s*not ok\s+([0-9]+)\s+-\s+([^\r\n]+)$'){
           $number=[int]$Matches[1]
           $label=[string]$Matches[2]
@@ -143,18 +175,19 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
           if($types.Count -lt 20){$types+=([string]$Matches[1])}
         }
       }
+      # Numeric phase evidence is independent of TAP/spec summaries.
+      if($phaseSequenceValid -and $phaseStarted.Count -eq ($phasePassed.Count+1)){
+        $failedPhaseIndex=[int]$phaseStarted[-1]
+      }
       if($failures.Count -gt 0 -or $types.Count -gt 0 -or
           ($totals.ContainsKey('fail') -and [double]$totals['fail'] -gt 0)){
         $status='TAP_SUMMARY_EXTRACTED'
       } elseif($specNames.Count -gt 0 -or ($specTotals.ContainsKey('fail') -and [double]$specTotals['fail'] -gt 0)){
         $status='SPEC_SUMMARY_EXTRACTED'
       } elseif($phaseStarted.Count -gt 0){
-        $lastStarted=[int]$phaseStarted[-1]
-        if($phasePassed.Count -eq ($phaseStarted.Count-1) -and
-           ($phasePassed -notcontains $lastStarted)){
-          $failedPhaseIndex=$lastStarted
+        if($null -ne $failedPhaseIndex){
           $status='NON_TAP_FAILURE_PHASE_IDENTIFIED'
-        } elseif($phasePassed.Count -eq $phaseStarted.Count){
+        } elseif($phaseSequenceValid -and $phasePassed.Count -eq $phaseStarted.Count){
           $status='FAILURE_OUTSIDE_MARKED_PHASES'
         } else {
           $status='PHASE_MARKERS_AMBIGUOUS'
@@ -171,6 +204,8 @@ $report=[ordered]@{
   nativeTokenProbe=$nativeTokenProbe;httpPrivilegedLegacyHttpQuarantined=$httpQuarantine
   asyncHttpFailurePhase=$asyncHttpFailurePhase;asyncHttpFailureName=$asyncHttpFailureName;asyncHttpFailureCode=$asyncHttpFailureCode
   asyncHttpServerStartup=$asyncHttpServerStartup
+  asyncHttpLastPhase=$asyncHttpLastPhase;asyncHttpFailureAssertion=$asyncHttpFailureAssertion
+  asyncHttpCleanupFailurePhase=$asyncHttpCleanupFailurePhase;asyncHttpCleanupFailureCode=$asyncHttpCleanupFailureCode
   mcpTasksFailurePhase=$mcpTasksFailurePhase;mcpTasksFailureName=$mcpTasksFailureName;mcpTasksFailureCode=$mcpTasksFailureCode
   mcpTasksFailureAssertion=$mcpTasksFailureAssertion
   mcpTasksLongPollStatus=$mcpTasksLongPollStatus;mcpTasksLongPollElapsedMs=$mcpTasksLongPollElapsedMs
@@ -186,6 +221,12 @@ Write-Output ('R470_DIAG_SHA256='+(Get-FileHash -LiteralPath $out -Algorithm SHA
 # The hosted updater hides raw qualification output to avoid leaking keys.
 # Report only the already redacted bounded test names and numerical counts,
 # so a fresh CI failure has a decision-grade, non-secret root-cause signal.
+if($failedGate -eq 'check'){
+  Write-Output ('R470_SAFE_CHECK_SUMMARY_KIND='+$status)
+  if($specTotals.ContainsKey('fail')){Write-Output ('R470_SAFE_SPEC_FAIL_COUNT='+$specTotals['fail'])}
+  if($totals.ContainsKey('fail')){Write-Output ('R470_SAFE_TAP_FAIL_COUNT='+$totals['fail'])}
+  if($null -ne $failedPhaseIndex){Write-Output ('R470_SAFE_FAILURE_PHASE='+$failedPhaseIndex)}
+}
 if($failedGate -eq 'test'){
   Write-Output ('R470_SAFE_TEST_SUMMARY_KIND='+$status)
   if($specTotals.ContainsKey('fail')){

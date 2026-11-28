@@ -1,12 +1,16 @@
 # ChatGPT Remote Commander
 
-> **Current development identity (2026-11-22):** `0.12.0-dev.9` is the next dev23-based integration candidate (NoPromote), not an accepted release or Stable. Commander 2 / `dev19` remains a separate source lineage until its capabilities are reconciled and accepted into the unified tree. The suite has **no currently accepted Stable**. Prior GitHub releases remain historical artifacts; a GitHub `Latest` badge is not full-product acceptance. `1.0.0` remains reserved for the first fully verified Stable. See [0.12 release train](docs/RELEASE_TRAIN_0.12.md).
+> **Current 0.12 development train — NoPromote.** The exact candidate version, source identity and open acceptance gates are recorded in the [0.12 release train](docs/RELEASE_TRAIN_0.12.md) and [manifest](docs/release-train-0.12.json). The first integrated Stable target is 0.12.0; 1.0.0 is the later major-product maturity target. No integrated Stable is accepted yet. Historical GitHub releases and CI build artifacts are not interchangeable with an admitted public installer.
 
-> **Official project brand:** **[TandemVector Labs](https://github.com/Usefull-Skills)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
+> **Official project brand:** **[TandemVector Labs](https://github.com/TandemVector-Labs)**. Lead source/release maintainer: [Aliakbar Emadoddin](https://github.com/GOD13emad); supporting collaborator: [MMZ](https://github.com/mohammadmohammadzadeh19960-code). [Maintainer credits](docs/PUBLISHER_AND_MAINTAINERS.md). Windows v0.10.24 preview is **UNSIGNED**; checksums and GitHub provenance do not replace Authenticode or remove SmartScreen warnings. The previous historically published Core release was v0.10.20 (not accepted as integrated-suite Stable).
 
 > **Current published Core is [v0.10.20](docs/RELEASE_0.10.20.md).** [Release authority and open gates](docs/RELEASE_AUTHORITY.md) distinguish stable Core, separate Browser stable, and unaccepted UI/Updater drafts. `main` is not itself a release.
 
 ![ChatGPT Remote Commander icon](assets/plugin-icon.png)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/GOD13emad/GOD13emad/main/assets/projects/ChatGPTRemoteCommander-hero-20261030.png" alt="ChatGPT Remote Commander — original approved 1774×887 conceptual illustration of controlled remote workflows, not an application screenshot" width="720">
+</p>
 
 Cross-platform Windows + Linux MCP server for controlled remote project and machine access from ChatGPT through OpenAI Secure MCP Tunnel.
 
@@ -16,7 +20,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 [Unified product architecture (accepted design; runtime gates open)](docs/COMMANDER_ARCHITECTURE.md) · [Documentation index](docs/README.md) · [Server install](docs/SERVER_INSTALL.md) · [Current release: v0.10.20](docs/RELEASE_0.10.20.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
-[Finite companion 1.0.0 source-review snapshot](experimental/finite-companion-v1.0.0/README.md) · [گزارش فارسی همراه](docs/COMPANION_1.0.0_20261003_FA.md). This separate, owner-scoped companion was privately accepted on core 0.10.6; it is not a public installer, core upgrade, or general autonomous agent. Compatibility with the current core and same-chat retry recovery remain unproven.
+[Finite companion 1.0.0 source-review snapshot](https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/d7b613178a5bc4d3fa808178adb714fa67fde566/experimental/finite-companion-v1.0.0/README.md) · [گزارش فارسی همراه](docs/COMPANION_1.0.0_20261003_FA.md). This separate, owner-scoped companion was privately accepted on core 0.10.6; it is not a public installer, core upgrade, or general autonomous agent. Compatibility with the current core and same-chat retry recovery remain unproven.
 
 ## Persistent startup
 

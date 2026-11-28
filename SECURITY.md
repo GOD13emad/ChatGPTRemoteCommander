@@ -23,7 +23,7 @@ Never commit Runtime API keys, OpenAI credentials, tunnel profiles containing se
 
 ## Reporting
 
-If you find a security issue, report it privately to the repository owner before publishing exploit details.
+Use the [private vulnerability reporting form](https://github.com/GOD13emad/ChatGPTRemoteCommander/security/advisories/new) (Security → Report a vulnerability). Include the affected version or commit, impact and a minimized reproduction with redacted diagnostics. If the form is unavailable, request a confidential maintainer contact without sharing vulnerability details publicly. Do not publish exploit details, credentials, tunnel configuration, audit logs or private project data in public issues.
 
 ## Power Mode v0.2
 

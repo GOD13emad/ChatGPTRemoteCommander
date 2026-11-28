@@ -4,7 +4,12 @@
 set -euo pipefail
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 NATIVE="$BASE/dist/installer/Remote-Commander-Linux-amd64.deb"
-for tool in node dpkg-deb python3 sha256sum mktemp; do
+# One read-only source-attestation gate may be invoked before any merge.
+# Never infer a candidate's Git identity from the unchanged SemVer filename.
+[[ $# -eq 0 || ( $# -eq 1 && "$1" == --source-preflight ) ]] || {
+  echo RC012_MERGE_ARGS_INVALID >&2; exit 2;
+}
+for tool in node git tar dpkg-deb python3 sha256sum mktemp; do
   command -v "$tool" >/dev/null || { echo "RC012_MERGE_MISSING_TOOL $tool" >&2; exit 2; }
 done
 VERSION="$(node -p 'require(process.argv[1]).version' "$BASE/packaging/unified/package.json")"
@@ -17,6 +22,49 @@ GUI="$BASE/dist/unified/Remote-Commander-Unified-${VERSION}-Linux-amd64.deb"
 [[ -f "$NATIVE" && -f "$GUI" && ! -L "$NATIVE" && ! -L "$GUI" ]] || {
   echo RC012_MERGE_INPUT_MISSING >&2; exit 2;
 }
+# Before expensive unpacking, reject an old build reusing the SAME v0.12
+# version. Only the pinned Git HEAD+tree may be merged or source-preflighted.
+# A successful preflight checks manifest identity, not owner authorization or
+# the bytes of every embedded file; the full merge verifies all Core hashes.
+EXPECTED_HEAD="$(git -C "$BASE" rev-parse HEAD)"
+EXPECTED_TREE="$(git -C "$BASE" rev-parse HEAD^{tree})"
+[[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ && "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]] || {
+  echo RC012_MERGE_EXPECTED_GIT_IDENTITY_INVALID >&2; exit 3;
+}
+dpkg-deb --fsys-tarfile "$GUI" |
+  tar -xOf - './opt/Remote Commander/resources/core/source-manifest.json' |
+  node -e '
+    let raw="",size=0;
+    process.stdin.on("data",chunk=>{
+      size+=chunk.length;
+      if(size>1048576){
+        console.error("RC012_MERGE_MANIFEST_LIMIT");
+        process.exit(3);
+      }
+      raw+=chunk;
+    });
+    process.stdin.on("end",()=>{
+      let m;
+      try{m=JSON.parse(raw);}catch{
+        console.error("RC012_MERGE_MANIFEST_INVALID");
+        process.exitCode=3;return;
+      }
+      if(m?.schema!==2||!Number.isSafeInteger(m.count)||m.count<300
+         ||!m.files||Object.keys(m.files).length!==m.count){
+        console.error("RC012_MERGE_MANIFEST_INVALID");
+        process.exitCode=3;return;
+      }
+      if(m.head!==process.argv[1]||m.tree!==process.argv[2]){
+        console.error("RC012_MERGE_SOURCE_HEAD_MISMATCH");
+        process.exitCode=3;return;
+      }
+      console.log("RC012_MERGE_SOURCE_PIN_VERIFIED");
+    });
+  ' "$EXPECTED_HEAD" "$EXPECTED_TREE"
+if [[ $# -eq 1 ]]; then
+  echo RC012_MERGE_SOURCE_PREFLIGHT_ONLY
+  exit 0
+fi
 pkg() { dpkg-deb --field "$1" "$2"; }
 [[ "$(pkg "$NATIVE" Package)" == chatgpt-remote-commander &&
    "$(pkg "$GUI" Package)" == chatgpt-remote-commander ]] || {
@@ -25,16 +73,24 @@ pkg() { dpkg-deb --field "$1" "$2"; }
 [[ "$(pkg "$NATIVE" Architecture)" == amd64 && "$(pkg "$GUI" Architecture)" == amd64 ]] || {
   echo RC012_MERGE_ARCH_MISMATCH >&2; exit 3;
 }
-dpkg --compare-versions "$(pkg "$GUI" Version)" gt "$(pkg "$NATIVE" Version)" || {
-  echo RC012_MERGE_VERSION_NOT_UPGRADE >&2; exit 3;
+# Both DEBs are source-pinned components of ONE candidate, not successive
+# installed releases. A mixed-version pair is a source identity failure.
+# Upgrade ordering is checked separately in the native migration smoke.
+EXPECTED_DEB_VERSION="${VERSION/-dev./~dev.}"
+NATIVE_DEB_VERSION="$(pkg "$NATIVE" Version)"
+GUI_DEB_VERSION="$(pkg "$GUI" Version)"
+[[ "$NATIVE_DEB_VERSION" == "$EXPECTED_DEB_VERSION" &&
+   "$GUI_DEB_VERSION" == "$EXPECTED_DEB_VERSION" ]] || {
+  echo RC012_MERGE_VERSION_IDENTITY_MISMATCH >&2; exit 3;
 }
+echo "RC012_MERGE_CANONICAL_VERSION_PASS version=$EXPECTED_DEB_VERSION"
 WORK="$(mktemp -d "$BASE/dist/unified/.native-merge-XXXXXX")"
 trap 'rm -rf -- "$WORK"' EXIT
 mkdir "$WORK/native" "$WORK/gui"
 dpkg-deb --raw-extract "$NATIVE" "$WORK/native"
 dpkg-deb --raw-extract "$GUI" "$WORK/gui"
 python3 - "$WORK/native" "$WORK/gui" <<'PY'
-import hashlib, json, os, pathlib, shutil, sys
+import hashlib, json, os, pathlib, shutil, stat, sys
 native=pathlib.Path(sys.argv[1])
 gui=pathlib.Path(sys.argv[2])
 runtime=native/'usr/lib/chatgpt-remote-commander'
@@ -55,6 +111,26 @@ for rel, digest in manifest['files'].items():
     h=lambda f:hashlib.sha256(f.read_bytes()).hexdigest()
     if h(a)!=digest or h(b)!=digest:
         raise SystemExit('RC012_MERGE_SOURCE_DRIFT '+rel)
+# A partial positive-hash check is not enough: old native app builders
+# archived the WHOLE repository, silently adding optional extensions under
+# /usr/lib/.../app even after the GUI Core allowlist had been cleaned.
+allowed=set(manifest['files'])|{'source-manifest.json'}
+for label,root in [('native',core),('gui',gui_core)]:
+    observed=set()
+    for base,dirs,files in os.walk(root,topdown=True,followlinks=False):
+        for name in list(dirs)+files:
+            p=pathlib.Path(base)/name
+            if p.is_symlink():
+                raise SystemExit('RC012_MERGE_PUBLIC_CORE_SYMLINK '+label)
+            if p.is_file():
+                observed.add(p.relative_to(root).as_posix())
+    extra=observed-allowed
+    if extra:
+        raise SystemExit('RC012_MERGE_UNMANIFESTED_PUBLIC_CORE_'+label+' '+sorted(extra)[0])
+    if observed!=allowed:
+        raise SystemExit('RC012_MERGE_PUBLIC_CORE_INCOMPLETE_'+label)
+    if any(p.startswith('extensions/') for p in observed):
+        raise SystemExit('RC012_MERGE_PUBLIC_CORE_EXTENSION_LEAK_'+label)
 required=[
     runtime/'runtime/node',
     runtime/'tunnel/native-tunnel-launch.sh',
@@ -101,21 +177,46 @@ for src,rel in iter_entries(gui):
         raise SystemExit('RC012_MERGE_SPECIAL_FILE '+str(rel))
 native_control=(native/'DEBIAN/control').read_text()
 gui_control=(gui/'DEBIAN/control').read_text()
-def field(s,name):
-    for row in s.splitlines():
+def field(s,name,required=True):
+    # Generated package control fields may use continuation lines.
+    rows=s.splitlines()
+    matches=[]
+    for i,row in enumerate(rows):
         if row.startswith(name+': '):
-            return row.partition(': ')[2]
-    raise SystemExit('RC012_MERGE_MISSING_CONTROL '+name)
+            j=i+1
+            while j<len(rows) and rows[j].startswith((' ','\t')):
+                j+=1
+            matches.append((i,j,' '.join([row.partition(': ')[2]]+[r.strip() for r in rows[i+1:j]])))
+    if len(matches)>1:
+        raise SystemExit('RC012_MERGE_DUPLICATE_CONTROL '+name)
+    if not matches:
+        if required:raise SystemExit('RC012_MERGE_MISSING_CONTROL '+name)
+        return ''
+    return matches[0][2]
+
+def merge_relationship(s,native_control,name,required):
+    specs=[]
+    for value in (field(native_control,name,required),field(s,name,required)):
+        for spec in value.split(','):
+            spec=spec.strip()
+            if spec and spec not in specs:specs.append(spec)
+    if not specs:return s,specs
+    rows=s.splitlines()
+    for i,row in enumerate(rows):
+        if row.startswith(name+': '):
+            j=i+1
+            while j<len(rows) and rows[j].startswith((' ','\t')):j+=1
+            rows[i:j]=[name+': '+', '.join(specs)]
+            return '\n'.join(rows)+'\n',specs
+    i=next((i for i,row in enumerate(rows) if row.startswith('Description: ')),len(rows))
+    rows.insert(i,name+': '+', '.join(specs))
+    return '\n'.join(rows)+'\n',specs
 if field(gui_control,'Package')!=field(native_control,'Package'):
     raise SystemExit('RC012_MERGE_CONTROL_PACKAGE_MISMATCH')
 if field(gui_control,'Architecture')!=field(native_control,'Architecture'):
     raise SystemExit('RC012_MERGE_CONTROL_ARCH_MISMATCH')
-deps=[]
-for spec in (field(native_control,'Depends')+', '+field(gui_control,'Depends')).split(','):
-    spec=spec.strip()
-    if spec and spec not in deps:deps.append(spec)
-gui_control=gui_control.replace('Depends: '+field(gui_control,'Depends'),
-   'Depends: '+', '.join(deps),1)
+gui_control,deps=merge_relationship(gui_control,native_control,'Depends',True)
+gui_control,recommends=merge_relationship(gui_control,native_control,'Recommends',False)
 # The Electron GUI DEB is an input payload, not an authority to install
 # root-running maintainer scripts into the single Native Commander package.
 # The canonical Native DEB deliberately has no maintainer hooks. Fail on
@@ -135,6 +236,43 @@ for p in sorted((gui/'DEBIAN').iterdir()):
 for p in (native/'DEBIAN').iterdir():
     if p.name not in allowed_control:
         raise SystemExit('RC012_MERGE_NATIVE_CONTROL_UNEXPECTED '+p.name)
+# Recalculate the final merged payload, not the input GUI DEB.
+# Debian Policy 5.6.20: per-file KiB rounding; count hardlinked data once.
+def installed_size_kib(root):
+    total=1  # package root directory
+    seen=set()
+    for entry,rel in iter_entries(root):
+        if rel.parts[0]=='DEBIAN':continue
+        info=entry.lstat()
+        if stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+            key=(info.st_dev,info.st_ino)
+            if info.st_nlink>1:
+                if key in seen:continue
+                seen.add(key)
+            total+=(info.st_size+1023)//1024
+        else:
+            total+=1
+    return total
+
+def set_installed_size(control,size):
+    rows=control.splitlines()
+    matches=[]
+    for i,row in enumerate(rows):
+        if row.partition(':')[0].lower()=='installed-size':
+            j=i+1
+            while j<len(rows) and rows[j].startswith((' ','\t')):j+=1
+            matches.append((i,j))
+    if len(matches)>1:raise SystemExit('RC012_MERGE_DUPLICATE_CONTROL Installed-Size')
+    if matches:
+        i,j=matches[0]
+        rows[i:j]=[f'Installed-Size: {size}']
+    else:
+        i=next((i for i,row in enumerate(rows) if row.startswith('Description: ')),len(rows))
+        rows.insert(i,f'Installed-Size: {size}')
+    return '\n'.join(rows)+'\n'
+
+size_kib=installed_size_kib(native)
+gui_control=set_installed_size(gui_control,size_kib)
 (native/'DEBIAN/control').write_text(gui_control)
 # Build one truthful inventory of every installed regular file.
 md5=[]
@@ -147,8 +285,13 @@ print('UNIFIED_NATIVE_CORE_TUNNEL_GUI_STAGED',
       json.dumps({'verifiedCoreFiles':manifest['count'],'nativeTunnel':True,
        'desktop':True,'controlDependencies':len(deps),'totalFiles':len(md5)}))
 PY
+# Every installed regular file and directory will become root-owned. Do not
+# carry the source checkout's collaborative-group write bits into the package.
+find "$WORK/native" -type d -exec chmod go-w {} +
+find "$WORK/native" -type f -exec chmod go-w {} +
 TARGET="$WORK/combined.deb"
 dpkg-deb --build --root-owner-group "$WORK/native" "$TARGET" >/dev/null
+python3 "$BASE/tools/verify-native-package-permissions.py" "$TARGET"
 for f in   'usr/lib/chatgpt-remote-commander/tunnel/native-tunnel-launch.sh'   'usr/lib/chatgpt-remote-commander/tunnel/tunnel-client'   'usr/lib/chatgpt-remote-commander/runtime/node'   'usr/lib/systemd/user/chatgpt-remote-commander-tunnel@.service'   'opt/Remote Commander/remote-commander-unified'; do
   dpkg-deb --contents "$TARGET" | grep -F "./$f" >/dev/null || {
     echo "RC012_MERGED_PACKAGE_MISSING $f" >&2; exit 5;

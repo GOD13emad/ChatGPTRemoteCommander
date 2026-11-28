@@ -1,4 +1,115 @@
-# Release Train 0.12 — `0.12.0-dev.9` candidate (NoPromote)
+# Release Train 0.12 — 0.12.0-dev.49 source candidate (NoPromote)
+
+## Dev.38 historical release-train README assertion (28 November 2026) — NoPromote
+
+Hosted dev.37 Linux CI and Linux clean-server bootstrap failed in
+test/release-train-0.11.test.mjs because a historical release safety test
+required the obsolete public README string claiming no accepted Stable
+without distinguishing the new 0.12 integrated Stable target. Dev.38
+preserves the 0.11 release and no-delete/no-promotion checks and additionally
+asserts exact current 0.12 firstStable=0.12.0, publishApproved=false,
+installedPromotionApproved=false, and explicit public README text separating
+unpromoted CI artifacts from admitted installers. No release flags,
+runtime authority or installer behavior are relaxed. The isolated original
+regression and dev.37 onboarding assertions pass locally; full cross-OS
+current-head qualification is required.
+
+
+## Dev.37 onboarding qualification assertion correction (28 November 2026) — NoPromote
+
+Hosted dev.36 Server Install Canary failed on both Windows and Linux because
+the onboarding validator required an obsolete START_HERE intro phrase, while
+the current guide distinguishes published historical installers from the
+unpromoted 0.12 native NSIS/DEB pilot. For 0.12, the corrected validator checks
+four specific boundaries: published-release scope, unpromoted native pilot,
+no direct CI-artifact installation, and one native install per host. Earlier
+non-0.12 trains retain their historical validation. No runtime permission or
+release gate was weakened; local onboarding and version checks PASS.
+Fresh current-head CI and independent provenance are still required.
+
+
+## Dev.36 bounded J01 Worker grant lifetime (28 November 2026) — NoPromote
+
+A live Emad Laptop dev.26 protected owner pair obtained genuine native J01,
+read-only parent Worker and exact system_status grants; the actual protected
+tool call remained HTTP 503 pending signed Worker registration. The separate
+registration consent could not complete before the 60-second parent expiry,
+and the owner-local readback confirmed workerActive=false without cutover.
+
+Dev.36 changes only the read-only canary parent/tool grant time ceiling from
+60 seconds to min(current J01 expiry, five minutes). Every operation still
+requires verified same-owner/same-Tunnel/key evidence, exact tool scope,
+native consent and existing revocation. This is not a persistent Full Access
+grant or a general privilege escalation. An isolated regression first failed
+on dev.35 at +65 seconds (RED 7 PASS / 1 FAIL), then succeeded with the
+bounded correction (GREEN 9/9). Related Linux qualification of four suites
+was 47 PASS / 0 FAIL. Full current-head CI, signed release assets, native
+installation, real signed Worker execution, protected cutover, and production
+rollback require separate acceptance. Keep Draft / NoPromote.
+
+
+## Dev.35 asynchronous owner-admin Unix response (28 November 2026) — NoPromote
+
+The same-owner fixed-action CLI no longer sends an immediate write half-close:
+`socket.write(line)` retains the request socket until the broker replies after
+slow native owner evidence checks and explicit consent. The real Emad Laptop
+dev.26 owner-admin `inspect` returned empty bytes with the old CLI but correctly
+reported `nativeOwnerBound=true` with the delayed-response-safe transport.
+A new isolated child-process regression reproduced `RESPONSE_INVALID` (RED)
+under a 60 ms asynchronous inspect, and after the fix the exact inspect and
+slow native Worker approval tests plus fixed-action denial contracts passed.
+Native J01 was observed on the live dev.26 protected candidate for the exact
+owner pair; transient read-only Worker grant later expired before exact-tool
+grant acceptance, so no protected production cutover or Worker action is
+claimed. This is a new source candidate, not an authorized installed package;
+release metadata remains NoPromote and all fleet/migration gates remain open.
+
+## Dev.34 graceful protected Core shutdown (28 November 2026) — NoPromote
+
+The opt-in protected server now traps SIGTERM and SIGINT and closes the
+Core-owned HTTPS/mTLS runtime and exact owner-admin Unix socket before exit,
+with bounded shutdown, fail-closed errors and no synthetic J01/Worker grant.
+The Linux fixture first reproduced premature signal termination (RED), then
+verified the actual entrypoint closes the protected runtime (GREEN). The
+Unix-socket permission regression now sets its intended insecure fixture
+permissions explicitly, independent of the host umask. This source candidate
+is not a production cutover, installed-package upgrade or public release.
+The active 0.11 Tunnel remains unchanged; J01 admission and accepted rollback
+are separate release gates.
+
+## Dev.13 upgrade qualification candidate
+
+Dev.13 combines independently pinned rollback provenance and exact signer
+checks with the scoped build-tool compatibility fix. Dev.12 (`46a8256`) is the
+observed Windows baseline. The same source version identifies Core, Desktop,
+NSIS, DEB, and plugin metadata. Hosted provenance for the candidate and
+native owner consent are required before owner-host installation.
+
+## Dev.12 source-only package closure candidate (23 November 2026)
+
+This monotonic source revision is stacked on the exact owner Tunnel planner
+import-closure fix in PR #558, SHA 889329f69d61e53c44ad6bb33397da67db8bee89.
+It aligns Core, unified GUI/NSIS/DEB metadata, Desktop Assembly/FileVersion,
+plugin templates, release-train manifest and exact-version tests.
+This change alone does not build, install, authorize or publish an artifact.
+Only a **newly signed** dev.12 package, accepted by an independent reviewer
+and verified at its exact SHA, can be considered for owner-local QA installation.
+The signed historic dev.11 package, running services and Tunnel remain unchanged.
+J01/Worker consent, live mTLS migration, rollback, and Stable release are OPEN.
+
+
+## Dev.11 upgrade-source proposal (23 November 2026)
+
+The shared source identity advances Core, Desktop, NSIS, DEB and plugin templates to dev.11. Owner Linux already has dev.10 and must not be reinstalled with a same-version candidate. This proposal derives from tested PR 556 source 8240784705a4e2802a4c70be43e71f4922f52ed0.
+
+Status remains INTEGRATION_CANDIDATE_NOT_FINAL, NoPromote. The new exact-source signed binaries, operator authorization, current-chat grants, service rollback and live cutover require independent validation. Historical Dev.10 evidence below is not transferred to the next SHA.
+
+## Dev.10 source preparation (22 November 2026)
+
+Candidate derived from independently approved/merged universal installer engine, merge commit `194c5e46229704273c465bd5e4d9fbc158b0c5de`. Monotonic dev.10 version aligns Core, desktop, unified NSIS/DEB, package lock and plugin template metadata. This branch remains **INTEGRATION_CANDIDATE_NOT_FINAL**: this source edit is not a built/pinned native artifact, owner-approved installation, positive J01/Signed Worker, live mTLS Cutover, package rollback, stable publication or fleet acceptance. Historical dev.9 evidence below remains scoped to its original source.
+
+## Historical dev.9 checkpoint
+
 
 ## Current candidate checkpoint — 2026-11-22
 
@@ -168,3 +279,8 @@ Exact candidate source: `integration/v012-final-acceptance`, HEAD `0a1f6cf6f2e8f
 **Release blockers remain:** production G1/J01 authenticated same-chat authorization and same-owner GUI consent; multi-user permission and three-tier FULL_ACCESS/broker acceptance; all-product Windows/Linux/headless builds and native Control Center/Browser acceptance; stable install roots; protected installed rollback; per-host boot/login and eight-connector mapping/receipts; signing or independently approved artifact provenance. Keep all existing hosts on their current installation until each exact candidate has an authorized reversible canary, health readback and rollback proof. Keep manifest status `INTEGRATION_CANDIDATE_NOT_FINAL`, all acceptance flags false, `acceptedHostIds=[]`, and publication/autoupdate/installed-promotion approvals false.
 
 **Next action:** finish R157 and inspect its exact result; then continue only with independently provable acceptance work. Do not promote, merge the Draft, create `v0.12.0`, or enable fleet updates while the external evidence gates remain open.
+
+
+## Dev.39 source identity and native server qualification corrections (28 November 2026) — NoPromote
+
+The dev.39 release train retains development, draft, no-promotion and native-owner-admission gates. It carries the exact signed Worker 120-second enrollment TTL fix from integration PR #660. Seven source identities were normalized in PR #661; subsequent clean-server Windows and Linux bootstrap CI both exposed two further stale version fields in the Windows dashboard project (Version, FileVersion and AssemblyVersion), found in the exact-head source audit. This revision aligns those metadata fields to dev.39 / 0.12.0.39. It does not authorize release, automatic update, Full Access or live Tunnel cutover; new exact-head CI, independent installer/rollback provenance, native owner consent, installed positive Worker registration and protected Main Route acceptance remain required.

@@ -148,3 +148,18 @@ test('anonymous quarantine probe fails closed if either protected method is acce
     });
   }
 });
+
+test('security: doctor only accepts the exact MCP path and explicit loopback port', () => {
+  for (const url of [
+    'http://127.0.0.1:47831/admin/mcp',
+    'http://127.0.0.1:47831/debug/mcp',
+    'http://127.0.0.1/mcp',
+    'http://localhost:47831/mcp/../other/mcp'
+  ]) {
+    assert.throws(() => validateEndpoint(url), /endpoint|port|path|mcp/i, url);
+  }
+  assert.equal(validateEndpoint('https://localhost:47831/mcp').href,
+    'https://localhost:47831/mcp');
+  assert.equal(validateEndpoint('http://127.0.0.1:47831/mcp').href,
+    'http://127.0.0.1:47831/mcp');
+});

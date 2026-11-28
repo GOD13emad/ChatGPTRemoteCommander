@@ -18,7 +18,7 @@ test('privileged candidate blocks anonymous/forged legacy JSON RPC and browser-o
   let child;
   try {
     await fs.mkdir(path.join(root,'src'));
-    for(const f of ['server-v0.3.mjs','transport-guard.mjs','full-access-http-quarantine.mjs','full-access-status.mjs','effective-power-mode.mjs','capability-profile.mjs','privilege-client.mjs','windows-admin-token.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','optional-event-hook.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
+    for(const f of ['server-v0.3.mjs','runtime-version.mjs','file-write-guard.mjs','transport-guard.mjs','full-access-http-quarantine.mjs','full-access-status.mjs','effective-power-mode.mjs','capability-profile.mjs','privilege-client.mjs','windows-admin-token.mjs','gui-universal-policy.mjs','gui-native-session-provider.mjs','gui-windows-native-provider.mjs','gui-linux-input-capture-provider.mjs','gui-tools-windows.mjs','gui-linux-session-route.mjs','gui-owner-delegation.mjs','owner-workspace-delegation.mjs','workspace-target-tools.mjs','workspace-accessibility-tools.mjs','owner-workspace-proxy.mjs','workspace-tools.mjs','workspace-routing.mjs','workspace-target-journal.mjs','gui-target-only-policy.mjs','gui-incident-store.mjs','gui-contract.mjs','gui-process.mjs','browser-tools.mjs','browser-contract.mjs','browser-process.mjs','browser-owned-processes.mjs','browser-lease-store.mjs','browser-existing-session-route.mjs','browser-owner-window-inventory.mjs','browser-profile-inventory.mjs','browser-file-transfer-guard.mjs','browser-companion-monitor.mjs','browser-companion-windows-private.mjs','schema-validator.mjs','async-operations.mjs','retry-guard.mjs','agent-extensions.mjs','optional-event-hook.mjs','no-codex-policy.mjs','conversation-store.mjs','conversation-continuation.mjs']) await fs.copyFile(new URL('../src/'+f,import.meta.url),path.join(root,'src',f));
     await fs.writeFile(path.join(root,'src','security-v0.3.mjs'),'export const canonicalizeRoots = async x=>x;');
     await fs.writeFile(path.join(root,'src','tools-v0.3.mjs'),'export const audit=async()=>{}; export const listDirectory=async()=>({stub:true}); export const readText=listDirectory; export const runProjectCommand=listDirectory; export const writeText=listDirectory; export const prepareProjectCommand=async()=>({file:process.execPath,args:[],cwd:process.cwd(),timeoutMs:1000,outputLimit:4096});');
     await fs.writeFile(path.join(root,'src','power-tools-v0.3.mjs'),'export const powerToolDefinitions=[]; export const executePowerTool=async()=>({stub:true}); export const prepareShellCommand=async()=>({file:process.execPath,args:[],cwd:process.cwd(),timeoutMs:1000,outputLimit:4096}); export const prepareDeferredPowerMutation=async()=>({kind:"power-tool",timeoutMs:86400000});');
@@ -27,7 +27,7 @@ test('privileged candidate blocks anonymous/forged legacy JSON RPC and browser-o
     await fs.writeFile(path.join(root,'src','delivery-store.mjs'),'import path from "node:path"; export const deliveryLocation=()=>({directory:path.join(path.dirname(process.env.REMOTE_COMMANDER_CONFIG),".delivery"),scope:"stub",forbiddenRoots:[]}); export class DeliveryStore { constructor(location){this.directory=location.directory;this.scope=location.scope;} health(){return {durable:true,schema:1,pending:0,deadLetter:0};} beacon(){return {pending:0,deadLetter:0,items:[],hostWakeAvailable:false,identityBoundary:"TRUSTED_PROFILE_NOT_AUTHENTICATED_CHAT"};} }');
     await fs.writeFile(path.join(root,'src','delivery-tools.mjs'),'export const createDeliveryTools=store=>({definitions:[],status:()=>store.health(),execute:async()=>({stub:true})});');
     await fs.writeFile(path.join(root,'src','mutation-idempotency.mjs'),'export class MutationIdempotencyStore { constructor(){} status(){return {enabled:true,durable:true,rawArgumentsStored:false,states:{}};} async execute(_request,effect){return effect();} }');
-    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],asyncOperations:{enabled:true,stateDir:path.join(root,'operations'),deliveryReconcileMs:60000,deliveryReconcileBatch:1},capabilityProfile:{id:'qa-http',tier:'FULL_POWER',explicitlyAuthorized:true,disabledCapabilities:[]},powerMode:{enabled:true,fullFilesystem:true,allowShell:true,allowProcessControl:true,blockedShellPatterns:[],guiControl:{enabled:true}}}));
+    await fs.writeFile(path.join(root,'config.json'),JSON.stringify({host:'127.0.0.1',port,allowedRoots:[root],allowedPrograms:[],browserCompanionMonitor:{enabled:false},asyncOperations:{enabled:true,stateDir:path.join(root,'operations'),deliveryReconcileMs:60000,deliveryReconcileBatch:1},capabilityProfile:{id:'qa-http',tier:'FULL_POWER',explicitlyAuthorized:true,disabledCapabilities:[]},powerMode:{enabled:true,fullFilesystem:true,allowShell:true,allowProcessControl:true,blockedShellPatterns:[],guiControl:{enabled:true}}}));
     child=spawn(process.execPath,[path.join(root,'src','server-v0.3.mjs')],{env:{...process.env,REMOTE_COMMANDER_CONFIG:path.join(root,'config.json')},stdio:['ignore','pipe','pipe']});
     let stderr='';child.stderr.on('data',c=>stderr+=c);
     let alive=false;
@@ -74,6 +74,51 @@ test('privileged candidate blocks anonymous/forged legacy JSON RPC and browser-o
     const unknown=await fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:null}})});
     assert.equal(unknown.status,403);
     assert.deepEqual(await unknown.json(),{error:'trusted_transport_required'});
+    // Linux service SIGTERM must close the actual entrypoint's owned protected
+    // runtime, even though this fixture intentionally has no owner authority.
+    if(process.platform==='linux'){
+      const firstExit=once(child,'exit');
+      child.kill('SIGTERM');
+      await firstExit;
+      child=null;
+      const socketPath=path.join(root,'owner.sock');
+      const marker=path.join(root,'protected-closed');
+      const bootstrap=path.join(root,'fixture-bootstrap.mjs');
+      await fs.writeFile(bootstrap,'export const createOwnerPrivatePairBootstrap=async()=>({security:{}});');
+      await fs.writeFile(path.join(root,'src','v012-private-core-runtime.mjs'),`
+        import net from 'node:net';
+        import {writeFile} from 'node:fs/promises';
+        export function createV012PrivateCoreRuntime(){
+          const socket=net.createServer();
+          return {status:{phase:'LISTENING'},
+            start:()=>new Promise((resolve,reject)=>{
+              socket.once('error',reject);socket.listen(${JSON.stringify(socketPath)},resolve);
+            }),
+            async close(){await new Promise((resolve,reject)=>socket.close(error=>error?reject(error):resolve()));
+              await writeFile(${JSON.stringify(marker)},'closed');}
+          };
+        }
+      `);
+      child=spawn(process.execPath,[path.join(root,'src','server-v0.3.mjs')],{
+        env:{...process.env,REMOTE_COMMANDER_CONFIG:path.join(root,'config.json'),REMOTE_COMMANDER_PRIVATE_BOOTSTRAP_MODULE:bootstrap},
+        stdio:['ignore','ignore','pipe']});
+      child.stderr.on('data',c=>stderr+=c);
+      let wired=false;
+      for(let i=0;i<400;i++){
+        try{const h=await (await fetch(`http://127.0.0.1:${port}/health`,{signal:AbortSignal.timeout(250)})).json();
+          if(h.protectedIngress?.wired===true){assert.equal(h.protectedIngress.ready,false);wired=true;break;}}
+        catch{}await wait(25);
+      }
+      assert.equal(wired,true,stderr);
+      assert.equal((await fs.lstat(socketPath)).isSocket(),true);
+      const exit=once(child,'exit');child.kill('SIGTERM');
+      const [code,signal]=await exit;
+      assert.equal(code,0,'protected runtime shutdown must complete before process exit');
+      assert.equal(signal,null);
+      assert.equal(await fs.readFile(marker,'utf8'),'closed');
+      await assert.rejects(fs.lstat(socketPath),{code:'ENOENT'});
+      child=null;
+    }
   } finally {
     if(child){child.kill();await Promise.race([once(child,'close'),wait(2000)]);}
     await fs.rm(root,{recursive:true,force:true});
