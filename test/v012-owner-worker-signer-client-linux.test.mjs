@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createOwnerNativeSignedWorkerClient,safeOwnerSignerFailureCode}
+import {createOwnerNativeSignedWorkerClient,safeOwnerSignerFailureCode,nativeSignerSourceTrustFailure}
   from '../src/v012-owner-worker-signer-client-linux.mjs';
 function ownerWitnessOptions(home,profile='qa-profile'){
  return {
@@ -47,4 +47,21 @@ test('bounded transient signer stderr classification never exposes mixed data',(
   'RC012_OWNER_SIGNER_UNIT_FAILED');
  assert.equal(safeOwnerSignerFailureCode('X'.repeat(20000)),
   'RC012_OWNER_SIGNER_UNIT_FAILED');
+});
+
+test('packaged native signer source trust rejects each unsafe metadata cause without exception text',()=>{
+ const good={isFile:()=>true,isSymbolicLink:()=>false,
+  nlink:1,uid:0,mode:0o100644,size:4698};
+ const classify=x=>nativeSignerSourceTrustFailure(x,1000);
+ assert.equal(classify(good),null);
+ assert.equal(classify({...good,uid:1000,mode:0o100600}),null);
+ assert.equal(classify({...good,isFile:()=>false}),'RC012_OWNER_SIGNER_SOURCE_NOT_FILE');
+ assert.equal(classify({...good,isSymbolicLink:()=>true}),'RC012_OWNER_SIGNER_SOURCE_ALIAS');
+ assert.equal(classify({...good,nlink:2}),'RC012_OWNER_SIGNER_SOURCE_LINK_COUNT');
+ assert.equal(classify({...good,uid:2000}),'RC012_OWNER_SIGNER_SOURCE_OWNER_CHANGED');
+ assert.equal(classify({...good,mode:0o100664}),'RC012_OWNER_SIGNER_SOURCE_WRITABLE');
+ assert.equal(classify({...good,mode:0o100646}),'RC012_OWNER_SIGNER_SOURCE_WRITABLE');
+ assert.equal(classify({...good,size:262145}),'RC012_OWNER_SIGNER_SOURCE_BOUNDS');
+ assert.equal(nativeSignerSourceTrustFailure(good,0),'RC012_OWNER_SIGNER_SOURCE_OWNER_INVALID');
+ assert.equal(nativeSignerSourceTrustFailure(null,1000),'RC012_OWNER_SIGNER_SOURCE_NOT_FILE');
 });

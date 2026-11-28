@@ -31,14 +31,25 @@ function privateCredential(p,uid){
     ||(s.mode&0o077)!==0||s.size<32||s.size>262144)
     fail('RC012_OWNER_SIGNER_CREDENTIAL_NOT_PRIVATE');
 }
+// Diagnostic categories preserve ALL original hard-deny conditions. Nothing
+// about an untrusted file, path, identity or source bytes is logged or accepted.
+export function nativeSignerSourceTrustFailure(stat,uid){
+  if(!Number.isSafeInteger(uid)||uid<1)return 'RC012_OWNER_SIGNER_SOURCE_OWNER_INVALID';
+  if(!stat||typeof stat.isFile!=='function'||typeof stat.isSymbolicLink!=='function'
+    ||!stat.isFile())return 'RC012_OWNER_SIGNER_SOURCE_NOT_FILE';
+  if(stat.isSymbolicLink())return 'RC012_OWNER_SIGNER_SOURCE_ALIAS';
+  if(stat.nlink!==1)return 'RC012_OWNER_SIGNER_SOURCE_LINK_COUNT';
+  if(![0,uid].includes(stat.uid))return 'RC012_OWNER_SIGNER_SOURCE_OWNER_CHANGED';
+  if((stat.mode&0o022)!==0)return 'RC012_OWNER_SIGNER_SOURCE_WRITABLE';
+  if(!Number.isSafeInteger(stat.size)||stat.size<32||stat.size>262144)
+    return 'RC012_OWNER_SIGNER_SOURCE_BOUNDS';
+  return null;
+}
 function trustedSignerSource(p,uid){
-  // Packaged signed/unsigned binaries normally have read-only public 0644
-  // source files owned by root, not 0600 per-owner credentials.
-  const s=fs.lstatSync(p);
-  if(!s.isFile()||s.isSymbolicLink()||s.nlink!==1
-    ||![0,uid].includes(s.uid)||(s.mode&0o022)!==0
-    ||s.size<32||s.size>262144)
-    fail('RC012_OWNER_SIGNER_SOURCE_UNTRUSTED');
+  // Root-owned 0644 / owner-owned user-local immutable source only. Preserve
+  // all original predicates and return just a bounded root-cause category.
+  const reason=nativeSignerSourceTrustFailure(fs.lstatSync(p),uid);
+  if(reason)fail(reason);
 }
 function boundedRun(args,input){
   return new Promise((resolve,reject)=>{
