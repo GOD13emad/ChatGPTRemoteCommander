@@ -1,4 +1,9 @@
-# Release Train 0.12 — 0.12.0-dev.49 source candidate (NoPromote)
+# Release Train 0.12 — 0.12.0-dev.50 source candidate (NoPromote)
+
+## Dev.50 native signer diagnostic candidate (28 November 2026) — NoPromote
+
+Dev.49 remains a source-only development baseline. This separate dev.50 candidate ports the exact fail-closed native signer stage classification from reviewed dev.45 diagnosis, retaining the same J01, per-tool and signed Worker enrollment authorization gates. No production signing, unsealing, native service replacement, fleet rollout or stable promotion is implied by a source build or CI green status. Windows deterministic tests verify sanitized error taxonomy (no key material, host-secret values, arbitrary stack traces, or raw exception text). Acceptance requires Linux native signed-key/Worker E2E tests, authenticated ChatGPT `system_status`, independent owner approval and verified safe Rollback before any subsequent cutover.
+
 
 ## Dev.38 historical release-train README assertion (28 November 2026) — NoPromote
 
