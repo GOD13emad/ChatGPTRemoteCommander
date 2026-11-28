@@ -103,7 +103,7 @@ jobs:
           $report=Get-Content $reportPath -Raw -Encoding UTF8|ConvertFrom-Json
           if($report.status -ne 'CANDIDATE_PASS' -or [string]$report.commit -ne $sha){throw ('R157_BAD_RESULT_'+$report.status)}
           $profiles=@($report.profiles)
-          if($profiles.Count -ne 1 -or $profiles[0].profile -ne 'default' -or $profiles[0].doctor -ne 'PASS' -or $profiles[0].hardware -ne 'PASS' -or $profiles[0].shadowStore -ne 'PASS' -or $profiles[0].liveStoreCompatibility -ne 'PASS'){throw 'R157_PROFILE_GATE_FAIL'}
+          if($profiles.Count -ne 1 -or $profiles[0].profile -ne 'default' -or $profiles[0].doctor -ne 'PASS' -or $profiles[0].hardware -ne 'PASS' -or $profiles[0].shadowStore -ne 'PASS' -or $profiles[0].liveStoreCompatibility -ne 'NOT_TESTED_SHADOW_ONLY'){throw 'R157_PROFILE_GATE_FAIL'}
           $jobs=@(Get-ChildItem (Join-Path $state 'update-logs') -File -Filter 'qualification-job-*.json')
           if($jobs.Count -ne 3){throw ('R157_JOB_COUNT_'+$jobs.Count)}
           foreach($file in $jobs){
@@ -127,7 +127,7 @@ jobs:
           if(-not(Test-Path $stage) -or (git -C $stage rev-parse HEAD).Trim() -ne $sha){throw 'R157_EXACT_STAGE_MISSING'}
           $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_UPDATER_NOPROMOTE'
             exactCommit=$sha;qualifierReceipts=3;doctor='PASS';shadowStore='PASS'
-            liveStoreCompatibility='PASS';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
+            liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
             verifiedUtc=[DateTime]::UtcNow.ToString('o')}
           $dest=Join-Path $root 'RETURN_R157.json'
           [IO.File]::WriteAllText($dest,(ConvertTo-Json -InputObject $receipt -Depth 5)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))

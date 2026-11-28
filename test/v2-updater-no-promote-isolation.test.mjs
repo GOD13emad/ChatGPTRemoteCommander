@@ -83,3 +83,12 @@ test('R157 hosted Windows fixture keeps private delivery outside its project roo
   assert.equal(store.directory,fs.realpathSync.native(privateState));
  }finally{store?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('R157 NoPromote verification accepts shadow-only evidence without claiming live-store PASS',()=>{
+ const workflow=fs.readFileSync(path.join(root,'.github/workflows/windows-updater-e2e-r157.yml'),'utf8');
+ assert.match(windows,/if\(\$NoPromote\)\{\$liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY'\}/);
+ assert.match(workflow,/\$profiles\[0\]\.liveStoreCompatibility -ne 'NOT_TESTED_SHADOW_ONLY'/);
+ assert.match(workflow,/liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY';ownedChildren=0;promoted=\$false/);
+ assert.doesNotMatch(workflow,/\$profiles\[0\]\.liveStoreCompatibility -ne 'PASS'/);
+ assert.doesNotMatch(workflow,/liveStoreCompatibility='PASS';ownedChildren=0/);
+});
