@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createOwnerNativeSignedWorkerClient,safeOwnerSignerFailureCode,nativeSignerSourceTrustFailure}
+import {createOwnerNativeSignedWorkerClient,safeOwnerSignerFailureCode,nativeSignerSourceTrustFailure,packagedSignerRootMappedTrust}
   from '../src/v012-owner-worker-signer-client-linux.mjs';
 function ownerWitnessOptions(home,profile='qa-profile'){
  return {
@@ -64,4 +64,20 @@ test('packaged native signer source trust rejects each unsafe metadata cause wit
  assert.equal(classify({...good,size:262145}),'RC012_OWNER_SIGNER_SOURCE_BOUNDS');
  assert.equal(nativeSignerSourceTrustFailure(good,0),'RC012_OWNER_SIGNER_SOURCE_OWNER_INVALID');
  assert.equal(nativeSignerSourceTrustFailure(null,1000),'RC012_OWNER_SIGNER_SOURCE_NOT_FILE');
+});
+
+test('systemd user-namespace root overflow is accepted only for exact signed package member', {skip:process.platform!=='linux'},()=>{
+  const p='/usr/lib/chatgpt-remote-commander/app/tools/v012-native-worker-registration-signer-linux.mjs';
+  const uid=process.getuid(),stat=fs.lstatSync(p);
+  const lines=fs.readFileSync('/proc/self/uid_map','utf8').trim().split(/\r?\n/);
+  const row=lines.length===1?lines[0].trim().split(/\s+/).map(Number):[];
+  const mapped=row.length===3&&row[0]===uid&&row[1]===uid&&row[2]===1&&stat.uid===65534;
+  assert.equal(mapped,process.env.RC012_EXPECT_USERNS==='1');
+  assert.equal(packagedSignerRootMappedTrust(p,uid),mapped);
+  assert.equal(packagedSignerRootMappedTrust(p+'.untrusted',uid),false);
+  const bad={isFile:()=>true,isSymbolicLink:()=>false,
+    uid:65534,nlink:2,mode:0o100644,size:4698};
+  assert.equal(packagedSignerRootMappedTrust(p,uid,bad),false);
+  assert.equal(packagedSignerRootMappedTrust(p,0),false);
+  assert.equal(packagedSignerRootMappedTrust('/tmp/arbitrary-signer.mjs',uid),false);
 });
