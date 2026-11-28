@@ -481,8 +481,10 @@ export class WorkflowStore {
       this.#leaseDb.prepare(
         'INSERT OR IGNORE INTO worker_identity_meta(singleton,schema_version,event_count,head_digest) VALUES(1,1,0,?)'
       ).run(WORKER_IDENTITY_ZERO);
-      this.#leaseDb.exec('COMMIT');
+      // Verify metadata, events and projection under the same initialization
+      // transaction; another writer cannot interleave between these reads.
       this.#verifyWorkerIdentityJournal();
+      this.#leaseDb.exec('COMMIT');
     } catch(error) {
       try { this.#leaseDb.exec('ROLLBACK'); } catch {}
       try { this.#leaseDb.close(); } catch {}
