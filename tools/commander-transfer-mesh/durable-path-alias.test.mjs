@@ -7,13 +7,18 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 
 const cli=fileURLToPath(new URL('./durable-send.mjs',import.meta.url));
-const call=(root,...argv)=>JSON.parse(execFileSync(process.execPath,[cli,...argv],{
+function installedCli(root){
+ const target=path.join(root,'durable-send.mjs');
+ if(!fs.existsSync(target))fs.copyFileSync(cli,target,fs.constants.COPYFILE_EXCL);
+ return target;
+}
+const call=(root,...argv)=>JSON.parse(execFileSync(process.execPath,[installedCli(root),...argv],{
   env:{...process.env,COMMANDER_TRANSFER_HOME:root},encoding:'utf8',timeout:6000
 }).trim());
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 test('durable transfer refuses a symlinked internal publication root', {skip:process.platform==='win32'},async()=>{
- const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-path-alias-'));
+ const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-path-alias-')));
  const home=path.join(base,'owner'),outside=path.join(base,'outside');
  const id='alias-reject-001';
  try{
@@ -49,7 +54,7 @@ for(const components of [
  ['pairs','Linux'],['pairs','Linux','transfers']
 ]){
  test('durable enqueue fails closed for aliased '+components.join('/'),{skip:process.platform==='win32'},()=>{
-  const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-alias-fixture-'));
+  const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-alias-fixture-')));
   const home=path.join(base,'owner'),outside=path.join(base,'outside');
   try{
    fs.mkdirSync(home);fs.mkdirSync(outside);
@@ -68,12 +73,12 @@ for(const components of [
 
 
 test('durable transfer rejects an aliased configured root before inspecting queue state',{skip:process.platform==='win32'},()=>{
- const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-root-alias-'));
+ const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-root-alias-')));
  const home=path.join(base,'owner'),outside=path.join(base,'outside');
  try{
-  fs.mkdirSync(outside);fs.symlinkSync(outside,home,'dir');
-  assert.throws(()=>call(home,'job-status','--peer','Linux','--id','root-alias-001'),/TRANSFER_ROOT_UNSAFE/);
-  assert.deepEqual(fs.readdirSync(outside),[]);
+  fs.mkdirSync(outside);installedCli(outside);fs.symlinkSync(outside,home,'dir');
+  assert.throws(()=>call(home,'job-status','--peer','Linux','--id','root-alias-001'),/TRANSFER_ROOT_MISMATCH|TRANSFER_ROOT_UNSAFE/);
+  assert.deepEqual(fs.readdirSync(outside),['durable-send.mjs']);
  }finally{fs.rmSync(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
@@ -82,30 +87,30 @@ test('durable transfer rejects an alias in the configured root ancestry',()=>{
  const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-root-ancestor-')));
  const outside=path.join(base,'outside'),alias=path.join(base,'alias');
  try{
-  fs.mkdirSync(path.join(outside,'owner'),{recursive:true});
+  fs.mkdirSync(path.join(outside,'owner'),{recursive:true});installedCli(path.join(outside,'owner'));
   fs.symlinkSync(outside,alias,process.platform==='win32'?'junction':'dir');
   const home=path.join(alias,'owner');
   assert.equal(fs.lstatSync(home).isSymbolicLink(),false);
-  assert.throws(()=>call(home,'job-status','--peer','Linux','--id','ancestor-alias-001'),/TRANSFER_ROOT_UNSAFE/);
-  assert.deepEqual(fs.readdirSync(path.join(outside,'owner')),[]);
+  assert.throws(()=>call(home,'job-status','--peer','Linux','--id','ancestor-alias-001'),/TRANSFER_ROOT_MISMATCH|TRANSFER_ROOT_UNSAFE/);
+  assert.deepEqual(fs.readdirSync(path.join(outside,'owner')),['durable-send.mjs']);
  }finally{fs.rmSync(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
 // owner root and internal file custody: fixtures are confined to a temporary tree.
 test('durable transfer refuses an ambiguous relative configured root',()=>{
- const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-relative-root-'));
+ const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-relative-root-')));
  try{
   const home=path.join(base,'owner');fs.mkdirSync(home);
   fs.mkdirSync(path.join(home,'jobs','Linux'),{recursive:true});
   fs.writeFileSync(path.join(home,'jobs','Linux','custody-001.json'),JSON.stringify({status:'PUBLISHED',bytes:1}));
-  assert.throws(()=>execFileSync(process.execPath,[cli,'job-status','--peer','Linux','--id','custody-001'],{
+  assert.throws(()=>execFileSync(process.execPath,[installedCli(home),'job-status','--peer','Linux','--id','custody-001'],{
     cwd:base,env:{...process.env,COMMANDER_TRANSFER_HOME:'owner'},encoding:'utf8',timeout:6000
   }),/TRANSFER_ROOT_ABSOLUTE_REQUIRED/);
  }finally{fs.rmSync(base,{recursive:true,force:true});}
 });
 
 test('durable transfer refuses a shared-writable configured root',{skip:process.platform==='win32'},()=>{
- const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-owner-root-'));
+ const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-owner-root-')));
  try{
   const home=path.join(base,'owner');fs.mkdirSync(home);fs.chmodSync(home,0o777);
   fs.mkdirSync(path.join(home,'jobs','Linux'),{recursive:true});
@@ -120,7 +125,7 @@ for(const [kind,rel] of [
  ['symlink',['pairs','Linux','transfers','custody-003','manifest.json']]
 ]){
  test('durable transfer refuses preexisting internal '+kind+' '+rel.at(-1),{skip:kind==='symlink'&&process.platform==='win32'},()=>{
-  const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-file-custody-'));
+  const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-file-custody-')));
   try{
    const home=path.join(base,'owner');fs.mkdirSync(home);
    const record=path.join(home,'jobs','Linux','custody-003.json');
@@ -136,3 +141,44 @@ for(const [kind,rel] of [
   }finally{fs.rmSync(base,{recursive:true,force:true});}
  });
 }
+
+test('installed CLI cannot select another configured root',()=>{
+ const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-root-binding-')));
+ try{
+  const own=path.join(base,'own'),other=path.join(base,'other');
+  fs.mkdirSync(own);fs.mkdirSync(other);
+  const installed=path.join(own,'durable-send.mjs');
+  fs.copyFileSync(cli,installed);
+  fs.mkdirSync(path.join(other,'jobs','Linux'),{recursive:true});
+  const record=path.join(other,'jobs','Linux','binding-001.json');
+  const data=JSON.stringify({status:'PUBLISHED',bytes:1});
+  fs.writeFileSync(record,data);
+  assert.throws(()=>execFileSync(process.execPath,[installed,'job-status','--peer','Linux','--id','binding-001'],{
+   env:{...process.env,COMMANDER_TRANSFER_HOME:other},encoding:'utf8',timeout:6000
+  }),/TRANSFER_ROOT_MISMATCH/);
+  assert.equal(fs.readFileSync(record,'utf8'),data);
+  assert.deepEqual(fs.readdirSync(own),['durable-send.mjs']);
+ }finally{fs.rmSync(base,{recursive:true,force:true});}
+});
+
+test('installed CLI defaults to its own root without an environment override',()=>{
+ const base=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-own-root-')));
+ try{
+  const own=path.join(base,'own');fs.mkdirSync(own);
+  const script=installedCli(own);
+  fs.mkdirSync(path.join(own,'jobs','Linux'),{recursive:true});
+  const record=path.join(own,'jobs','Linux','binding-002.json');
+  const data=JSON.stringify({status:'PUBLISHED',bytes:1});
+  fs.writeFileSync(record,data);
+  const env={...process.env};delete env.COMMANDER_TRANSFER_HOME;
+  // The legacy default is confined to this fixture as well.
+  env.HOME=path.join(base,'unused-home');env.LOCALAPPDATA=path.join(base,'unused-appdata');
+  const out=JSON.parse(execFileSync(process.execPath,[script,'job-status','--peer','Linux','--id','binding-002'],{
+   env,encoding:'utf8',timeout:6000
+  }));
+  assert.equal(out.status,'PUBLISHED');
+  assert.equal(fs.readFileSync(record,'utf8'),data);
+  assert.equal(fs.existsSync(env.LOCALAPPDATA),false);
+  assert.equal(fs.existsSync(env.HOME),false);
+ }finally{fs.rmSync(base,{recursive:true,force:true});}
+});

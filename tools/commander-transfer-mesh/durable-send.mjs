@@ -2,14 +2,15 @@
 // Durable local staging; Syncthing handles the encrypted peer data plane.
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import crypto from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 process.umask(0o077);
-const configuredRoot=process.env.COMMANDER_TRANSFER_HOME||(
- process.platform==='win32'?path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'CommanderTransferPilot'):path.join(os.homedir(),'.local','share','commander-transfer-pilot'));
-const root=path.resolve(configuredRoot);
+// Core and the portable updater install this module inside the enrolled
+// pilot root. The executing module's directory, not inherited environment
+// data, is the authority for local queue/staging/publication paths.
+const root=path.dirname(fileURLToPath(import.meta.url));
+const configuredRoot=process.env.COMMANDER_TRANSFER_HOME;
 const peers=['PC','Linux','EmadServer','Amirreza'];
 const re=/^[a-zA-Z0-9][a-zA-Z0-9._-]{2,90}$/;
 const [command,...args]=process.argv.slice(2);
@@ -19,15 +20,15 @@ const within=(file,base)=>{const rel=path.relative(base,file);return rel===''||(
 // Never follow a symlink inside the app-managed queue/staging/publication
 // tree, even when the peer and transfer ID are valid.
 function assertInternalDirectories(p){
- // The configured root is a caller-selected trust boundary, not an
- // authority to follow a preexisting directory alias. It must already
- // exist (the pilot node configuration is provisioned separately).
- // Inspect each existing component, not the spelling returned by
- // realpath: Windows short (8.3) names can denote regular directories.
- // Walk from the filesystem root down, rejecting symlinks/junctions
- // before touching a descendant. Owner/ACL custody and races remain
- // separate concerns.
- assertion(path.isAbsolute(configuredRoot),'TRANSFER_ROOT_ABSOLUTE_REQUIRED');
+ // Legacy launchers may still provide the enrolled canonical root.
+ // Treat it only as a consistency assertion; never use it in filesystem
+ // operations. A different absolute path or alias cannot select data.
+ if(configuredRoot!==undefined){
+  assertion(path.isAbsolute(configuredRoot),'TRANSFER_ROOT_ABSOLUTE_REQUIRED');
+  assertion(path.relative(root,path.resolve(configuredRoot))==='','TRANSFER_ROOT_MISMATCH');
+ }
+ // Walk from the filesystem root down before touching a descendant.
+ // Owner/ACL custody and concurrent mutation remain separate concerns.
  const ancestry=[];
  for(let dir=root;;dir=path.dirname(dir)){
   ancestry.push(dir);
