@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {spawn} from 'node:child_process';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {verifyWorkerRegistration} from './worker-identity-authority.mjs';
 import {resolveLinuxNativeOwnerWitnessPaths}
@@ -45,10 +45,51 @@ export function nativeSignerSourceTrustFailure(stat,uid){
     return 'RC012_OWNER_SIGNER_SOURCE_BOUNDS';
   return null;
 }
+// In unprivileged systemd --user units ProtectSystem=full maps ONLY the
+// service UID; a root-owned, packaged /usr/lib file appears as overflow UID
+// 65534. Do NOT trust this overflow UID by itself: it can represent ANY
+// unmapped identity. Admit only the immutable exact installed package member
+// when the namespace map, directory metadata and package digest all agree.
+export function packagedSignerRootMappedTrust(p,uid,sourceStat=undefined){
+  try{
+    const root='/usr/lib/chatgpt-remote-commander/app';
+    const member='tools/v012-native-worker-registration-signer-linux.mjs';
+    const fixed=path.join(root,member);
+    if(process.platform!=='linux'||p!==fixed||!Number.isSafeInteger(uid)||uid<1)
+      return false;
+    const s=sourceStat??fs.lstatSync(p);
+    if(s.uid!==65534)return false;
+    const checks={isFile:()=>s.isFile(),isSymbolicLink:()=>s.isSymbolicLink(),
+      uid:0,nlink:s.nlink,mode:s.mode,size:s.size};
+    if(nativeSignerSourceTrustFailure(checks,uid)!==null)return false;
+    const lines=fs.readFileSync('/proc/self/uid_map','utf8').trim().split(/\r?\n/);
+    if(lines.length!==1)return false;
+    const row=lines[0].trim().split(/\s+/).map(Number);
+    if(row.length!==3||row[0]!==uid||row[1]!==uid||row[2]!==1)return false;
+    for(const dir of ['/usr','/usr/lib','/usr/lib/chatgpt-remote-commander',
+      root,path.join(root,'tools')]){
+      const d=fs.lstatSync(dir);
+      if(!d.isDirectory()||d.isSymbolicLink()||d.uid!==65534
+        ||(d.mode&0o022)!==0||fs.realpathSync.native(dir)!==dir)return false;
+    }
+    if(fs.realpathSync.native(p)!==p)return false;
+    const manifestPath=path.join(root,'source-manifest.json');
+    const m=fs.lstatSync(manifestPath);
+    if(!m.isFile()||m.isSymbolicLink()||m.nlink!==1||m.uid!==65534
+      ||(m.mode&0o022)!==0||m.size<32||m.size>262144
+      ||fs.realpathSync.native(manifestPath)!==manifestPath)return false;
+    const manifest=JSON.parse(fs.readFileSync(manifestPath,'utf8'));
+    const expected=manifest?.files?.[member];
+    if(typeof expected!=='string'||!/^[a-f0-9]{64}$/.test(expected))
+      return false;
+    return createHash('sha256').update(fs.readFileSync(p)).digest('hex')===expected;
+  }catch{return false;}
+}
 function trustedSignerSource(p,uid){
-  // Root-owned 0644 / owner-owned user-local immutable source only. Preserve
-  // all original predicates and return just a bounded root-cause category.
-  const reason=nativeSignerSourceTrustFailure(fs.lstatSync(p),uid);
+  const stat=fs.lstatSync(p);
+  const reason=nativeSignerSourceTrustFailure(stat,uid);
+  if(reason==='RC012_OWNER_SIGNER_SOURCE_OWNER_CHANGED'
+    &&packagedSignerRootMappedTrust(p,uid,stat))return;
   if(reason)fail(reason);
 }
 function boundedRun(args,input){
