@@ -25,6 +25,10 @@ $asyncHttpFailurePhase=$null
 $asyncHttpFailureName=$null
 $asyncHttpFailureCode=$null
 $asyncHttpServerStartup=$null
+$asyncHttpLastPhase=$null
+$asyncHttpFailureAssertion=$null
+$asyncHttpCleanupFailurePhase=$null
+$asyncHttpCleanupFailureCode=$null
 $mcpTasksFailurePhase=$null
 $mcpTasksFailureName=$null
 $mcpTasksFailureCode=$null
@@ -57,7 +61,30 @@ if(Test-Path -LiteralPath $logRoot -PathType Container){
       $sourceSha=(Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
       $status='NON_TAP_FAILURE_UNCLASSIFIED'
       foreach($line in [IO.File]::ReadLines($source.FullName)){
-        if($line -match '^R157_ASYNC_HTTP_FAILURE_PHASE=([a-z0-9-]{1,64})$'){
+        $line=[regex]::Replace($line,'^\s*#\s+(?=R157_ASYNC_HTTP_)','')
+        if($line -cmatch '^R157_ASYNC_HTTP_LAST_PHASE=(fixture-setup|server-startup|native-token-and-quarantine|operation-start|idempotent-retry|operation-terminal|file-backed-result|large-output-start|large-output-terminal|large-output-result)$'){
+          $asyncHttpLastPhase=[string]$Matches[1]
+        } elseif($line -cmatch '^R157_ASYNC_HTTP_CLEANUP_FAILURE_PHASE=(server-stop|fixture-remove)$'){
+          $asyncHttpCleanupFailurePhase=[string]$Matches[1]
+        } elseif($line -cmatch '^R157_ASYNC_HTTP_CLEANUP_FAILURE_CODE=(EPERM|EACCES|EBUSY|ENOTEMPTY|ENOENT|UNCLASSIFIED)$'){
+          $asyncHttpCleanupFailureCode=[string]$Matches[1]
+        } elseif($line -cmatch '^R157_ASYNC_HTTP_FAILURE_ASSERTION=(\{.{1,1024}\})$'){
+          try{
+            $raw=ConvertFrom-Json -InputObject $Matches[1] -ErrorAction Stop
+            $op=if([string]$raw.operator -cin @('strictEqual','deepStrictEqual','equal','notEqual','notStrictEqual','ok')){[string]$raw.operator}else{$null}
+            $safeValues=@{}
+            foreach($key in @('actual','expected')){
+              $v=$raw.$key
+              if($v -is [string]){
+                if($v -cnotin @('QUEUED','RUNNING','SUCCEEDED','FAILED','TIMED_OUT','CANCELLED','UNCERTAIN','UNVERIFIED')){$v=$null}
+              }elseif($v -isnot [bool] -and $v -isnot [byte] -and $v -isnot [int16] -and $v -isnot [int32] -and $v -isnot [int64] -and $v -isnot [double]){
+                $v=$null
+              }
+              $safeValues[$key]=$v
+            }
+            $asyncHttpFailureAssertion=[ordered]@{operator=$op;actual=$safeValues.actual;expected=$safeValues.expected}
+          }catch{$asyncHttpFailureAssertion=$null}
+        } elseif($line -match '^R157_ASYNC_HTTP_FAILURE_PHASE=([a-z0-9-]{1,64})$'){
           $asyncHttpFailurePhase=[string]$Matches[1]
         } elseif($line -match '^R157_ASYNC_HTTP_FAILURE_NAME=([A-Za-z0-9_]{1,48})$'){
           $asyncHttpFailureName=[string]$Matches[1]
@@ -177,6 +204,8 @@ $report=[ordered]@{
   nativeTokenProbe=$nativeTokenProbe;httpPrivilegedLegacyHttpQuarantined=$httpQuarantine
   asyncHttpFailurePhase=$asyncHttpFailurePhase;asyncHttpFailureName=$asyncHttpFailureName;asyncHttpFailureCode=$asyncHttpFailureCode
   asyncHttpServerStartup=$asyncHttpServerStartup
+  asyncHttpLastPhase=$asyncHttpLastPhase;asyncHttpFailureAssertion=$asyncHttpFailureAssertion
+  asyncHttpCleanupFailurePhase=$asyncHttpCleanupFailurePhase;asyncHttpCleanupFailureCode=$asyncHttpCleanupFailureCode
   mcpTasksFailurePhase=$mcpTasksFailurePhase;mcpTasksFailureName=$mcpTasksFailureName;mcpTasksFailureCode=$mcpTasksFailureCode
   mcpTasksFailureAssertion=$mcpTasksFailureAssertion
   mcpTasksLongPollStatus=$mcpTasksLongPollStatus;mcpTasksLongPollElapsedMs=$mcpTasksLongPollElapsedMs

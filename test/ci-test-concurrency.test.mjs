@@ -1002,3 +1002,38 @@ test('R470 check failure emits bounded counts and contiguous unfinished phase wi
   assert.match(noPhase.out,/R470_SAFE_TAP_FAIL_COUNT=1(?:\r?\n)/);
   assert.doesNotMatch(noPhase.out,/R470_SAFE_FAILURE_PHASE=/);
 });
+
+test('R470 async HTTP diagnostic retains bounded phase and cleanup evidence',t=>{
+  if(process.platform!=='win32')return t.skip('native PowerShell fixture');
+  const sha='a'.repeat(40), marker='SYNTHETIC_VALUE_NOT_FOR_EXPORT';
+  for(const prefix of ['', '# ']){
+    const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-r470-async-evidence-'));
+    try{
+      const logs=path.join(tmp,'STATE','ChatGPTRemoteCommander','update-logs');
+      fs.mkdirSync(logs,{recursive:true});
+      const lines=[
+        'R157_ASYNC_HTTP_LAST_PHASE=operation-start',
+        'R157_ASYNC_HTTP_LAST_PHASE=operation-terminal',
+        'R157_ASYNC_HTTP_FAILURE_PHASE=operation-terminal',
+        'R157_ASYNC_HTTP_FAILURE_ASSERTION='+JSON.stringify({operator:'strictEqual',actual:marker,expected:'SUCCEEDED'}),
+        'R157_ASYNC_HTTP_CLEANUP_FAILURE_PHASE=fixture-remove',
+        'R157_ASYNC_HTTP_CLEANUP_FAILURE_CODE=EPERM',
+        'R157_ASYNC_HTTP_LAST_PHASE=not-a-known-phase'
+      ].map(line=>prefix+line);
+      lines.push('# tests 1','# fail 1');
+      fs.writeFileSync(path.join(logs,'qualification-output-qualification-test-'+sha.slice(0,12)+'-fixture.stdout.log'),lines.join('\n'));
+      const run=spawnSync('pwsh.exe',['-NoProfile','-NonInteractive','-File',path.join(root,'tools/diagnose-updater-gate-r470.ps1'),'-Root',tmp,'-ExpectedCommit',sha],{encoding:'utf8',timeout:15000});
+      assert.equal(run.status,0,run.stderr);
+      const raw=fs.readFileSync(path.join(tmp,'DIAGNOSTIC_R470.json'),'utf8');
+      assert.ok(!raw.includes(marker));
+      assert.ok(!run.stdout.includes(marker));
+      const d=JSON.parse(raw);
+      assert.equal(d.asyncHttpLastPhase,'operation-terminal');
+      assert.equal(d.asyncHttpFailurePhase,'operation-terminal');
+      assert.deepEqual(d.asyncHttpFailureAssertion,{operator:'strictEqual',actual:null,expected:'SUCCEEDED'});
+      assert.equal(d.asyncHttpCleanupFailurePhase,'fixture-remove');
+      assert.equal(d.asyncHttpCleanupFailureCode,'EPERM');
+      assert.equal(d.rawLogIncluded,false);
+    }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+  }
+});
