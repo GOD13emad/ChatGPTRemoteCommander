@@ -42,20 +42,35 @@ rejected_tunnel_file() {
   printf '%s/tunnel-rejected-%s.path\n' "$VAR_DIR" "$(safe_profile "$1")"
 }
 
+# A launch failure can be caused by the route, not by the executable.
+# Keep the original unscoped marker authoritative for older quarantines.
+# New rejections apply only to the exact configuration that failed.
+route_rejected_tunnel_file() {
+  local profile="$1" file="$2" hash
+  hash="$(sha256sum -- "$file")" || return 1
+  hash="${hash%% *}"
+  [[ "$hash" =~ ^[a-f0-9]{64}$ ]] || return 1
+  printf '%s/tunnel-rejected-%s-%s.path\n' "$VAR_DIR" "$(safe_profile "$profile")" "$hash"
+}
+
 find_tunnel() {
-  local profile="${1:-default}" rejected="" f
-  local reject_file
+  local profile="${1:-default}" profile_file="$2" rejected="" route_rejected="" f
+  local reject_file route_file
   reject_file="$(rejected_tunnel_file "$profile")"
+  route_file="$(route_rejected_tunnel_file "$profile" "$profile_file")" || return 1
   [[ -f "$reject_file" ]] && rejected="$(cat "$reject_file" 2>/dev/null || true)"
+  [[ -f "$route_file" ]] && route_rejected="$(cat "$route_file" 2>/dev/null || true)"
   mapfile -t candidates < <(candidate_tunnels)
   for ((i=${#candidates[@]}-1; i>=0; i--)); do
     f="${candidates[$i]}"
     [[ -x "$f" ]] || continue
-    [[ -n "$rejected" && "$f" == "$rejected" ]] && continue
+    [[ "$f" == "$rejected" || "$f" == "$route_rejected" ]] && continue
     printf '%s\n' "$f"
     return 0
   done
-  command -v tunnel-client
+  f="$(command -v tunnel-client)" || return 1
+  [[ -x "$f" && "$f" != "$rejected" && "$f" != "$route_rejected" ]] || return 1
+  printf '%s\n' "$f"
 }
 
 fallback_tunnel() {
@@ -265,11 +280,14 @@ launch_tunnel_with_exe() {
 }
 
 wait_tunnel_ready() {
-  local port="$1" pid="$2"
-  for _ in $(seq 1 50); do
-    sleep 0.2
-    tunnel_ready "$port" && return 0
+  local port="$1" pid="$2" deadline
+  # The pinned client may wait 30s for its first successful control-plane poll.
+  # Use a bounded elapsed-time budget, not 50 fast failures (~10s).
+  deadline=$((SECONDS + 45))
+  while (( SECONDS < deadline )); do
     kill -0 "$pid" 2>/dev/null || return 1
+    tunnel_ready "$port" && return 0
+    sleep 0.25
   done
   return 1
 }
@@ -280,9 +298,9 @@ start_tunnel() {
   [[ -f "$cred" ]] || { log "CREDENTIAL_MISSING profile=$profile"; return 0; }
   health="$(profile_health_port "$profile_file" 2>/dev/null || true)"
   [[ -n "$health" ]] || { log "TUNNEL_HEALTH_PORT_MISSING profile=$profile"; return 1; }
-  desired="$(find_tunnel "$profile" 2>/dev/null || true)"
+  reject_file="$(route_rejected_tunnel_file "$profile" "$profile_file")" || { log "TUNNEL_PROFILE_HASH_FAILED profile=$profile"; return 1; }
+  desired="$(find_tunnel "$profile" "$profile_file" 2>/dev/null || true)"
   [[ -n "$desired" && -x "$desired" ]] || { log "TUNNEL_CLIENT_MISSING profile=$profile"; return 1; }
-  reject_file="$(rejected_tunnel_file "$profile")"
 
   while IFS=$'\t' read -r pid exe; do
     [[ -n "$pid" ]] || continue

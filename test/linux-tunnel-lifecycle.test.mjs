@@ -143,3 +143,78 @@ test('linux supervisor retains only explicit private backends and its original d
     }
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
+
+
+test('tunnel quarantine is scoped to the failed route; original route remains recoverable',
+  {skip:process.platform!=='linux'},()=>{
+  const source=read('autostart-linux.sh');
+  const fn=['safe_profile','candidate_tunnels','rejected_tunnel_file','route_rejected_tunnel_file','find_tunnel']
+    .map(name=>{
+      const match=source.match(new RegExp('^'+name+'\\(\\) \\{[\\s\\S]*?^\\}','m'));
+      assert.ok(match,'missing '+name);
+      return match[0];
+    }).join('\n');
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-route-quarantine-'));
+  try{
+    const script=[
+      fn,
+      'set -euo pipefail',
+      'ROOT="$1"',
+      'VAR_DIR="$ROOT/var"',
+      'mkdir -p "$VAR_DIR" "$ROOT/tools/tunnel-client-v0.0.15-linux-amd64"',
+      'binary="$ROOT/tools/tunnel-client-v0.0.15-linux-amd64/tunnel-client"',
+      'printf "#!/bin/sh\\nexit 0\\n" > "$binary"',
+      'chmod 700 "$binary"',
+      'export PATH="$(dirname "$binary"):/usr/bin:/bin"',
+      'profile=qa-owner',
+      'yaml="$ROOT/profile.yaml"',
+      'printf "original-route\\n" > "$yaml"',
+      'test "$(find_tunnel "$profile" "$yaml")" = "$binary"',
+      'printf "protected-route\\n" > "$yaml"',
+      'printf "%s\\n" "$binary" > "$(route_rejected_tunnel_file "$profile" "$yaml")"',
+      'if find_tunnel "$profile" "$yaml"; then exit 31; fi',
+      'test "$(find_tunnel another-owner "$yaml")" = "$binary"',
+      'printf "original-route\\n" > "$yaml"',
+      'test "$(find_tunnel "$profile" "$yaml")" = "$binary"',
+      'printf "%s\\n" "$binary" > "$(rejected_tunnel_file "$profile")"',
+      'if find_tunnel "$profile" "$yaml"; then exit 32; fi',
+      'echo ROUTE_SCOPED_QUARANTINE_PASS'
+    ].join('\n');
+    const result=spawnSync('bash',['-s','--',tmp],{input:script,encoding:'utf8',timeout:5000});
+    assert.equal(result.status,0,result.stderr);
+    assert.equal(result.stdout.trim(),'ROUTE_SCOPED_QUARANTINE_PASS');
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+
+test('supervisor permits a successful first long poll and still bounds readiness failure',
+  {skip:process.platform!=='linux'},()=>{
+  const source=read('autostart-linux.sh');
+  const fn=source.match(/^wait_tunnel_ready\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(fn);
+  const script=[
+    fn,
+    'set -euo pipefail',
+    'sleep(){ SECONDS=$((SECONDS+1)); }',
+    'kill(){ test "$alive" = 1; }',
+    'tunnel_ready(){ (( SECONDS >= ready_after )); }',
+    'SECONDS=0; alive=1; ready_after=30',
+    'wait_tunnel_ready 47832 1234',
+    'test "$SECONDS" -ge 30',
+    'echo FIRST_LONG_POLL_PASS',
+    'SECONDS=0; alive=1; ready_after=100',
+    'if wait_tunnel_ready 47832 1234; then exit 41; fi',
+    'test "$SECONDS" -ge 45',
+    'test "$SECONDS" -lt 50',
+    'echo DEADLINE_BOUNDED_PASS',
+    'SECONDS=0; alive=0; ready_after=0',
+    'if wait_tunnel_ready 47832 1234; then exit 42; fi',
+    'test "$SECONDS" -lt 2',
+    'echo DEAD_PROCESS_DENIED_PASS'
+  ].join('\n');
+  const result=spawnSync('bash',['-s'],{input:script,encoding:'utf8',timeout:5000});
+  assert.equal(result.status,0,result.stderr);
+  assert.deepEqual(result.stdout.trim().split('\n'),[
+    'FIRST_LONG_POLL_PASS','DEADLINE_BOUNDED_PASS','DEAD_PROCESS_DENIED_PASS'
+  ]);
+});
