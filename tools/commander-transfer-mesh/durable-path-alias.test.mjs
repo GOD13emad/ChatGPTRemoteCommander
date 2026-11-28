@@ -90,3 +90,49 @@ test('durable transfer rejects an alias in the configured root ancestry',()=>{
   assert.deepEqual(fs.readdirSync(path.join(outside,'owner')),[]);
  }finally{fs.rmSync(base,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
+
+// owner root and internal file custody: fixtures are confined to a temporary tree.
+test('durable transfer refuses an ambiguous relative configured root',()=>{
+ const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-relative-root-'));
+ try{
+  const home=path.join(base,'owner');fs.mkdirSync(home);
+  fs.mkdirSync(path.join(home,'jobs','Linux'),{recursive:true});
+  fs.writeFileSync(path.join(home,'jobs','Linux','custody-001.json'),JSON.stringify({status:'PUBLISHED',bytes:1}));
+  assert.throws(()=>execFileSync(process.execPath,[cli,'job-status','--peer','Linux','--id','custody-001'],{
+    cwd:base,env:{...process.env,COMMANDER_TRANSFER_HOME:'owner'},encoding:'utf8',timeout:6000
+  }),/TRANSFER_ROOT_ABSOLUTE_REQUIRED/);
+ }finally{fs.rmSync(base,{recursive:true,force:true});}
+});
+
+test('durable transfer refuses a shared-writable configured root',{skip:process.platform==='win32'},()=>{
+ const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-owner-root-'));
+ try{
+  const home=path.join(base,'owner');fs.mkdirSync(home);fs.chmodSync(home,0o777);
+  fs.mkdirSync(path.join(home,'jobs','Linux'),{recursive:true});
+  fs.writeFileSync(path.join(home,'jobs','Linux','custody-002.json'),JSON.stringify({status:'PUBLISHED',bytes:1}));
+  assert.throws(()=>call(home,'job-status','--peer','Linux','--id','custody-002'),/TRANSFER_ROOT_CUSTODY_UNSAFE/);
+ }finally{fs.rmSync(base,{recursive:true,force:true});}
+});
+
+for(const [kind,rel] of [
+ ['symlink',['jobs','Linux','custody-003.json']],
+ ['hardlink',['staging','Linux','custody-003.part']],
+ ['symlink',['pairs','Linux','transfers','custody-003','manifest.json']]
+]){
+ test('durable transfer refuses preexisting internal '+kind+' '+rel.at(-1),{skip:kind==='symlink'&&process.platform==='win32'},()=>{
+  const base=fs.mkdtempSync(path.join(os.tmpdir(),'ctmesh-file-custody-'));
+  try{
+   const home=path.join(base,'owner');fs.mkdirSync(home);
+   const record=path.join(home,'jobs','Linux','custody-003.json');
+   const outside=path.join(base,'synthetic.txt');
+   const data=JSON.stringify({status:'PUBLISHED',bytes:1});
+   fs.mkdirSync(path.dirname(record),{recursive:true});
+   fs.writeFileSync(outside,data);
+   if(rel[0]!=='jobs')fs.writeFileSync(record,data);
+   const leaf=path.join(home,...rel);fs.mkdirSync(path.dirname(leaf),{recursive:true});
+   if(kind==='hardlink')fs.linkSync(outside,leaf);else fs.symlinkSync(outside,leaf,'file');
+   assert.throws(()=>call(home,'job-status','--peer','Linux','--id','custody-003'),/TRANSFER_FILE_UNSAFE/);
+   assert.equal(fs.readFileSync(outside,'utf8'),data);
+  }finally{fs.rmSync(base,{recursive:true,force:true});}
+ });
+}
