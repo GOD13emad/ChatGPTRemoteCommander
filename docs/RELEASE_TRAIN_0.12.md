@@ -1,4 +1,4 @@
-# Release Train 0.12 — 0.12.0-dev.38 source candidate (NoPromote)
+# Release Train 0.12 — 0.12.0-dev.39 source candidate (NoPromote)
 
 ## Dev.38 historical release-train README assertion (28 November 2026) — NoPromote
 
@@ -279,3 +279,8 @@ Exact candidate source: `integration/v012-final-acceptance`, HEAD `0a1f6cf6f2e8f
 **Release blockers remain:** production G1/J01 authenticated same-chat authorization and same-owner GUI consent; multi-user permission and three-tier FULL_ACCESS/broker acceptance; all-product Windows/Linux/headless builds and native Control Center/Browser acceptance; stable install roots; protected installed rollback; per-host boot/login and eight-connector mapping/receipts; signing or independently approved artifact provenance. Keep all existing hosts on their current installation until each exact candidate has an authorized reversible canary, health readback and rollback proof. Keep manifest status `INTEGRATION_CANDIDATE_NOT_FINAL`, all acceptance flags false, `acceptedHostIds=[]`, and publication/autoupdate/installed-promotion approvals false.
 
 **Next action:** finish R157 and inspect its exact result; then continue only with independently provable acceptance work. Do not promote, merge the Draft, create `v0.12.0`, or enable fleet updates while the external evidence gates remain open.
+
+
+## Dev.39 source identity and native server qualification corrections (28 November 2026) — NoPromote
+
+The dev.39 release train retains development, draft, no-promotion and native-owner-admission gates. It carries the exact signed Worker 120-second enrollment TTL fix from integration PR #660. Seven source identities were normalized in PR #661; subsequent clean-server Windows and Linux bootstrap CI both exposed two further stale version fields in the Windows dashboard project (Version, FileVersion and AssemblyVersion), found in the exact-head source audit. This revision aligns those metadata fields to dev.39 / 0.12.0.39. It does not authorize release, automatic update, Full Access or live Tunnel cutover; new exact-head CI, independent installer/rollback provenance, native owner consent, installed positive Worker registration and protected Main Route acceptance remain required.
