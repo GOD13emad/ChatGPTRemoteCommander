@@ -134,7 +134,11 @@ test('CLI is a fallback adapter using the same canonical private profile scope, 
   assert.equal(JSON.parse(out.stdout).observations.length,1);
   out=run('list');assert.equal(out.status,0,out.stderr);
   assert.equal(JSON.parse(out.stdout).total,1);
-  assert.equal(fs.statSync(path.join(delivery,'capability-gaps.sqlite')).mode&0o777,0o600);
+  const dbFile=path.join(delivery,'capability-gaps.sqlite');
+  const dbStat=fs.lstatSync(dbFile);
+  assert.ok(dbStat.isFile()&&!dbStat.isSymbolicLink(),'profile SQLite must be a regular, non-symlink file');
+  // POSIX owner-only mode is not meaningful Windows ACL evidence; native ACL remains a separate release gate.
+  if(process.platform!=='win32')assert.equal(dbStat.mode&0o777,0o600);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
