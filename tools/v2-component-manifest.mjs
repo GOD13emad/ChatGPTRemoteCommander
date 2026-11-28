@@ -121,6 +121,7 @@ const CORE=[
  'tools/v2-v1-local-owner-cli.mjs',
  'tools/v2-v1-owner-cli.mjs',
  'src/mcp-events-windows-acl.mjs',
+ 'src/owner-private-storage.mjs',
  'tools/owner-workspace-bridge.mjs',
  'tools/pin-linux-systemd-unit.mjs',
  'tools/stage-pinned-tunnel.mjs',

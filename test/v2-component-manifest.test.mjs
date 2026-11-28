@@ -22,6 +22,7 @@ test('current exact source has a complete, deterministic R1 plan for each suppor
     'src/v2-mcp-oauth-contract.mjs','src/v2-native-window-bridge.mjs',
     'src/v2-authenticated-owner-gateway.mjs','src/v2-oauth-jwks.mjs',
     'src/v2-owner-session-reuse.mjs','tools/v2-idp-discovery-preflight.mjs',
+    'src/owner-private-storage.mjs',
     'src/agentos-provider-router.mjs','src/agentos-native-win.mjs']){
     assert.ok(a.components.some(c=>c.path===file&&c.sha256!==null),file);
   }
