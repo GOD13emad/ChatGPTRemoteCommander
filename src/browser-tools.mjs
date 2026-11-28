@@ -18,19 +18,29 @@ const chromiumHelper=path.join(project,'tools','browser-control.mjs');
 const firefoxHelper=path.join(project,'tools','browser-control-firefox.mjs');
 const chromiumClient=createBrowserProcessClient({file:process.execPath,args:[chromiumHelper,'--server']});
 const firefoxClient=createBrowserProcessClient({file:process.execPath,args:[firefoxHelper,'--server']});
-let defaultBrowserBackend=null;
 const isFirefoxExecutable=value=>typeof value==='string'&&/firefox/i.test(path.basename(value));
-const defaultInvoke=async req=>{
- const kind=req.action==='status'
-  ? (isFirefoxExecutable(req.executable)?'firefox':'chromium')
-  : req.action==='start'
-    ? (defaultBrowserBackend=isFirefoxExecutable(req.executable)?'firefox':'chromium')
-    : (defaultBrowserBackend??'chromium');
- const client=kind==='firefox'?firefoxClient:chromiumClient;
- try{return await client.invoke(req);}
- finally{if(req.action==='end')defaultBrowserBackend=null;}
-};
-const defaultClose=()=>{defaultBrowserBackend=null;chromiumClient.close();firefoxClient.close();};
+export function createBrowserBackendRouter({chromiumClient,firefoxClient}){
+ let activeBackend=null;
+ const invoke=async req=>{
+  const kind=req.action==='status'
+   ? (isFirefoxExecutable(req.executable)?'firefox':'chromium')
+   : req.action==='start'
+     ? (activeBackend=isFirefoxExecutable(req.executable)?'firefox':'chromium')
+     : (activeBackend??'chromium');
+  const client=kind==='firefox'?firefoxClient:chromiumClient;
+  const result=await client.invoke(req);
+  // An unconfirmed or timed-out end must retain the helper routing affinity.
+  // Otherwise retry can be sent to the other, inactive browser backend,
+  // falsely confirming release of an owned Firefox/Chromium profile.
+  if(req.action==='end'&&result?.ok===true&&result.closed===true)activeBackend=null;
+  return result;
+ };
+ const close=()=>{activeBackend=null;chromiumClient.close();firefoxClient.close();};
+ return {invoke,close};
+}
+const defaultRouter=createBrowserBackendRouter({chromiumClient,firefoxClient});
+const defaultInvoke=defaultRouter.invoke;
+const defaultClose=defaultRouter.close;
 const defaultOwnerWindowObserver=async ctx=>{
  const {executeWorkspaceTool}=await import('./workspace-tools.mjs');
  const r=await executeWorkspaceTool(ctx,'workspace_list_windows',{});
@@ -61,10 +71,15 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
  const clearTimer=()=>{if(timer)cancelTimeout(timer);timer=null;};
  const cleanupExpired=async()=>{
   if(!expiryRequested||busy)return;
-  expiryRequested=false;
-  const profile=expiredProfile;expiredProfile=null;
-  try{await invoke({action:'end'});if(profile)removeBrowserLeaseMarker(profile);}
-  catch{closeInvoke();}
+  const profile=expiredProfile;
+  busy=true;
+  try{
+   const result=await invoke({action:'end'});
+   if(result?.ok!==true||result.closed!==true)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
+   if(profile&&!removeBrowserLeaseMarker(profile))throw browserError('BROWSER_LEASE_STATE_FAILED');
+   expiryRequested=false;expiredProfile=null;uncertain=false;chatMutationUncertain=false;
+  }catch{uncertain=true;chatMutationUncertain=true;}
+  finally{busy=false;}
  };
  const expireSession=()=>{
   if(!session)return;
@@ -141,6 +156,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    if(name==='browser_session_begin'){
     if(cfg.requireExplicitOwnedMode===true&&input.mode===undefined)throw browserError('BROWSER_EXPLICIT_OWNED_MODE_REQUIRED');
     if(current())throw browserError('BROWSER_LEASE_BUSY');
+    if(expiryRequested)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
     const ttl=input.ttlSeconds??300,mode=input.mode??'persistent',profile=input.profile??'default';
     const root=resolveProfileRoot(cfg),instance=instanceSegment(ctx.config?.instance?.profile??'default');
     const dir=mode==='isolated'
@@ -161,6 +177,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:native.backend??'browser-headless'};
    }
    owns(input.lease);
+   if(session.cleanupPending&&name!=='browser_session_end')throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
    if(name==='browser_chat_tabs'){
      const native=await invoke({action:'chat_tabs'});
      return {...native,sessionResetRequired:chatMutationUncertain,background:true,userDesktopTouched:false};
@@ -172,8 +189,12 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    }
    if(name==='browser_session_end'){
     const profileDir=session.profileDir;
+    session.cleanupPending=true;uncertain=true;chatMutationUncertain=true;
+    const r=await invoke({action:'end'});
+    if(r?.ok!==true||r.closed!==true)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
+    if(!removeBrowserLeaseMarker(profileDir))throw browserError('BROWSER_LEASE_STATE_FAILED');
     clearTimer();session=null;uncertain=false;chatMutationUncertain=false;expiryRequested=false;expiredProfile=null;
-    const r=await invoke({action:'end'});removeBrowserLeaseMarker(profileDir);return {ok:true,closed:r.closed===true};
+    return {ok:true,closed:true};
    }
    if(chatMutationUncertain&&name==='browser_foreground_begin')throw browserError('BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED');
    if(name==='browser_foreground_requirement'){
@@ -272,7 +293,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    const enabled=ctx?.config?.powerMode?.enabled===true&&cfg.enabled===true;
    const leased=!!session&&session.expires>now()&&!expiryRequested;
    return Object.freeze({ok:true,source:'CONTROLLER_MEMORY',enabled,
-     available:enabled&&leased,active:leased,leased,
+     available:enabled&&leased&&!session.cleanupPending,active:leased,leased,
      backgroundOnly:!leased||session.foreground!==true,
      userDesktopTouched:leased&&session.foreground===true,
      uncertain,sessionResetRequired:chatMutationUncertain});
