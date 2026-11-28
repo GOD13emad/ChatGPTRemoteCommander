@@ -141,6 +141,25 @@ test('owner boundary, unsafe scopes and link aliases are denied',{skip:process.p
   }finally{fs.rmSync(external,{recursive:true,force:true});}
  }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
+test('stale mutation lock and broken backup symlink block upgrade without data loss',{skip:process.platform!=='linux'},()=>{
+ const home=qa(),state=path.join(home,'state');
+ try{
+  const old=seed(home);
+  const lock=path.join(state,'.capgap-portable-package.lock');
+  fs.writeFileSync(lock,'CONCURRENT_INSTALLER_MUST_NOT_BE_REMOVED',{flag:'wx',mode:0o600});
+  assert.throws(()=>managePortablePackage({qaRoot:home,action:'upgrade'}),/PORTABLE3_MUTATION_LOCK_OCCUPIED/);
+  assert.deepEqual(unpack(target(home)),old);
+  assert.equal(fs.readFileSync(lock,'utf8'),'CONCURRENT_INSTALLER_MUST_NOT_BE_REMOVED');
+  fs.unlinkSync(lock);
+  const other=path.join(state,'no-such-destination');
+  fs.symlinkSync(other,backup(home),'dir');
+  assert.throws(()=>managePortablePackage({qaRoot:home,action:'upgrade'}),/PORTABLE3_ROLLBACK_SLOT_OCCUPIED/);
+  assert.throws(()=>managePortablePackage({qaRoot:home,action:'status'}),/PORTABLE3_SYMLINK_DENIED/);
+  assert.deepEqual(unpack(target(home)),old);
+  assert.equal(fs.lstatSync(backup(home)).isSymbolicLink(),true);
+  assert.equal(fs.existsSync(lock),false);
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
 test('unreviewed production CLI refuses mutation and exposes only status',{skip:process.platform!=='linux'},()=>{
  const cli=path.join(root,'tools','portable-capability-gap-package.mjs');
  const r=spawnSync(process.execPath,[cli,'--upgrade'],{encoding:'utf8',timeout:5000});

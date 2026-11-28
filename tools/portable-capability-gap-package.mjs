@@ -27,11 +27,38 @@ const KEEP=Object.freeze({
 });
 const names=Object.keys(CURRENT),oldNames=Object.keys(LEGACY);
 const fail=x=>{throw Object.assign(Error('PORTABLE3_'+x),{code:'PORTABLE3_'+x});};
+function existsNoFollow(p){
+ try{fs.lstatSync(p);return true;}
+ catch(e){if(e.code==='ENOENT')return false;throw e;}
+}
+// Owner-private parent, exclusive O_NOFOLLOW lock; never break stale locks.
+function mutationLock(parent,callback){
+ const lock=path.join(parent,'.capgap-portable-package.lock');
+ if(existsNoFollow(lock))fail('MUTATION_LOCK_OCCUPIED');
+ let fd,owned;
+ try{
+  fd=fs.openSync(lock,fs.constants.O_CREAT|fs.constants.O_EXCL|
+    fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW,0o600);
+  owned=fs.fstatSync(fd);
+  fs.writeFileSync(fd,String(process.pid)+'\n');
+  fs.fsyncSync(fd);
+ }catch(e){
+  if(owned&&existsNoFollow(lock)&&fs.lstatSync(lock).ino===owned.ino)fs.unlinkSync(lock);
+  fail('MUTATION_LOCK_DENIED');
+ }finally{if(fd!==undefined)fs.closeSync(fd);}
+ try{return callback();}
+ finally{
+  const now=fs.lstatSync(lock);
+  if(!now.isFile()||now.isSymbolicLink()||now.ino!==owned.ino||
+    now.uid!==process.getuid()||now.nlink!==1)fail('MUTATION_LOCK_INTEGRITY_CHANGED');
+  fs.unlinkSync(lock);
+ }
+}
 function noAlias(p){
  let part=path.parse(path.resolve(p)).root;
  for(const component of path.resolve(p).slice(part.length).split(path.sep).filter(Boolean)){
   part=path.join(part,component);
-  if(fs.existsSync(part)&&fs.lstatSync(part).isSymbolicLink())fail('SYMLINK_DENIED');
+  if(existsNoFollow(part)&&fs.lstatSync(part).isSymbolicLink())fail('SYMLINK_DENIED');
  }
 }
 function directory(p,strict=true){
@@ -48,7 +75,7 @@ function checked(file,expected){
  return b;
 }
 function inspect(target,expected){
- if(!fs.existsSync(target))return null;
+ if(!existsNoFollow(target))return null;
  noAlias(target);directory(target);
  const contents=fs.readdirSync(target).sort();
  const required=Object.keys(expected);
@@ -60,7 +87,7 @@ function inspect(target,expected){
    adjuncts:contents.filter(n=>Object.hasOwn(KEEP,n))};
 }
 function classify(target){
- if(!fs.existsSync(target))return {version:'absent',adjuncts:[]};
+ if(!existsNoFollow(target))return {version:'absent',adjuncts:[]};
  try{return inspect(target,CURRENT);}
  catch(e){if(e.code==='PORTABLE3_SYMLINK_DENIED'||e.code==='PORTABLE3_DIRECTORY_UNSAFE'||e.code==='PORTABLE3_DIRECTORY_NOT_PRIVATE')throw e;}
  try{return inspect(target,LEGACY);}
@@ -110,10 +137,14 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
  if(!['status','install','upgrade','rollback'].includes(action))fail('ACTION_INVALID');
  const {target,parent,backup,recovery}=context(qaRoot);
  const initial=classify(target);
- if(action==='status')return {state:initial.version,adjuncts:initial.adjuncts,
-   rollbackReady:fs.existsSync(backup),changed:false};
+ if(action==='status'){
+   if(existsNoFollow(backup))inspect(backup,LEGACY);
+   return {state:initial.version,adjuncts:initial.adjuncts,
+     rollbackReady:existsNoFollow(backup),changed:false};
+ }
+ return mutationLock(parent,()=>{
  if(action==='rollback'){
-  if(initial.version!=='three-file'||!fs.existsSync(backup)||fs.existsSync(recovery))
+  if(initial.version!=='three-file'||!existsNoFollow(backup)||existsNoFollow(recovery))
    fail('ROLLBACK_PRECONDITION');
   const prior=inspect(backup,LEGACY);
   if(prior.adjuncts.join(',')!==initial.adjuncts.join(','))fail('ROLLBACK_ADJUNCT_DRIFT');
@@ -125,14 +156,14 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
    return {state:'legacy-two-file',adjuncts:restored.adjuncts,changed:true,
      recoveredThreeFile:true};
   }catch(e){
-   if(!fs.existsSync(target)&&fs.existsSync(recovery))fs.renameSync(recovery,target);
+   if(!existsNoFollow(target)&&existsNoFollow(recovery))fs.renameSync(recovery,target);
    throw e;
   }
  }
  if(initial.version==='three-file')return {state:'three-file',changed:false};
  if(action==='upgrade'&&initial.version!=='legacy-two-file')fail('EXACT_LEGACY_REQUIRED');
  if(action==='install'&&initial.version!=='absent')fail('EXPLICIT_UPGRADE_REQUIRED');
- if(fs.existsSync(backup)||fs.existsSync(recovery))fail('ROLLBACK_SLOT_OCCUPIED');
+ if(existsNoFollow(backup)||existsNoFollow(recovery))fail('ROLLBACK_SLOT_OCCUPIED');
  const source=sources();
  const stage=fs.mkdtempSync(path.join(parent,'.capgap-portable-stage-'));
  fs.chmodSync(stage,0o700);
@@ -146,7 +177,7 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
    if(classify(target).version!=='legacy-two-file')fail('CONCURRENT_SOURCE_DRIFT');
    fs.renameSync(target,backup);movedOld=true;
    if(hook)hook('old-renamed');
-  }else if(fs.existsSync(target))fail('DESTINATION_RACE');
+  }else if(existsNoFollow(target))fail('DESTINATION_RACE');
   fs.renameSync(stage,target);consumed=true;
   const done=inspect(target,CURRENT);
   if(done.adjuncts.join(',')!==initial.adjuncts.join(','))fail('ADJUNCT_DRIFT');
@@ -155,21 +186,22 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
     rollbackReady:movedOld,changed:true};
  }catch(e){
   if(movedOld){
-   if(!fs.existsSync(target)&&fs.existsSync(backup)){
+   if(!existsNoFollow(target)&&existsNoFollow(backup)){
     fs.renameSync(backup,target);
-   }else if(fs.existsSync(target)&&fs.existsSync(backup)){
+   }else if(existsNoFollow(target)&&existsNoFollow(backup)){
     // Fail-closed: never remove an unexpected active target to force rollback.
     fail('POST_PROMOTION_MANUAL_RECOVERY_REQUIRED');
    }
   }
   throw e;
  }finally{
-  if(!consumed&&fs.existsSync(stage)){
+  if(!consumed&&existsNoFollow(stage)){
    const st=fs.lstatSync(stage);
    if(st.isDirectory()&&!st.isSymbolicLink()&&path.dirname(stage)===parent)
     fs.rmSync(stage,{recursive:true,force:true});
   }
  }
+ });
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
