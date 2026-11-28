@@ -99,6 +99,35 @@ function writeNew(file,bytes){
  finally{fs.closeSync(fd);}
 }
 function syncDir(p){const fd=fs.openSync(p,fs.constants.O_RDONLY);try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}}
+// QA-only recovery intent: append once before either rename. A torn or
+// incomplete record is not actionable, and inspection never retires locks.
+const recoveryIdentity=st=>String(st.dev)+':'+String(st.ino);
+const pathIdentity=p=>recoveryIdentity(fs.lstatSync(p,{bigint:true}));
+const validIdentity=x=>typeof x==='string'&&/^\d+:\d+$/.test(x);
+const validPid=x=>Number.isSafeInteger(x)&&x>1&&x<=2147483647;
+function readPrivateRecord(file,max){
+ const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+ try{
+  const st=fs.fstatSync(fd,{bigint:true});
+  if(!st.isFile()||st.uid!==BigInt(process.getuid())||st.nlink!==1n||
+     (st.mode&0o077n)!==0n||st.size<1n||st.size>BigInt(max))fail('RECOVERY_JOURNAL_UNSAFE');
+  const bytes=fs.readFileSync(fd,'utf8');
+  if(Buffer.byteLength(bytes)>max||pathIdentity(file)!==recoveryIdentity(st))
+   fail('RECOVERY_JOURNAL_DRIFT');
+  return {bytes,identity:recoveryIdentity(st)};
+ }finally{fs.closeSync(fd);}
+}
+function persistRecoveryIntent(claim,claimStat,intent){
+ const fd=fs.openSync(claim,fs.constants.O_WRONLY|fs.constants.O_APPEND|fs.constants.O_NOFOLLOW);
+ try{
+  const st=fs.fstatSync(fd);
+  if(!st.isFile()||st.uid!==process.getuid()||st.nlink!==1||
+     (st.mode&0o077)!==0||st.ino!==claimStat.ino||st.dev!==claimStat.dev||
+     st.size!==Buffer.byteLength(String(process.pid)+'\n'))fail('RECOVERY_CLAIM_INTEGRITY_CHANGED');
+  fs.writeFileSync(fd,JSON.stringify(intent)+'\n');
+  fs.fsyncSync(fd);
+ }finally{fs.closeSync(fd);}
+}
 function sources(){
  const b={};
  for(const [name,o] of Object.entries(CURRENT)){
@@ -222,6 +251,49 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
 }
 
 /**
+ * Read-only synthetic QA diagnosis. Matching intent and topology are
+ * evidence, not authorization to retire either lock or resume mutation.
+ */
+export function inspectInterruptedRecoveryQA({qaRoot}={}){
+ if(qaRoot===undefined)fail('RECOVERY_QA_ONLY');
+ const {target,parent,backup,recovery}=context(qaRoot);
+ const claim=path.join(parent,'.capgap-portable-recovery.lock');
+ const lock=path.join(parent,'.capgap-portable-package.lock');
+ const record=readPrivateRecord(claim,4096);
+ const lines=record.bytes.split('\n');
+ let j;
+ try{j=JSON.parse(lines[1]);}catch{fail('RECOVERY_JOURNAL_INVALID');}
+ if(lines.length!==3||lines[2]!==''||!j||typeof j!=='object'||
+   Object.keys(j).join(',')!=='schema,claimPid,originalPid,originalLock,oldDirectory,newDirectory,stage'||
+   j.schema!=='portable3-recovery-intent/1'||!validPid(j.claimPid)||!validPid(j.originalPid)||
+   lines[0]!==String(j.claimPid)||!validIdentity(j.originalLock)||
+   !validIdentity(j.oldDirectory)||!validIdentity(j.newDirectory)||
+   typeof j.stage!=='string'||!/^\.capgap-portable-stage-[A-Za-z0-9]{6}$/.test(j.stage)||
+   JSON.stringify(j)!==lines[1])fail('RECOVERY_JOURNAL_INVALID');
+ const stage=path.join(parent,j.stage);
+ const hasTarget=existsNoFollow(target),hasBackup=existsNoFollow(backup),
+   hasStage=existsNoFollow(stage),hasRecovery=existsNoFollow(recovery),hasLock=existsNoFollow(lock);
+ const stages=fs.readdirSync(parent).filter(n=>n.startsWith('.capgap-portable-stage-'));
+ if(hasTarget===hasBackup||hasStage===hasRecovery||
+   stages.length!==(hasStage?1:0)||(hasStage&&stages[0]!==j.stage)||
+   (!hasTarget&&(!hasStage||!hasLock))||(hasStage&&!hasLock))
+   fail('RECOVERY_JOURNAL_TOPOLOGY');
+ const old=hasTarget?target:backup,next=hasStage?stage:recovery;
+ const a=inspect(old,LEGACY),b=inspect(next,CURRENT);
+ if(!a||!b||a.adjuncts.join(',')!==b.adjuncts.join(',')||
+   pathIdentity(old)!==j.oldDirectory||pathIdentity(next)!==j.newDirectory)
+   fail('RECOVERY_JOURNAL_SOURCE_DRIFT');
+ if(hasLock){
+  const l=readPrivateRecord(lock,24);
+  if(l.identity!==j.originalLock||l.bytes!==String(j.originalPid)+'\n')
+   fail('RECOVERY_JOURNAL_LOCK_DRIFT');
+ }
+ if(pathIdentity(claim)!==record.identity)fail('RECOVERY_JOURNAL_DRIFT');
+ const phase=!hasTarget?'intent-recorded':hasStage?'old-restored':hasLock?'new-retained':'original-lock-retired';
+ return {phase,manualRecoveryRequired:true,changed:false};
+}
+
+/**
  * Synthetic recovery proof ONLY. Deliberately requires a fresh, recognized
  * owner-private QA root: cannot recover or unlock a live user's installation.
  * Recovery is never exposed by the production status-only CLI.
@@ -260,12 +332,13 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
    fail('RECOVERY_SOURCE_INVALID');
   noAlias(lock);
   const fd=fs.openSync(lock,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
-  let stat,pidBytes;
+  let stat,pidBytes,originalLock;
   try{
    stat=fs.fstatSync(fd);
    if(!stat.isFile()||stat.nlink!==1||stat.uid!==process.getuid()||
       (stat.mode&0o077)!==0||stat.size>24||stat.size<2)fail('RECOVERY_LOCK_UNSAFE');
    pidBytes=fs.readFileSync(fd,'utf8');
+   originalLock=recoveryIdentity(fs.fstatSync(fd,{bigint:true}));
   }finally{fs.closeSync(fd);}
   if(!/^[1-9][0-9]{0,9}\n$/.test(pidBytes))fail('RECOVERY_LOCK_UNREADABLE');
   const pid=Number(pidBytes.trim());
@@ -277,7 +350,10 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
    fail('RECOVERY_CONCURRENT_SOURCE_DRIFT');
   // The sole target may not be overwritten by a competing installer; all
   // managed installs are already blocked by the original stale owner lock.
-  syncDir(parent); // Persist the claim before attempting either rename.
+  persistRecoveryIntent(claim,claimStat,{schema:'portable3-recovery-intent/1',
+   claimPid:process.pid,originalPid:pid,originalLock,
+   oldDirectory:pathIdentity(backup),newDirectory:pathIdentity(stage),stage:stages[0]});
+  syncDir(parent); // Persist the intent entry before attempting either rename.
   mutationStarted=true;
   fs.renameSync(backup,target);
   const restored=inspect(target,LEGACY);

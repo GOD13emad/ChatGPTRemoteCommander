@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {managePortablePackage,recoverInterruptedUpgradeQA} from '../tools/portable-capability-gap-package.mjs';
+import {managePortablePackage,recoverInterruptedUpgradeQA,inspectInterruptedRecoveryQA} from '../tools/portable-capability-gap-package.mjs';
 
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -266,7 +266,7 @@ function hardCrashDuringRecovery(home,phase){
    'const m=await import(pathToFileURL(process.argv[2]).href);'+
    'const home=process.argv[3],phase=process.argv[4];'+
    'const rename=fs.renameSync,unlink=fs.unlinkSync;'+
-   'fs.renameSync=(a,b)=>{rename(a,b);'+
+   'fs.renameSync=(a,b)=>{if(phase==="intent-recorded"&&path.basename(a)===".capgap-portable-rollback-v1")process.exit(74);rename(a,b);'+
    'if(phase==="restored-old"&&path.basename(a)===".capgap-portable-rollback-v1")process.exit(74);'+
    'if(phase==="retained-new"&&path.basename(b)===".capgap-portable-recovery-new")process.exit(74);};'+
    'fs.unlinkSync=p=>{unlink(p);if(phase==="removed-original-lock"&&path.basename(p)===".capgap-portable-package.lock")process.exit(74);};'+
@@ -297,6 +297,8 @@ for(const phase of ['restored-old','retained-new','removed-original-lock']){
     const p=path.join(state,n);return [n,fs.lstatSync(p).isDirectory()?unpack(p):hash(fs.readFileSync(p))];
    }));
    const before=snapshot();
+   const phaseExpected={'restored-old':'old-restored','retained-new':'new-retained','removed-original-lock':'original-lock-retired'}[phase];
+   assert.deepEqual(inspectInterruptedRecoveryQA({qaRoot:home}),{phase:phaseExpected,manualRecoveryRequired:true,changed:false});
    const status=managePortablePackage({qaRoot:home});
    assert.equal(status.state,'recovery-claim-present');
    assert.equal(status.manualRecoveryRequired,true);
@@ -308,6 +310,32 @@ for(const phase of ['restored-old','retained-new','removed-original-lock']){
   }finally{fs.rmSync(home,{recursive:true,force:true});}
  });
 }
+test('recovery intent is present before first rename and rejects tampering without mutation',{skip:process.platform!=='linux'},()=>{
+ const home=qa(),state=path.join(home,'state');
+ try{
+  const old=seed(home,{adjuncts:true});
+  const original=hardCrashAfterOldRename(home);
+  hardCrashDuringRecovery(home,'intent-recorded');
+  const claim=path.join(state,'.capgap-portable-recovery.lock');
+  const bytes=fs.readFileSync(claim,'utf8');
+  assert.deepEqual(inspectInterruptedRecoveryQA({qaRoot:home}),{phase:'intent-recorded',manualRecoveryRequired:true,changed:false});
+  assert.equal(fs.existsSync(target(home)),false);
+  assert.deepEqual(unpack(backup(home)),old);
+  const lines=bytes.split('\n'),j=JSON.parse(lines[1]);
+  j.stage='../outside';
+  fs.writeFileSync(claim,lines[0]+'\n'+JSON.stringify(j)+'\n');
+  assert.throws(()=>inspectInterruptedRecoveryQA({qaRoot:home}),/PORTABLE3_RECOVERY_JOURNAL_INVALID/);
+  fs.writeFileSync(claim,bytes);
+  const oldLock=fs.readFileSync(original,'utf8');
+  fs.writeFileSync(original,'1\n');
+  assert.throws(()=>inspectInterruptedRecoveryQA({qaRoot:home}),/PORTABLE3_RECOVERY_JOURNAL_LOCK_DRIFT/);
+  fs.writeFileSync(original,oldLock);
+  assert.equal(inspectInterruptedRecoveryQA({qaRoot:home}).phase,'intent-recorded');
+  assert.equal(fs.existsSync(target(home)),false);
+  assert.deepEqual(unpack(backup(home)),old);
+  assert.equal(fs.readFileSync(claim,'utf8'),bytes);
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
 for(const phase of ['restored-old','retained-new']){
  test('recovery I/O exception '+phase+' retains claim and both packages',{skip:process.platform!=='linux'},()=>{
   const home=qa(),state=path.join(home,'state');
