@@ -146,11 +146,15 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
  if(action==='status'){
    if(existsNoFollow(backup))inspect(backup,LEGACY);
    const claimed=existsNoFollow(recoveryClaim);
-   const interrupted=initial.version==='absent'&&existsNoFollow(backup)&&
-     existsNoFollow(path.join(parent,'.capgap-portable-package.lock'));
-   return {state:claimed?'recovery-claim-present':interrupted?'interrupted-upgrade':initial.version,
-     adjuncts:initial.adjuncts,rollbackReady:existsNoFollow(backup),
-     manualRecoveryRequired:claimed||interrupted,changed:false};
+   const locked=existsNoFollow(path.join(parent,'.capgap-portable-package.lock'));
+   const interrupted=locked&&initial.version==='absent'&&existsNoFollow(backup);
+   // Presence of a lock is not evidence that its owner is dead. Expose
+   // unresolved mutation state without deleting, retiring or trusting a lock.
+   const state=claimed?'recovery-claim-present':
+     interrupted?(existsNoFollow(recovery)?'interrupted-rollback':'interrupted-upgrade'):
+     locked?'mutation-lock-present':initial.version;
+   return {state,adjuncts:initial.adjuncts,rollbackReady:existsNoFollow(backup),
+     manualRecoveryRequired:claimed||locked,changed:false};
  }
  return mutationLock(parent,()=>{
  // Recheck under the original exclusive mutation lock. Recovery itself

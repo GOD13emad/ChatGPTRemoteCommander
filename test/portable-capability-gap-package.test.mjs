@@ -308,6 +308,57 @@ for(const phase of ['restored-old','retained-new','removed-original-lock']){
   }finally{fs.rmSync(home,{recursive:true,force:true});}
  });
 }
+// Synthetic process exits at ordinary install/rollback rename boundaries.
+function hardCrashDuringMutation(home,action,destination){
+ const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');
+ const source='import fs from "node:fs";import path from "node:path";'+
+  'import {pathToFileURL} from "node:url";'+
+  'const m=await import(pathToFileURL(process.argv[2]).href);'+
+  'const rename=fs.renameSync;fs.renameSync=(a,b)=>{rename(a,b);'+
+  'if(path.basename(b)===process.argv[5])process.exit(75);};'+
+  'm.managePortablePackage({qaRoot:process.argv[3],action:process.argv[4]});';
+ const child=spawnSync(process.execPath,['--input-type=module','-e',source,'qa-mutation-crash',pkg,home,action,destination],
+  {encoding:'utf8',timeout:7000,stdio:['ignore','pipe','pipe']});
+ assert.equal(child.status,75,child.stderr);
+}
+for(const [action,destination,stateName] of [
+ ['upgrade','gap-client','mutation-lock-present'],
+ ['rollback','.capgap-portable-recovery-new','interrupted-rollback'],
+ ['rollback','gap-client','mutation-lock-present']
+]){
+ test('ordinary mutation interruption '+action+' '+destination+' reports unresolved lock without changing bytes',
+  {skip:process.platform!=='linux'},()=>{
+   const home=qa(),state=path.join(home,'state');
+   try{
+    const old=seed(home,{adjuncts:true});
+    const next={...expected,...Object.fromEntries(Object.entries(extras).map(([k,v])=>[k,v.sha]))};
+    if(action==='rollback')managePortablePackage({qaRoot:home,action:'upgrade'});
+    hardCrashDuringMutation(home,action,destination);
+    const lock=path.join(state,'.capgap-portable-package.lock');
+    assert.equal(fs.existsSync(lock),true);
+    if(action==='upgrade'){
+     assert.deepEqual(unpack(target(home)),next);
+     assert.deepEqual(unpack(backup(home)),old);
+    }else if(destination==='.capgap-portable-recovery-new'){
+     assert.equal(fs.existsSync(target(home)),false);
+     assert.deepEqual(unpack(backup(home)),old);
+     assert.deepEqual(unpack(recovery(home)),next);
+    }else{
+     assert.deepEqual(unpack(target(home)),old);
+     assert.deepEqual(unpack(recovery(home)),next);
+    }
+    const snapshot=()=>Object.fromEntries(fs.readdirSync(state).sort().map(n=>{
+     const p=path.join(state,n);return [n,fs.lstatSync(p).isDirectory()?unpack(p):hash(fs.readFileSync(p))];
+    }));
+    const before=snapshot(),status=managePortablePackage({qaRoot:home});
+    assert.equal(status.state,stateName);
+    assert.equal(status.manualRecoveryRequired,true);
+    assert.equal(status.changed,false);
+    assert.throws(()=>managePortablePackage({qaRoot:home,action:'upgrade'}),/PORTABLE3_MUTATION_LOCK_OCCUPIED/);
+    assert.deepEqual(snapshot(),before);
+   }finally{fs.rmSync(home,{recursive:true,force:true});}
+  });
+}
 test('unreviewed production CLI refuses mutation and exposes only status',{skip:process.platform!=='linux'},()=>{
  const cli=path.join(root,'tools','portable-capability-gap-package.mjs');
  const r=spawnSync(process.execPath,[cli,'--upgrade'],{encoding:'utf8',timeout:5000});
