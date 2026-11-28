@@ -386,6 +386,41 @@ test('transient SQLite journal disappearance does not fail grant admission or re
   }
 });
 
+test('unlinked regular SQLite sidecar is rechecked without weakening alias guards',()=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-grant-unlinked-sidecar-'));
+  const directory=path.join(root,'secure');
+  fs.mkdirSync(directory,{recursive:true,mode:0o700});
+  const journal=path.join(directory,'v2-access.sqlite-journal');
+  const db=path.join(directory,'v2-access.sqlite');
+  const original=fs.lstatSync;
+  // Model the transient POSIX stat result; Windows also verifies the
+  // pathname recheck and fail-closed branches without requiring POSIX unlink.
+  const unlinked=Object.freeze({isFile:()=>true,isSymbolicLink:()=>false,nlink:0});
+  const hardlinked=Object.freeze({isFile:()=>true,isSymbolicLink:()=>false,nlink:2});
+  const symbolic=Object.freeze({isFile:()=>false,isSymbolicLink:()=>true,nlink:1});
+  const create=()=>new V2GrantRegistry({directory,authorizeAdministration:()=>true});
+  try{
+    let calls=0;
+    fs.lstatSync=(entry,...args)=>entry===journal&&calls++===0 ? unlinked:original(entry,...args);
+    let registry;
+    try{registry=create();assert.equal(calls,2);assert.equal(registry.db.prepare('PRAGMA journal_mode').get().journal_mode,'delete');}
+    finally{fs.lstatSync=original;registry?.close();}
+    for(const result of [unlinked,hardlinked,symbolic]){
+      let reads=0;
+      fs.lstatSync=(entry,...args)=>entry===journal ? (++reads===1?unlinked:result):original(entry,...args);
+      try{assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);assert.equal(reads,2);}
+      finally{fs.lstatSync=original;}
+    }
+    let dbReads=0;
+    fs.lstatSync=(entry,...args)=>entry===db ? (++dbReads,unlinked):original(entry,...args);
+    try{assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);assert.equal(dbReads,1);}
+    finally{fs.lstatSync=original;}
+    fs.writeFileSync(journal,'synthetic');
+    fs.linkSync(journal,path.join(root,'linked-journal'));
+    assert.throws(create,/V2_GRANT_ALIAS_NOT_ALLOWED/);
+  }finally{fs.lstatSync=original;fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('separate Node processes cannot both win the same initial worker-grant revision',async()=>{
   const f=fixture();
   try{

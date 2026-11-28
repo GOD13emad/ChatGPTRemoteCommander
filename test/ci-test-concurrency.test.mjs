@@ -657,8 +657,17 @@ test('R157 Windows dual-era MCP server conformance executes once early, unchange
     /CI_MCP_CONFORMANCE_CARDINALITY/);
   assert.ok(read('tools/run-bounded-test-script.mjs').includes(
     'command=isolateWindowsMcpConformanceRegression(command);'));
-  assert.match(read('test/mcp-conformance.test.mjs'),/attempt < 400/,
-    'original fixture readiness budget and body remain untouched');
+  const fixture=read('test/mcp-conformance.test.mjs');
+  // The fixture was deliberately changed to a bounded 30-second startup
+  // deadline; scheduling must not accidentally remove that protection.
+  assert.match(fixture,/const startupDeadline = Date\.now\(\) \+ 30000;/);
+  assert.match(fixture,/while \(Date\.now\(\) < startupDeadline\)/);
+  assert.match(fixture,/signal: AbortSignal\.timeout\(300\)/);
+  assert.ok(fixture.includes('MCP_CONFORMANCE_FIXTURE_HEALTH_NOT_READY_WITHIN_30000MS'));
+  assert.ok(fixture.includes('await response.body?.cancel()'));
+  assert.ok(fixture.includes('if (response.ok) { healthy = true; break; }'));
+  assert.ok(fixture.includes('assert.equal(healthy, true,'));
+  assert.ok(fixture.includes("const legacyInit = await post(port, {"));
 });
 
 test('bounded Windows adaptive fixture is scheduled cold with all original groups intact',()=>{

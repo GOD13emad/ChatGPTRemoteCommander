@@ -146,7 +146,14 @@ export class V2GrantRegistry {
     // and lstat while another process commits. A single no-entry-tolerant lstat
     // preserves fail-closed validation for entries that are actually present.
     for (const suffix of ['', '-journal', '-wal', '-shm']) {
-      const info = fs.lstatSync(this.location + suffix, { throwIfNoEntry: false });
+      const entry = this.location + suffix;
+      let info = fs.lstatSync(entry, { throwIfNoEntry: false });
+      // POSIX stat can return an already unlinked regular inode (nlink=0)
+      // while SQLite removes a transient sidecar. Recheck the pathname once;
+      // never waive the alias guard for a present entry or the primary DB.
+      if (suffix && info?.isFile() && !info.isSymbolicLink() && info.nlink === 0) {
+        info = fs.lstatSync(entry, { throwIfNoEntry: false });
+      }
       if (!info) continue;
       if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) fail('V2_GRANT_ALIAS_NOT_ALLOWED');
     }
