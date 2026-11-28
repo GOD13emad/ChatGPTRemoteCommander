@@ -44,12 +44,13 @@ jobs:
           $root=Join-Path $env:RUNNER_TEMP 'remote-commander-updater-r157'
           if(Test-Path $root){throw 'R157_NO_BLIND_RERUN'}
           if(Test-Path (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander')){throw 'R157_EXISTING_USER_INSTALL'}
-          foreach($area in @('INSTALL','STATE','ROAMING')){
+          foreach($area in @('INSTALL','STATE','ROAMING','PROJECT_ONLY')){
             New-Item -ItemType Directory -Path (Join-Path $root $area) -ErrorAction Stop | Out-Null
           }
           $c=Get-Content 'config.json' -Raw -Encoding UTF8|ConvertFrom-Json
           if($null -eq $c.autoUpdate -or $null -eq $c.powerMode){throw 'R157_CONFIG_SCHEMA'}
-          $c.allowedRoots=@($root)
+          $project=Join-Path $root 'PROJECT_ONLY'
+          $c.allowedRoots=@($project)
           $c.autoUpdate.enabled=$true
           $c.powerMode.enabled=$false
           $c.powerMode.guiControl.enabled=$false
@@ -62,7 +63,7 @@ jobs:
           $path=Join-Path $root 'INSTALL\config.json'
           [IO.File]::WriteAllText($path,(ConvertTo-Json -InputObject $c -Depth 30)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           $r=Get-Content $path -Raw|ConvertFrom-Json
-          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne $root -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
+          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne $project -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
           $tokens=$null;$errors=$null
           [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'auto-update-windows.ps1'),[ref]$tokens,[ref]$errors)|Out-Null
           if(@($errors).Count -ne 0){throw 'R157_UPDATER_PARSER'}
@@ -102,7 +103,7 @@ jobs:
           $report=Get-Content $reportPath -Raw -Encoding UTF8|ConvertFrom-Json
           if($report.status -ne 'CANDIDATE_PASS' -or [string]$report.commit -ne $sha){throw ('R157_BAD_RESULT_'+$report.status)}
           $profiles=@($report.profiles)
-          if($profiles.Count -ne 1 -or $profiles[0].profile -ne 'default' -or $profiles[0].doctor -ne 'PASS' -or $profiles[0].hardware -ne 'PASS' -or $profiles[0].shadowStore -ne 'PASS' -or $profiles[0].liveStoreCompatibility -ne 'PASS'){throw 'R157_PROFILE_GATE_FAIL'}
+          if($profiles.Count -ne 1 -or $profiles[0].profile -ne 'default' -or $profiles[0].doctor -ne 'PASS' -or $profiles[0].hardware -ne 'PASS' -or $profiles[0].shadowStore -ne 'PASS' -or $profiles[0].liveStoreCompatibility -ne 'NOT_TESTED_SHADOW_ONLY'){throw 'R157_PROFILE_GATE_FAIL'}
           $jobs=@(Get-ChildItem (Join-Path $state 'update-logs') -File -Filter 'qualification-job-*.json')
           if($jobs.Count -ne 3){throw ('R157_JOB_COUNT_'+$jobs.Count)}
           foreach($file in $jobs){
@@ -126,7 +127,7 @@ jobs:
           if(-not(Test-Path $stage) -or (git -C $stage rev-parse HEAD).Trim() -ne $sha){throw 'R157_EXACT_STAGE_MISSING'}
           $receipt=[ordered]@{schema=1;revision='R157';status='PASS_HOSTED_WINDOWS_UPDATER_NOPROMOTE'
             exactCommit=$sha;qualifierReceipts=3;doctor='PASS';shadowStore='PASS'
-            liveStoreCompatibility='PASS';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
+            liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY';ownedChildren=0;promoted=$false;stableBrowserUntouched=$true
             verifiedUtc=[DateTime]::UtcNow.ToString('o')}
           $dest=Join-Path $root 'RETURN_R157.json'
           [IO.File]::WriteAllText($dest,(ConvertTo-Json -InputObject $receipt -Depth 5)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))

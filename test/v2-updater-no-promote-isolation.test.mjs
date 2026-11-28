@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {DeliveryStore} from '../src/delivery-store.mjs';
 
 const root=fileURLToPath(new URL('..', import.meta.url));
 const linux=fs.readFileSync(path.join(root,'auto-update-linux.sh'),'utf8');
@@ -61,4 +62,33 @@ test('candidate config generator isolates all requested mutable runtime location
   assert.equal(c.powerMode.browserControl.profileRoot,f(names[5]));
   assert.equal(c.host,'127.0.0.1');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('R157 hosted Windows fixture keeps private delivery outside its project root',()=>{
+ const workflow=fs.readFileSync(path.join(root,'.github/workflows/windows-updater-e2e-r157.yml'),'utf8');
+ assert.match(workflow,/foreach\(\$area in @\('INSTALL','STATE','ROAMING','PROJECT_ONLY'\)\)/);
+ assert.match(workflow,/\$project=Join-Path \$root 'PROJECT_ONLY'/);
+ assert.match(workflow,/\$c\.allowedRoots=@\(\$project\)/);
+ assert.match(workflow,/\$r\.allowedRoots\[0\] -ne \$project/);
+ assert.doesNotMatch(workflow,/\$c\.allowedRoots=@\(\$root\)/);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'r157-private-store-'));
+ const project=path.join(dir,'PROJECT_ONLY');
+ const privateState=path.join(dir,'STATE','ChatGPTRemoteCommander','delivery-shadow');
+ let store;
+ try{
+  fs.mkdirSync(project,{recursive:true});
+  fs.mkdirSync(privateState,{recursive:true});
+  assert.throws(()=>new DeliveryStore({directory:privateState,scope:'r157-qa',forbiddenRoots:[dir]}),/DELIVERY_STORE_INSIDE_PROJECT/);
+  store=new DeliveryStore({directory:privateState,scope:'r157-qa',forbiddenRoots:[project]});
+  assert.equal(store.directory,fs.realpathSync.native(privateState));
+ }finally{store?.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('R157 NoPromote verification accepts shadow-only evidence without claiming live-store PASS',()=>{
+ const workflow=fs.readFileSync(path.join(root,'.github/workflows/windows-updater-e2e-r157.yml'),'utf8');
+ assert.match(windows,/if\(\$NoPromote\)\{\$liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY'\}/);
+ assert.match(workflow,/\$profiles\[0\]\.liveStoreCompatibility -ne 'NOT_TESTED_SHADOW_ONLY'/);
+ assert.match(workflow,/liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY';ownedChildren=0;promoted=\$false/);
+ assert.doesNotMatch(workflow,/\$profiles\[0\]\.liveStoreCompatibility -ne 'PASS'/);
+ assert.doesNotMatch(workflow,/liveStoreCompatibility='PASS';ownedChildren=0/);
 });
