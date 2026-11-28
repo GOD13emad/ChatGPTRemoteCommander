@@ -74,7 +74,7 @@ test('validate immutable key/category, sensitive evidence, path aliases and inpu
    assert.throws(()=>c.report(issue({consentGate:'ADMIN_UNRESTRICTED'})),/CONSENT_INVALID/);
    assert.equal(c.get('gui.portal.owner-consent').observationCount,1);
    assert.throws(()=>c.list({limit:99999}),/LIMIT_INVALID/);
-   const link=dir+'-alias';fs.symlinkSync(dir,link,'dir');
+   const link=dir+'-alias';fs.symlinkSync(dir,link,process.platform==='win32'?'junction':'dir');
    try{
      assert.throws(()=>new CapabilityGapRegistry({directory:link,scope:'s',device:'MMZ'}),/ALIAS_DENIED/);
      assert.throws(()=>new CapabilityGapRegistry({directory:path.join(link,'should-not-be-created'),scope:'s',device:'MMZ'}),/ALIAS_DENIED/);
