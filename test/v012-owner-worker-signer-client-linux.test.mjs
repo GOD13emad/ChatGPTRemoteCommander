@@ -68,6 +68,10 @@ test('packaged native signer source trust rejects each unsafe metadata cause wit
 
 test('systemd user-namespace root overflow is accepted only for exact signed package member', {skip:process.platform!=='linux'},()=>{
   const p='/usr/lib/chatgpt-remote-commander/app/tools/v012-native-worker-registration-signer-linux.mjs';
+  if(!fs.existsSync(p)){
+    assert.equal(packagedSignerRootMappedTrust(p,process.getuid()),false);
+    return; // Hosted source-only CI has no installed root-owned package.
+  }
   const uid=process.getuid(),stat=fs.lstatSync(p);
   const lines=fs.readFileSync('/proc/self/uid_map','utf8').trim().split(/\r?\n/);
   const row=lines.length===1?lines[0].trim().split(/\s+/).map(Number):[];
