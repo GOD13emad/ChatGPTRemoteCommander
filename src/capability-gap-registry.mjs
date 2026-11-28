@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
+import {windowsPrivateAcl,windowsCreateOwnerPrivateFile} from './owner-private-storage.mjs';
 const KEY=/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,9}$/;
 const PROJECT=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/;
 const ERROR=/^[A-Z][A-Z0-9_]{1,79}$/;
@@ -35,7 +36,7 @@ function validateReport(a){
    solution:a.candidateSolution===undefined?'':check(a.candidateSolution,10,500,'CAPABILITY_GAP_SOLUTION_INVALID'),
    acceptance:a.acceptanceTest===undefined?'':check(a.acceptanceTest,10,500,'CAPABILITY_GAP_ACCEPTANCE_INVALID')};
 }
-function noLinkDirectory(directory){
+function noLinkDirectory(directory,{preprovisioned=false}={}){
  if(typeof directory!=='string'||!path.isAbsolute(directory))fail('CAPABILITY_GAP_DIRECTORY_INVALID');
  const resolved=path.resolve(directory);
  let cursor=path.parse(resolved).root;
@@ -43,7 +44,11 @@ function noLinkDirectory(directory){
    cursor=path.join(cursor,part);
    let st;
    try{st=fs.lstatSync(cursor);}
-   catch(e){if(e.code!=='ENOENT')throw e;fs.mkdirSync(cursor,{mode:0o700});st=fs.lstatSync(cursor);}
+   catch(e){
+     if(e.code!=='ENOENT')throw e;
+     if(preprovisioned)fail('CAPABILITY_GAP_OWNER_PRIVATE_DIRECTORY_REQUIRED');
+     fs.mkdirSync(cursor,{mode:0o700});st=fs.lstatSync(cursor);
+   }
    if(!st.isDirectory()||st.isSymbolicLink())fail('CAPABILITY_GAP_STORE_ALIAS_DENIED');
  }
  return resolved;
@@ -58,16 +63,40 @@ function rowData(x){
 }
 export class CapabilityGapRegistry{
  constructor({directory,scope='owner',device=os.hostname()}={}){
-   this.directory=noLinkDirectory(directory);
+   const windows=process.platform==='win32';
+   // Windows needs real owner DACL proof; emulated POSIX mode 0600 is insufficient.
+   // Never create an unprotected parent in this constructor: owner preprovisions it.
+   this.directory=noLinkDirectory(directory,{preprovisioned:windows});
    this.scope=check(scope,1,110,'CAPABILITY_GAP_SCOPE_INVALID');
    this.device=check(device,1,110,'CAPABILITY_GAP_DEVICE_INVALID');
    this.path=path.join(this.directory,'capability-gaps.sqlite');
+   const assertOwnerAcl=(file,opts={})=>{
+     try{windowsPrivateAcl(file,opts);}
+     catch{fail('CAPABILITY_GAP_OWNER_PRIVATE_ACL_REQUIRED');}
+   };
+   if(windows)assertOwnerAcl(this.directory,{directory:true});
    if(fs.existsSync(this.path)){
      const st=fs.lstatSync(this.path);
      if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)fail('CAPABILITY_GAP_STORE_ALIAS_DENIED');
+   }else if(windows){
+     // CreateNew sets protected owner DACL *at creation* via trusted native
+     // WindowsPowerShell/.NET. Never expose an inherited public file first.
+     // Never truncate, chmod, ACL-repair or overwrite existing owner history.
+     try{windowsCreateOwnerPrivateFile(this.path);}
+     catch{fail('CAPABILITY_GAP_PRIVATE_FILE_CREATION_DENIED');}
+   }
+   if(windows){
+     const st=fs.lstatSync(this.path);
+     if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)fail('CAPABILITY_GAP_STORE_ALIAS_DENIED');
+     assertOwnerAcl(this.path);
+     assertOwnerAcl(this.directory,{directory:true});
    }
    this.db=new DatabaseSync(this.path,{allowExtension:false});
-   fs.chmodSync(this.path,0o600);
+   if(windows){
+     // Verify again after SQLite has opened the selected file.
+     try{assertOwnerAcl(this.path);assertOwnerAcl(this.directory,{directory:true});}
+     catch(error){this.db.close();throw error;}
+   }else fs.chmodSync(this.path,0o600);
    this.db.exec('PRAGMA busy_timeout=3000; PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL;');
    if(this.db.prepare('PRAGMA journal_mode').get().journal_mode!=='delete')fail('CAPABILITY_GAP_JOURNAL_MODE_INVALID');
    if(Number(this.db.prepare('PRAGMA user_version').get().user_version)>1)fail('CAPABILITY_GAP_SCHEMA_TOO_NEW');

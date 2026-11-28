@@ -6,7 +6,15 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {CapabilityGapRegistry,createCapabilityGapTools} from '../src/capability-gap-registry.mjs';
-const make=()=>fs.mkdtempSync(path.join(os.tmpdir(),'commander-gap-'));
+import {windowsPrivateAcl,windowsCreateOwnerPrivateFile} from '../src/owner-private-storage.mjs';
+const make=()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'commander-gap-'));
+ if(process.platform==='win32'){
+  try{windowsPrivateAcl(dir,{directory:true,initializeNew:true});}
+  catch(error){fs.rmSync(dir,{recursive:true,force:true});throw error;}
+ }
+ return dir;
+};
 const issue=(o={})=>({
   capabilityKey:'gui.portal.owner-consent',projectKey:'commander-v2',
   category:'GUI',consentGate:'PORTAL_OWNER',title:'KDE portal native GUI observation',
@@ -17,6 +25,32 @@ const issue=(o={})=>({
   acceptanceTest:'Native window snapshot returns a valid image under authorized owner lease.',
   ...o
 });
+test('native Windows private directory passes pre/post new SQLite ACL inheritance',
+ {skip:process.platform!=='win32'?'Windows native owner ACL inheritance only':false},()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'capgap-owner-dacl-'));
+ const db=path.join(dir,'capability-gaps.sqlite');
+ let stage='initialize-directory';
+ try{
+  // Each assertion names only a stage; never print user path, SID, ACL or data.
+  windowsPrivateAcl(dir,{directory:true,initializeNew:true});
+  stage='recheck-directory';
+  windowsPrivateAcl(dir,{directory:true});
+  stage='exclusive-new-file';
+  assert.equal(windowsCreateOwnerPrivateFile(db),true);
+  assert.deepEqual(fs.readFileSync(db),Buffer.alloc(0));
+  // Hostile second creation must fail without clobbering original owner data.
+  fs.writeFileSync(db,'SYNTHETIC_KEEP_ONLY');
+  assert.throws(()=>windowsCreateOwnerPrivateFile(db),/OWNER_PRIVATE_FILE_CREATION_DENIED/);
+  assert.equal(fs.readFileSync(db,'utf8'),'SYNTHETIC_KEEP_ONLY');
+  stage='check-new-file';
+  windowsPrivateAcl(db);
+  stage='recheck-parent';
+  windowsPrivateAcl(dir,{directory:true});
+ }catch{
+  assert.fail('NATIVE_OWNER_ACL_STAGE_FAILED_'+stage);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 test('same owner profile upserts one gap across chats/projects without duplicating evidence',()=>{
  const dir=make();let a,b;
  try{
@@ -118,6 +152,10 @@ test('CLI is a fallback adapter using the same canonical private profile scope, 
  const root=make(),c=path.join(root,'config.json'),input=path.join(root,'issue.json');
  const delivery=path.join(root,'delivery');
  try{
+  if(process.platform==='win32'){
+   fs.mkdirSync(delivery);
+   windowsPrivateAcl(delivery,{directory:true,initializeNew:true});
+  }
   fs.writeFileSync(c,JSON.stringify({deviceName:'QA',allowedRoots:[path.join(root,'project')],durableDelivery:{directory:delivery,scope:'same-owner'}}),{mode:0o600});
   fs.mkdirSync(path.join(root,'project'),{mode:0o700});
   fs.writeFileSync(input,JSON.stringify(issue()),{mode:0o600});
@@ -134,7 +172,10 @@ test('CLI is a fallback adapter using the same canonical private profile scope, 
   assert.equal(JSON.parse(out.stdout).observations.length,1);
   out=run('list');assert.equal(out.status,0,out.stderr);
   assert.equal(JSON.parse(out.stdout).total,1);
-  assert.equal(fs.statSync(path.join(delivery,'capability-gaps.sqlite')).mode&0o777,0o600);
+  if(process.platform==='win32'){
+    windowsPrivateAcl(delivery,{directory:true});
+    windowsPrivateAcl(path.join(delivery,'capability-gaps.sqlite'));
+  }else assert.equal(fs.statSync(path.join(delivery,'capability-gaps.sqlite')).mode&0o777,0o600);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
@@ -150,14 +191,22 @@ test('native Windows owner-local ACL preprovisioning preserves private SQLite af
  try{
   // No sensitive/real ledger data; the test is not a runtime production ACL guard.
   fs.writeFileSync(db,Buffer.alloc(0),{flag:'wx'});
+  const rawBefore=fs.readFileSync(db);
+  assert.throws(()=>new CapabilityGapRegistry({directory:path.join(dir,'not-preprovisioned'),
+    scope:'owner.qa',device:'QA'}),/CAPABILITY_GAP_OWNER_PRIVATE_DIRECTORY_REQUIRED/);
+  assert.equal(fs.existsSync(path.join(dir,'not-preprovisioned')),false);
   const initial=run('CheckPrivate');
   assert.ok(initial.status!==null,'native ACL check must finish synchronously');
   const baseline=spawnSync('pwsh',['-NoProfile','-NonInteractive','-CommandWithArgs',
    String.raw`$ErrorActionPreference='Stop';$a=Get-Acl -LiteralPath $args[0];[string]$a.AreAccessRulesProtected`,db],
    {encoding:'utf8',timeout:7000,windowsHide:true});
   assert.equal(baseline.status,0,'native ACL baseline readback required');
-  if(baseline.stdout.trim()==='False')
+  if(baseline.stdout.trim()==='False'){
    assert.notEqual(initial.status,0,'inherited DACL cannot be accepted as owner-only');
+   assert.throws(()=>new CapabilityGapRegistry({directory:dir,scope:'owner.qa',device:'QA'}),
+     /CAPABILITY_GAP_OWNER_PRIVATE_ACL_REQUIRED/);
+   assert.deepEqual(fs.readFileSync(db),rawBefore,'denied registry must not change historical bytes');
+  }
   const provision=run('MakePrivate');
   assert.equal(provision.status,0,'owner-local fixture ACL provisioning required');
   assert.equal(run('CheckPrivate').status,0,'fixture ACL must be owner-private before opening SQLite');

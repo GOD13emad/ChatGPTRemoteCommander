@@ -10,7 +10,9 @@ const sha=b=>createHash('sha256').update(b).digest('hex');
 const repository=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const original=path.join(repository,'tools','portable-capability-gap-cli.mjs');
 const registry=path.join(repository,'src','capability-gap-registry.mjs');
+const ownerPrivacy=path.join(repository,'src','owner-private-storage.mjs');
 const delivery=path.join(repository,'src','delivery-store.mjs');
+import {windowsPrivateAcl} from '../src/owner-private-storage.mjs';
 function exec(cli,args){
  const p=spawnSync(process.execPath,[cli,...args],{encoding:'utf8',timeout:7000});
  return {status:p.status,data:(()=>{try{return JSON.parse(p.stdout);}catch{return null;}})(),stderr:p.stderr};
@@ -24,7 +26,13 @@ test('portable gap CLI uses the exact installed V1 DeliveryStore and accepts onl
   fs.mkdirSync(bin,{mode:0o700});fs.mkdirSync(project,{mode:0o700});
   fs.copyFileSync(original,path.join(bin,'portable-capability-gap-cli.mjs'));
   fs.copyFileSync(registry,path.join(bin,'capability-gap-registry.mjs'));
+  // The stand-alone registry must carry its exact reviewed private-storage dependency.
+  fs.copyFileSync(ownerPrivacy,path.join(bin,'owner-private-storage.mjs'));
   const cli=path.join(bin,'portable-capability-gap-cli.mjs'),config=path.join(root,'config.json');
+  if(process.platform==='win32'){
+   fs.mkdirSync(store);
+   windowsPrivateAcl(store,{directory:true,initializeNew:true});
+  }
   const cfg={instance:{profile:'qa-owner'},deviceName:'QA-OWNER',durableDelivery:{directory:store,scope:'qa-owner-profile'},allowedRoots:[project]};
   fs.writeFileSync(config,JSON.stringify(cfg),{mode:0o600});
   const configHash=sha(fs.readFileSync(config));

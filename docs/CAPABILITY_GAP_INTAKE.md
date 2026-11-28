@@ -14,6 +14,40 @@ The V2 MCP server additionally **auto-captures a short allowlist of observed nat
 4. Use capability_gap_triage with expectedRevision to record an action and state. OPEN, TRIAGED, IMPLEMENTING, BLOCKED and READY_FOR_QA are workflow states only. They cannot be mistaken for VERIFIED, native consent, Administrator/Root authority, sign-off or production deployment.
 5. Repair the root cause through a supported implementation, run the real host-scoped acceptance test, update the existing project Brain and its Notion evidence, and continue independent work. Do not silently repeat operations with unknown outcomes.
 
+## Owner-only Windows SQLite candidate (2026-11-28; NoPromote)
+
+In the next V2 security-source candidate, `src/capability-gap-registry.mjs` imports
+the existing shared `src/owner-private-storage.mjs` from the independently
+reviewed security PR #516. On Windows it **requires** a pre-existing, owner-protected
+profile directory with native DACL proof before opening the profile's
+`capability-gaps.sqlite`. It refuses creating new parent directories implicitly,
+refuses broad ACLs or unexpected file aliases, exclusively creates a previously
+missing database with an explicit owner-only native DACL at file creation
+(`FileStream` `CreateNew` plus `FileSecurity`, not post-create chmod), then rechecks native DACL both
+before and after SQLite open. It does **not** change ACLs on existing user
+history, migrate the V1 JSON ledger, elevate privileges or silently repair a
+pre-existing insecure profile.
+The Commander server deliberately leaves other MCP tools available if this
+optional registry fails the native Windows private-storage admission: it advertises
+no `capability_gap_*` tools and reports `capabilityGaps.enabled=false` with a
+fixed refusal reason. It does **not** silently use unprotected storage.
+
+For a new Windows profile, the **owner-approved** existing
+`tools/v2-universal-owner-acl.ps1 MakePrivate/CheckPrivate` helper is a
+separate preprovisioning/canary operation. This QA is not authorization to
+modify production ACLs. Inherited-access negatives must be rejected, and a
+successful synthetic write/readback in a protected test profile alone is
+not a full fleet or attacker-race security acceptance.
+
+The former two-file portable QA CLI pair must become a **three-file atomic,
+hash-pinned source unit** containing `portable-capability-gap-cli.mjs`,
+`capability-gap-registry.mjs` and `owner-private-storage.mjs`. Existing
+V1 bridge and COS staging source digests are intentionally pinned to the
+**previous** registry and will fail closed until their upstream reviewed
+adapter, per-file SHA receipts and native recovery tests are updated. Do
+not copy the proposed registry alone onto any installed two-file client.
+No V1/V2 runtime or ChatGPT account installation is approved here.
+
 ## Native permission model
 
 Classify each request as NONE, NATIVE_USER, NATIVE_ADMIN, BROWSER_OWNER, OAUTH_OWNER, PORTAL_OWNER, or EXTERNAL_PROVIDER. Prefer existing owner-session routes. If privileged access is indispensable, use native UAC/sudo or a narrowly scoped and auditable existing broker. A one-time approval survives until reboot only when the actual OS and broker policy explicitly supports that lifetime. Recording a gap does not grant privileges, exfiltrate saved browser credentials, circumvent MFA or create cross-account consent.

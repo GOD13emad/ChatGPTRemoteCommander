@@ -116,6 +116,17 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
     }
     assert.equal(healthy, true, stderr || `server failed to become healthy; exitCode=${child.exitCode}`);
 
+    const current=await post(port, 0, 'system_status', {});
+    assert.equal(typeof current.capabilityGaps.enabled,'boolean');
+    if(process.platform==='win32' &&
+       stderr.includes('CAPABILITY_GAP_PROFILE_DISABLED_OWNER_PRIVATE_STORAGE')){
+      // No Gap tools are claimed on an insecure owner profile. Core remains usable.
+      assert.equal(current.capabilityGaps.enabled,false);
+      assert.equal(current.capabilityGaps.durable,false);
+      assert.equal(current.capabilityGaps.passClaimAllowed,false);
+      assert.equal(current.capabilityGaps.reason,'OWNER_PRIVATE_STORAGE_UNAVAILABLE');
+    }
+
     const effect = path.join(canonicalDataRoot, 'effect.txt');
     const request = {
       requestId: 'http-retry-1',

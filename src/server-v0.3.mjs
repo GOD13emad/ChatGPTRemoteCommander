@@ -142,8 +142,34 @@ const {createOperationEventPublisher} = await import('./mcp-delivery-event-bridg
 const deliveryStore = new DeliveryStore(deliveryLocation(config, configPath));
 const deliveryTools = createDeliveryTools(deliveryStore);
 const mutationIdempotency = new MutationIdempotencyStore({ directory: deliveryStore.directory, scope: deliveryStore.scope });
-const capabilityGapTools = createCapabilityGapTools({directory:deliveryStore.directory,
-  scope:deliveryStore.scope,device:config.deviceName||os.hostname()});
+let capabilityGapTools;
+try{
+  capabilityGapTools=createCapabilityGapTools({directory:deliveryStore.directory,
+    scope:deliveryStore.scope,device:config.deviceName||os.hostname()});
+}catch(error){
+  const reason=typeof error?.capabilityGapCode==='string'?error.capabilityGapCode:'';
+  // Gap reporting is optional. Unsafe Windows owner storage must not be opened,
+  // and its admission failure must not take unrelated Commander tools offline.
+  const denied=new Set([
+    'CAPABILITY_GAP_OWNER_PRIVATE_DIRECTORY_REQUIRED',
+    'CAPABILITY_GAP_OWNER_PRIVATE_ACL_REQUIRED',
+    'CAPABILITY_GAP_PRIVATE_FILE_CREATION_DENIED',
+    'CAPABILITY_GAP_STORE_ALIAS_DENIED'
+  ]);
+  if(process.platform!=='win32'||!denied.has(reason))throw error;
+  console.error('CAPABILITY_GAP_PROFILE_DISABLED_OWNER_PRIVATE_STORAGE');
+  capabilityGapTools=Object.freeze({
+    definitions:Object.freeze([]),
+    execute:async()=>{throw Object.assign(new Error(reason),{capabilityGapCode:reason});},
+    captureFailure:()=>({captured:false}),
+    status:()=>({
+      enabled:false,durable:false,authorizationEffects:false,
+      remoteFleetSync:false,passClaimAllowed:false,
+      autoCaptureKnownNativeErrors:false,profileScope:deliveryStore.scope,
+      reason:'OWNER_PRIVATE_STORAGE_UNAVAILABLE'
+    })
+  });
+}
 const conversationController = createConversationController({
   directory: path.join(deliveryStore.directory, 'conversation'),
   scope: deliveryStore.scope,
