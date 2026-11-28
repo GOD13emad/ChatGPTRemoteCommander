@@ -6,6 +6,8 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import {guardFileWrite,readBoundHostConfiguration} from '../src/file-write-guard.mjs';
 import {writeText} from '../src/tools-v0.3.mjs';
+import {canonicalizeRoots,isWithin,safeExistingPath,safeWritablePath} from '../src/security-v0.3.mjs';
+import {resolveExistingTarget,resolveWritableTarget} from '../src/power-tools-v0.3.mjs';
 
 function fixture(t) {
   const parent=fs.realpathSync.native(os.tmpdir());
@@ -13,6 +15,48 @@ function fixture(t) {
   t.after(()=>{assert.equal(path.dirname(root),parent);fs.rmSync(root,{recursive:true,force:true});});
   return root;
 }
+test('resolved authorization does not treat a stale configured root alias as a canonical root',async t=>{
+  const root=fixture(t),inside=path.join(root,'inside'),alias=path.join(root,'alias');
+  fs.mkdirSync(inside);fs.writeFileSync(path.join(inside,'fixture.txt'),'inside');
+  fs.symlinkSync(inside,alias,process.platform==='win32'?'junction':'dir');
+  const roots=await canonicalizeRoots([alias]);
+  assert.deepEqual([...roots],[inside]);
+  const ctx={roots,config:{capabilityProfile:{tier:'FULL_POWER',explicitlyAuthorized:true},
+    powerMode:{enabled:true,fullFilesystem:false}},
+    accessStatus:{configuredTier:'FULL_POWER',effectiveTier:'FULL_POWER',
+      hostExecution:{mode:'FULL_HOST_USER',hostFilesystem:true,shellAvailable:true},
+      nativeRoot:{nonRootTokenVerified:true}}};
+  const existing=path.join(alias,'fixture.txt'),missing=path.join(alias,'new.txt');
+  assert.equal(isWithin(existing,roots),true);
+  assert.equal(await safeExistingPath(existing,roots),path.join(inside,'fixture.txt'));
+  assert.equal(await safeWritablePath(existing,roots),existing);
+  assert.equal(await safeWritablePath(missing,roots),missing);
+  assert.equal(await resolveExistingTarget(ctx,existing),path.join(inside,'fixture.txt'));
+  assert.equal(await resolveWritableTarget(ctx,existing),path.join(inside,'fixture.txt'));
+  assert.equal(await resolveWritableTarget(ctx,missing),path.join(inside,'new.txt'));
+  // Replace only the disposable alias with an unrelated real directory.
+  fs.rmSync(alias,{recursive:true,force:true});
+  assert.equal(fs.readFileSync(path.join(inside,'fixture.txt'),'utf8'),'inside');
+  fs.mkdirSync(alias);fs.writeFileSync(existing,'outside canonical root');
+  const cases=[
+    ['standard existing read',()=>safeExistingPath(existing,roots)],
+    ['standard existing write',()=>safeWritablePath(existing,roots)],
+    ['standard missing write',()=>safeWritablePath(missing,roots)],
+    ['scoped power existing read',()=>resolveExistingTarget(ctx,existing)],
+    ['scoped power existing write',()=>resolveWritableTarget(ctx,existing)],
+    ['scoped power missing write',()=>resolveWritableTarget(ctx,missing)]
+  ];
+  const accepted=[];
+  for(const [name,call] of cases){
+    try{await call();accepted.push(name);}
+    catch(e){assert.match(e.message,/escapes allowed roots/);}
+  }
+  assert.deepEqual(accepted,[],'STALE_ALIAS_AUTHORIZED: '+accepted.join(', '));
+  assert.equal(fs.readFileSync(existing,'utf8'),'outside canonical root');
+  assert.equal(fs.existsSync(missing),false);
+  assert.equal(await safeExistingPath(path.join(inside,'fixture.txt'),roots),path.join(inside,'fixture.txt'));
+});
+
 test('authorized file and missing descendants retain full canonical-path validation',async t=>{
   const root=fixture(t),target=path.join(root,'new','nested','result.txt');
   const initial=await guardFileWrite(target);
