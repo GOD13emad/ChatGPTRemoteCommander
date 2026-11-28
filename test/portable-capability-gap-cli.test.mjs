@@ -13,6 +13,9 @@ const registry=path.join(repository,'src','capability-gap-registry.mjs');
 const ownerPrivacy=path.join(repository,'src','owner-private-storage.mjs');
 const delivery=path.join(repository,'src','delivery-store.mjs');
 import {windowsPrivateAcl} from '../src/owner-private-storage.mjs';
+// The stable existing portable test entrypoint also exercises the three-file
+// reversible package QA without lengthening the bounded R157 Windows command.
+import './portable-capability-gap-package.test.mjs';
 function exec(cli,args){
  const p=spawnSync(process.execPath,[cli,...args],{encoding:'utf8',timeout:7000});
  return {status:p.status,data:(()=>{try{return JSON.parse(p.stdout);}catch{return null;}})(),stderr:p.stderr};
