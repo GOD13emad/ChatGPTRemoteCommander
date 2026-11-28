@@ -43,7 +43,12 @@ for (const p of [
 
 const start = read('START_HERE.md');
 for (const required of [
-  'Single source of truth for assisted installation',
+  ...(pkg.version.startsWith('0.12.') ? [
+    'Assisted installation — published release path',
+    'not the unpromoted 0.12 NSIS/DEB engineering pilot',
+    'Never install a CI artifact',
+    'one native installation per host'
+  ] : ['Single source of truth for assisted installation']),
   'Full / Power Mode',
   'Never paste it into ChatGPT',
   'Plugins → + → Add custom MCP server',

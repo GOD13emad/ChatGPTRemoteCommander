@@ -1,4 +1,17 @@
-# Release Train 0.12 — 0.12.0-dev.36 source candidate (NoPromote)
+# Release Train 0.12 — 0.12.0-dev.37 source candidate (NoPromote)
+
+## Dev.37 onboarding qualification assertion correction (28 November 2026) — NoPromote
+
+Hosted dev.36 Server Install Canary failed on both Windows and Linux because
+the onboarding validator required an obsolete START_HERE intro phrase, while
+the current guide distinguishes published historical installers from the
+unpromoted 0.12 native NSIS/DEB pilot. For 0.12, the corrected validator checks
+four specific boundaries: published-release scope, unpromoted native pilot,
+no direct CI-artifact installation, and one native install per host. Earlier
+non-0.12 trains retain their historical validation. No runtime permission or
+release gate was weakened; local onboarding and version checks PASS.
+Fresh current-head CI and independent provenance are still required.
+
 
 ## Dev.36 bounded J01 Worker grant lifetime (28 November 2026) — NoPromote
 
