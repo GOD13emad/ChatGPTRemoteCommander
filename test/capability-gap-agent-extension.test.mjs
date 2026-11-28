@@ -54,15 +54,14 @@ test('installer denies symlink extension roots rather than following external wr
 });
 
 
-test('pinned v0.1.0 metadata upgrades to v0.2.0 with an exact recoverable old copy and stable discovery',{skip:!running},t=>{
- const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
- const commit='7f58d868580aab8269299c92c1b94dc87c1cc086';
- const old={};
- for(const n of ['agent.json','SKILL.md']){
-  const result=spawnSync('git',['-C',repo,'show',commit+':extensions/commander-capability-gaps/'+n],{encoding:'utf8',timeout:5000});
-  if(result.status!==0)return t.skip('Pinned historical extension source not available in this checkout');
-  old[n]=result.stdout;
- }
+test('pinned v0.1.0 metadata upgrades directly to 0.2.1-rc.1 with exact recoverable history and stable discovery',{skip:!running},()=>{
+ // The two immutable historical fixtures came from source commit 7f58d868580aab8269299c92c1b94dc87c1cc086.
+ // No git CLI or history is required by offline installers and native Linux QA.
+ const fixture=name=>fs.readFileSync(fileURLToPath(new URL('./fixtures/capability-gaps-v0.1.0-'+name,import.meta.url)),'utf8');
+ const old={'agent.json':fixture('agent.json'),'SKILL.md':fixture('SKILL.md')};
+ const digest=value=>createHash('sha256').update(value).digest('hex');
+ assert.equal(digest(old['agent.json']),'3b0b3f522dd6ce04f505bad1e1f971d9b1420e45e57196c1c55edc24b4fe7593','PINNED_V010_MANIFEST_DRIFT');
+ assert.equal(digest(old['SKILL.md']),'74918cd9768e39d3c451351cbd7a76bfb0e53d91abc13172a29ca0afdc8b2a10','PINNED_V010_SKILL_DRIFT');
  const home=tempHome(),root=path.join(home,'.agents','extensions'),dest=path.join(root,'commander-capability-gaps');
  try{
   fs.mkdirSync(dest,{recursive:true,mode:0o700});
