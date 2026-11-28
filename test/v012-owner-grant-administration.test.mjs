@@ -24,7 +24,8 @@ function fixture({withSigner=false}={}){
   const start=Date.now();
   const state={now:start,bound:true,consent:true,prompts:[],keyId:KEY,
     targetId:'system-status',ownerSidHash:OWNER,ownerExpiresAtMs:start+90000,
-    keyTtlMs:80000,approvalDelayMs:0,onConsent:null,signerCalls:0,registrationCalls:0};
+    keyTtlMs:80000,approvalDelayMs:0,onConsent:null,signerCalls:0,registrationCalls:0,
+    lastRegistrationExpiryMs:null};
   const owner=()=>({
     source:'native-owner-attested',hostId:identity.hostId,
     profileId:identity.profileId,principalId:identity.principalId,
@@ -84,6 +85,10 @@ function fixture({withSigner=false}={}){
     ...(withSigner?{
       resolveSignedWorkerEnvelope:async({workerContext,grantRevision,expiresAtMs})=>{
         state.signerCalls++;
+        state.lastRegistrationExpiryMs=expiresAtMs;
+        if(expiresAtMs-state.now>120000)
+          throw Object.assign(new Error('RC012_WORKER_SIGNING_INTENT_INVALID'),
+            {code:'RC012_WORKER_SIGNING_INTENT_INVALID'});
         return {claims:{
           workerId:workerContext.workerId,bindingId:workerContext.bindingId,
           grantRevision,expiresAtMs
@@ -239,6 +244,26 @@ test('key rotation during native owner dialog denies positive post-approval acce
     const after=await f.controller.inspect();
     assert.equal(after.workerActive,false,
       'the changed trusted key never inherits the prior native grant');
+  }finally{f.close();}
+});
+
+test('signed Worker enrollment stays within 120s signer TTL even with longer native J01 grant',async()=>{
+  const f=fixture({withSigner:true});
+  try{
+    f.state.ownerExpiresAtMs=f.state.now+280000;
+    await f.controller.approveWorker();
+    await f.controller.approveSignedRegistration();
+    const now=f.state.now;
+    assert.equal((await f.controller.inspect()).workerActive,true);
+    const enrolled=await f.controller.registerSignedWorker();
+    assert.equal(enrolled.registered,true);
+    assert.equal(f.state.lastRegistrationExpiryMs,now+120000,
+      'signed enrollment must satisfy signer/authority TTL contract');
+    f.state.now+=125000;
+    assert.equal((await f.controller.inspect()).workerActive,true,
+      'shorter signing receipt does not shorten owner-granted Worker lifetime');
+    assert.equal((await f.controller.inspect()).readOnlyCanaryAllowed,false,
+      'registration never grants system_status');
   }finally{f.close();}
 });
 
