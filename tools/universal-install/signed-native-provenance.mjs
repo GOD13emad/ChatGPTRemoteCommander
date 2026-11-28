@@ -152,7 +152,11 @@ function verifyNativeRelease({
     ||!SHA.test(digest??'')
     ||manifest?.candidate?.bytes!==Number(candidateStat.size))
     fail('UNIVERSAL_NATIVE_SIGSTORE_MANIFEST_MISMATCH');
-  const before=previousCandidate??hashBoundNativeCandidate(candidatePath,candidateStat);
+  // Re-read after bundle retrieval; equal timestamps alone do not prove
+  // content identity on every filesystem.
+  const before=hashBoundNativeCandidate(candidatePath,candidateStat);
+  if(previousCandidate&&before.sha256!==previousCandidate.sha256)
+    fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED');
   if(before.sha256!==digest)
     fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_HASH_MISMATCH');
   const args=['attestation','verify',candidatePath,'--repo',REPO,
@@ -172,8 +176,8 @@ function verifyNativeRelease({
   // The verifier's result is about the candidate, not an arbitrary later
   // file at the same path. Bind the receipt to unchanged local bytes.
   const verified=hashBoundNativeCandidate(candidatePath,before.snapshot);
-  if(verified.sha256!==digest)
-    fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_HASH_MISMATCH');
+  if(verified.sha256!==before.sha256)
+    fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED');
   // Double-check release manifest did not change during online verification.
   const after=fs.lstatSync(manifestPath);
   if(after.ino!==manifestStat.ino||after.dev!==manifestStat.dev

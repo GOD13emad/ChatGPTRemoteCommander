@@ -6,6 +6,7 @@ import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { setTimeout as deadlineTimer } from 'node:timers/promises';
 import { probeWindowsAdministrator } from '../src/windows-admin-token.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,6 +57,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
   const stateRoot = path.join(root, 'operation-state');
   const port = await freePort();
   let child;
+  let childClosed;
   let stderr='';
   let stdoutBytes=0;
   let phase='fixture-setup';
@@ -106,6 +108,7 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
       env: { ...process.env, REMOTE_COMMANDER_CONFIG: configPath },
       stdio: ['ignore', 'pipe', 'pipe']
     });
+    childClosed=new Promise(resolve=>child.once('close',resolve));
     child.stderr.on('data', (chunk) => { if (stderr.length < 8192) stderr += chunk.toString('utf8').slice(0,8192-stderr.length); });
     child.stdout.on('data', (chunk) => { stdoutBytes += chunk.length; });
 
@@ -232,12 +235,23 @@ test('HTTP async operation returns immediately, retry is idempotent, and output 
   } finally {
     let cleanupPhase='server-stop';
     try {
-      if (child && child.exitCode === null) {
-        child.kill();
-        await Promise.race([once(child, 'exit'), wait(2000)]);
+      if (child) {
+        if(child.exitCode===null&&child.signalCode===null)child.kill();
+        const timer=new AbortController();
+        try{
+          const closed=await Promise.race([
+            childClosed.then(()=>true),
+            deadlineTimer(5000,false,{signal:timer.signal})
+          ]);
+          assert.equal(closed,true,'owned fixture server did not close');
+        }finally{timer.abort();}
       }
       cleanupPhase='fixture-remove';
-      await fs.rm(root, { recursive: true, force: true });
+      // Windows can briefly retain handles after a child has exited.
+      // Node retries only transient removal errors and still throws on failure.
+      await fs.rm(root, { recursive: true, force: true,
+        maxRetries:8, retryDelay:100 });
+      await assert.rejects(fs.lstat(root),{code:'ENOENT'});
     } catch (error) {
       const code=['EPERM','EACCES','EBUSY','ENOTEMPTY','ENOENT'].includes(error?.code)?error.code:'UNCLASSIFIED';
       console.log('R157_ASYNC_HTTP_CLEANUP_FAILURE_PHASE='+cleanupPhase);

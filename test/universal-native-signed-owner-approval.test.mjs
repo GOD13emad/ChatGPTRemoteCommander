@@ -331,3 +331,55 @@ test('native provenance refuses candidate drift while retrieving public bundles'
     assert.equal(called,0);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('artifact drift is denied even when file metadata has coarse resolution',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-coarse-digest-'));
+  const candidate=path.join(dir,'candidate.deb');
+  const manifest=path.join(dir,'provenance.json');
+  try{
+    const bytes=Buffer.alloc(4096,71);
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    fs.writeFileSync(candidate,bytes,{flag:'wx'});
+    fs.writeFileSync(manifest,JSON.stringify({schema:1,sourceHead:head,
+      platform:'linux',candidate:{sha256:digest,bytes:bytes.length}}),{flag:'wx'});
+    const input={manifestPath:manifest,candidatePath:candidate,
+      expectedCommit:head,platform:'linux'};
+    const originalLstat=fs.lstatSync;
+    const originalFstat=fs.fstatSync;
+    const initial=originalLstat(candidate,{bigint:true});
+    const sameFixture=st=>st.dev===initial.dev&&st.ino===initial.ino;
+    // Freeze only timestamps of this disposable fixture. Real bytes and all
+    // other identity/size checks remain active.
+    const coarse=st=>Object.assign(st,{mtimeNs:initial.mtimeNs,ctimeNs:initial.ctimeNs});
+    t.mock.method(fs,'lstatSync',(file,opts)=>{
+      const st=originalLstat(file,opts);
+      return file===candidate&&opts?.bigint&&sameFixture(st)?coarse(st):st;
+    });
+    t.mock.method(fs,'fstatSync',(fd,opts)=>{
+      const st=originalFstat(fd,opts);
+      return opts?.bigint&&sameFixture(st)?coarse(st):st;
+    });
+    const good=(_exe,args)=>args[0]==='--version'?ghOk:
+      {status:0,stdout:verifiedJson(path.basename(candidate),digest)};
+    assert.equal(verifySignedNativeRelease(input,{run:good}).signedCandidateVerified,true);
+    const changeDuringVerify=(exe,args)=>{
+      if(args[0]!=='--version')fs.writeFileSync(candidate,Buffer.alloc(bytes.length,75));
+      return good(exe,args);
+    };
+    assert.throws(()=>verifySignedNativeRelease(input,{run:changeDuringVerify}),
+      /UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED/);
+    fs.writeFileSync(candidate,bytes);
+    let verifierCalls=0;
+    const fetcher=async()=>{
+      fs.writeFileSync(candidate,Buffer.alloc(bytes.length,76));
+      return {status:200,text:async()=>JSON.stringify({attestations:[
+        {bundle:{mediaType:'application/vnd.dev.sigstore.bundle.v0.3+json',
+          verificationMaterial:{},dsseEnvelope:{}}}]})};
+    };
+    await assert.rejects(verifyPublicSignedNativeRelease(input,{fetcher,run:(exe,args)=>{
+      verifierCalls++;return good(exe,args);
+    }}),/UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED/);
+    assert.equal(verifierCalls,0);
+  }finally{t.mock.restoreAll();fs.rmSync(dir,{recursive:true,force:true});}
+});
