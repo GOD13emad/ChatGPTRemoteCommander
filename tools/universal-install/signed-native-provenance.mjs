@@ -19,6 +19,17 @@ const HEAD=/^[a-f0-9]{40}$/;
 const MAX_PUBLIC_ATTESTATION_BYTES=4*1024*1024;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
+// Native package tools are also copied into the self-contained user-local
+// updater. Share this executable policy without adding a Core dependency.
+// Ambient SystemRoot is never authority to select an executable. As in Core,
+// nonstandard Windows installations must fail closed pending qualification.
+export function windowsNativePowerShell({env=process.env}={}){
+  const root=env.SystemRoot;
+  if(root!==undefined&&(typeof root!=='string'||root.toLowerCase()!=='c:\\windows'))
+    fail('UNIVERSAL_NATIVE_WINDOWS_SYSTEMROOT_INVALID');
+  return 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+}
+
 const MAX_NATIVE_CANDIDATE_BYTES=1536n*1024n*1024n;
 const sameCandidateSnapshot=(a,b)=>a.dev===b.dev&&a.ino===b.ino
   &&a.mode===b.mode&&a.nlink===b.nlink&&a.size===b.size

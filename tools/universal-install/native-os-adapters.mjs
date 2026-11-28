@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
+import {windowsNativePowerShell} from './signed-native-provenance.mjs';
+export {windowsNativePowerShell};
 
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
 const check=(c,e)=>{if(!c)fail(e);};
@@ -62,16 +64,6 @@ function defaultRun(binary,argv,{timeoutMs=15000,checkExit=true}={}){
     'UNIVERSAL_NATIVE_OS_COMMAND_UNAVAILABLE');
   if(checkExit)check(r.status===0,'UNIVERSAL_NATIVE_OS_COMMAND_REJECTED');
   return {code:r.status,stdout:r.stdout.trim(),stderr:r.stderr.trim()};
-}
-export function windowsNativePowerShell({env=process.env}={}){
-  // Windows PowerShell 5.1 is built into supported Windows hosts; do not
-  // make package installation depend on separately installed PowerShell 7.
-  const root=env.SystemRoot||String.raw`C:\Windows`;
-  check(typeof root==='string'&&path.win32.isAbsolute(root)
-    &&!/[\r\n\0]/.test(root),
-    'UNIVERSAL_NATIVE_WINDOWS_SYSTEMROOT_INVALID');
-  return path.win32.join(root,'System32','WindowsPowerShell',
-    'v1.0','powershell.exe');
 }
 function ps(script,run,{timeoutMs=30000}={}){
   const enc=Buffer.from(script,'utf16le').toString('base64');

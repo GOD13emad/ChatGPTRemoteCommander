@@ -310,3 +310,20 @@ test('fresh Linux state permits ONLY its own journal but rejects profiles and or
     }
   }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
+
+
+test('all native package PowerShell callers use the fixed Windows system executable',()=>{
+ const expected=String.raw`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`;
+ assert.equal(windowsNativePowerShell({env:{}}),expected);
+ assert.equal(windowsNativePowerShell({env:{SystemRoot:String.raw`C:\WINDOWS`}}),expected);
+ for(const root of ['D:\\Windows','C:\\Users\\Owner\\Windows','\\\\server\\share',
+   'C:\\Windows\\..\\Windows','relative\\Windows','C:/Windows','']){
+   assert.throws(()=>windowsNativePowerShell({env:{SystemRoot:root}}),
+     {code:'UNIVERSAL_NATIVE_WINDOWS_SYSTEMROOT_INVALID'});
+ }
+ for(const name of ['managed-updates.mjs','native-cli.mjs','native-os-adapters.mjs']){
+   const source=fs.readFileSync(new URL('../tools/universal-install/'+name,import.meta.url),'utf8');
+   assert.doesNotMatch(source,/process\.env\.SystemRoot|env\.SystemRoot/);
+   assert.match(source,/windowsNativePowerShell\(\)/);
+ }
+});

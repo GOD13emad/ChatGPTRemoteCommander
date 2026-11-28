@@ -7,7 +7,7 @@ import path from 'node:path';
 import {createInterface} from 'node:readline/promises';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {verifyPublicSignedNativeRelease} from './signed-native-provenance.mjs';
+import {verifyPublicSignedNativeRelease,windowsNativePowerShell} from './signed-native-provenance.mjs';
 import {executeNativeTransaction}
   from './native-transaction.mjs';
 import {createNativeOsAdapter}
@@ -155,8 +155,7 @@ export async function nativeApproval(plan,{
   if(guiApproval&&process.platform==='win32'){
     const source=windowsGuiApprovalScript(plan);
     const encoded=Buffer.from(source,'utf16le').toString('base64');
-    const shell=path.join(process.env.SystemRoot||'C:\\\\Windows',
-      'System32','WindowsPowerShell','v1.0','powershell.exe');
+    const shell=windowsNativePowerShell();
     const result=spawnSync(shell,['-NoLogo','-NoProfile','-NonInteractive',
       '-Sta','-EncodedCommand',encoded],{
       stdio:'ignore',timeout:120000,windowsHide:false});

@@ -7,7 +7,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
-import {verifyPublicSignedNativeRelease} from './signed-native-provenance.mjs';
+import {verifyPublicSignedNativeRelease,windowsNativePowerShell} from './signed-native-provenance.mjs';
 import {verifyV012Publication,nativeV012ReleaseAssetSet,isV012InstalledVersion} from './release-admission-0.12.mjs';
 
 const REPO='GOD13emad/ChatGPTRemoteCommander';
@@ -15,8 +15,8 @@ const TAG=/^v0\.12\.(?:0|[1-9][0-9]*)$/;
 const COMMIT=/^[a-f0-9]{40}$/;
 const SHA256=/^[a-f0-9]{64}$/;
 const fail=c=>{throw Object.assign(new Error(c),{code:c});};
-function exec(binary,args,{timeout=25000,maxBuffer=3*1024*1024}={}){
-  const r=spawnSync(binary,args,{encoding:'utf8',timeout,
+function execNativePowerShell(args,{timeout=25000,maxBuffer=3*1024*1024}={}){
+  const r=spawnSync(windowsNativePowerShell(),args,{encoding:'utf8',timeout,
     maxBuffer,windowsHide:true});
   if(r.error||r.signal||r.status!==0||typeof r.stdout!=='string')
     fail('RC012_AUTO_UPDATE_TRUSTED_SOURCE_UNAVAILABLE');
@@ -82,9 +82,7 @@ function installedNativeVersion(){
       "[Console]::Write($v.DisplayVersion)}";
     // The Windows Store may expose a non-launchable pwsh.exe app alias.
     // Use the built-in Windows PowerShell executable on every Windows host.
-    const shell=path.join(process.env.SystemRoot||String.raw`C:\Windows`,
-      'System32','WindowsPowerShell','v1.0','powershell.exe');
-    const result=exec(shell,
+    const result=execNativePowerShell(
       ['-NoLogo','-NoProfile','-NonInteractive','-Command',script]);
     return result.trim()||null;
   }
