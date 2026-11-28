@@ -96,6 +96,14 @@ profile_matches() {
     [[ "$rule" =~ ^([A-Za-z0-9][A-Za-z0-9._-]*):([0-9]{4,5})$ ]] || continue
     [[ "${BASH_REMATCH[1]}" == "$profile" ]] || continue
     grep -Fq "http://127.0.0.1:${BASH_REMATCH[2]}/mcp" "$file" && return 0
+    # Private 0.12 HTTPS routes require explicit exact profile:port opt-in.
+    # Match the native migrator's structured mTLS YAML; reject comment decoys.
+    if grep -Fqx "      url: https://127.0.0.1:${BASH_REMATCH[2]}/mcp" "$file" &&
+       grep -Eq '^  client_cert: ".+"$' "$file" &&
+       grep -Eq '^  client_key: ".+"$' "$file" &&
+       grep -Eq '^ca_bundle: ".+"$' "$file"; then
+      return 0
+    fi
   done
   return 1
 }
