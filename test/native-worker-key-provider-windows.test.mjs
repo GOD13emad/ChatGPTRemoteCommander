@@ -269,3 +269,23 @@ test('ambient SystemRoot and PSModulePath cannot redirect native worker SID Powe
     else process.env.PSModulePath=previousModules;
   }
 });
+
+test('actual Windows DPAPI and owner resolver may launch only pinned Windows system PowerShell',()=>{
+  const alternatives=[
+    'C:\\Users\\owner\\Downloads\\powershell.exe',
+    'C:\\Windows\\Temp\\powershell.exe',
+    'D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+  ];
+  for (const powershellPath of alternatives) {
+    assert.throws(()=>createWindowsNativeOwnerSidHashResolver({
+      platform:'win32',powershellPath,verifyExecutable:()=>{}
+    }),{code:'NATIVE_WORKER_KEY_POWERSHELL_UNTRUSTED'});
+    assert.throws(()=>createWindowsDpapiSeedLoader({
+      platform:'win32',credentialPath:PATH,profileId:PROFILE,
+      powershellPath,verifyExecutable:()=>{}
+    }),{code:'NATIVE_WORKER_KEY_POWERSHELL_UNTRUSTED'});
+  }
+  assert.doesNotThrow(()=>createWindowsNativeOwnerSidHashResolver({
+    platform:'win32',powershellPath:POWERSHELL.toUpperCase(),verifyExecutable:()=>{}
+  }));
+});
