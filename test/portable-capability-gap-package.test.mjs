@@ -259,6 +259,55 @@ test('recovery refuses ambiguous stage and forged stale PID before changing any 
   assert.deepEqual(unpack(target(home)),prior);
  }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
+function hardCrashDuringRecovery(home,phase){
+ const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');
+ const source='import fs from "node:fs";import path from "node:path";'+
+   'import {pathToFileURL} from "node:url";'+
+   'const m=await import(pathToFileURL(process.argv[2]).href);'+
+   'const home=process.argv[3],phase=process.argv[4];'+
+   'const rename=fs.renameSync,unlink=fs.unlinkSync;'+
+   'fs.renameSync=(a,b)=>{rename(a,b);'+
+   'if(phase==="restored-old"&&path.basename(a)===".capgap-portable-rollback-v1")process.exit(74);'+
+   'if(phase==="retained-new"&&path.basename(b)===".capgap-portable-recovery-new")process.exit(74);};'+
+   'fs.unlinkSync=p=>{unlink(p);if(phase==="removed-original-lock"&&path.basename(p)===".capgap-portable-package.lock")process.exit(74);};'+
+   'm.recoverInterruptedUpgradeQA({qaRoot:home});';
+ const child=spawnSync(process.execPath,['--input-type=module','-e',source,'qa-recovery-crash',pkg,home,phase],
+   {encoding:'utf8',timeout:7000,stdio:['ignore','pipe','pipe']});
+ assert.equal(child.status,74,child.stderr);
+}
+for(const phase of ['restored-old','retained-new','removed-original-lock']){
+ test('recovery interruption '+phase+' preserves both packages and blocks mutation',{skip:process.platform!=='linux'},()=>{
+  const home=qa(),state=path.join(home,'state');
+  try{
+   const old=seed(home,{adjuncts:true});
+   hardCrashAfterOldRename(home);
+   hardCrashDuringRecovery(home,phase);
+   const claim=path.join(state,'.capgap-portable-recovery.lock');
+   const original=path.join(state,'.capgap-portable-package.lock');
+   assert.equal(fs.existsSync(claim),true);
+   assert.deepEqual(unpack(target(home)),old);
+   assert.equal(fs.existsSync(backup(home)),false);
+   const stages=fs.readdirSync(state).filter(n=>n.startsWith('.capgap-portable-stage-'));
+   assert.equal(stages.length,phase==='restored-old'?1:0);
+   const retained=phase==='restored-old'?path.join(state,stages[0]):recovery(home);
+   const next={...expected,...Object.fromEntries(Object.entries(extras).map(([k,v])=>[k,v.sha]))};
+   assert.deepEqual(unpack(retained),next);
+   assert.equal(fs.existsSync(original),phase!=='removed-original-lock');
+   const snapshot=()=>Object.fromEntries(fs.readdirSync(state).sort().map(n=>{
+    const p=path.join(state,n);return [n,fs.lstatSync(p).isDirectory()?unpack(p):hash(fs.readFileSync(p))];
+   }));
+   const before=snapshot();
+   const status=managePortablePackage({qaRoot:home});
+   assert.equal(status.state,'recovery-claim-present');
+   assert.equal(status.manualRecoveryRequired,true);
+   assert.equal(status.changed,false);
+   for(const action of ['install','upgrade','rollback'])
+    assert.throws(()=>managePortablePackage({qaRoot:home,action}),/PORTABLE3_RECOVERY_CONCURRENT/);
+   assert.throws(()=>recoverInterruptedUpgradeQA({qaRoot:home}),/PORTABLE3_RECOVERY_CONCURRENT/);
+   assert.deepEqual(snapshot(),before);
+  }finally{fs.rmSync(home,{recursive:true,force:true});}
+ });
+}
 test('unreviewed production CLI refuses mutation and exposes only status',{skip:process.platform!=='linux'},()=>{
  const cli=path.join(root,'tools','portable-capability-gap-package.mjs');
  const r=spawnSync(process.execPath,[cli,'--upgrade'],{encoding:'utf8',timeout:5000});

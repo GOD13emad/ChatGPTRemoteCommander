@@ -137,16 +137,25 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
  if(!['status','install','upgrade','rollback'].includes(action))fail('ACTION_INVALID');
  if(action!=='status'&&qaRoot===undefined)fail('MUTATION_QA_ONLY');
  const {target,parent,backup,recovery}=context(qaRoot);
+ const recoveryClaim=path.join(parent,'.capgap-portable-recovery.lock');
+ // A claim can outlive its recovery process. Do not infer a completed
+ // recovery from the restored legacy target or the absent original lock.
+ // Claim ownership/retirement requires separate explicit adjudication.
+ if(action!=='status'&&existsNoFollow(recoveryClaim))fail('RECOVERY_CONCURRENT');
  const initial=classify(target);
  if(action==='status'){
    if(existsNoFollow(backup))inspect(backup,LEGACY);
+   const claimed=existsNoFollow(recoveryClaim);
    const interrupted=initial.version==='absent'&&existsNoFollow(backup)&&
      existsNoFollow(path.join(parent,'.capgap-portable-package.lock'));
-   return {state:interrupted?'interrupted-upgrade':initial.version,
+   return {state:claimed?'recovery-claim-present':interrupted?'interrupted-upgrade':initial.version,
      adjuncts:initial.adjuncts,rollbackReady:existsNoFollow(backup),
-     manualRecoveryRequired:interrupted,changed:false};
+     manualRecoveryRequired:claimed||interrupted,changed:false};
  }
  return mutationLock(parent,()=>{
+ // Recheck under the original exclusive mutation lock. Recovery itself
+ // checks that this lock's owner is not alive before moving any package.
+ if(existsNoFollow(recoveryClaim))fail('RECOVERY_CONCURRENT');
  if(action==='rollback'){
   if(initial.version!=='three-file'||!existsNoFollow(backup)||existsNoFollow(recovery))
    fail('ROLLBACK_PRECONDITION');
