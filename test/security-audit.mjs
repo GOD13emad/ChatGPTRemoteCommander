@@ -35,11 +35,17 @@ const mockBearerLiteral = 'Bearer ' + 'verified-' + 'test-bearer';
 // generated fixture, never arbitrary credentials, suffixes or adjacent tokens.
 const mockGapTestBearerLiteral = 'Bearer ' + 'dummy-' + 'super-' + 'secret-12345';
 
-// Nine exact, historically committed source-code *literals*, not PEM payloads.
+// Thirteen exact, historically committed source-code *literals*, not PEM payloads.
 // Independently reviewed: synthetic non-base64 test values, scanner fixtures and
 // a vendor PKCS8 header comparison. Pin commit, Git path AND whole diff line.
 // Never suppress a modified line, another commit/file or a second marker.
 const HISTORY_NONKEY_SOURCE_LINE_PINS=new Set([
+ // One known whole-source aggregation commit repeats the exact previously vetted non-key lines.
+ // Do not generalize this to other commits, files or modified lines.
+ "eea2acb9b1c24e6417692b0cac23f32a5298e271|test/security-audit.mjs|6ddf937084740cde5222705897656ac2c41fdc84e77f6baec6533668e4a3e029",
+ "eea2acb9b1c24e6417692b0cac23f32a5298e271|test/v101-linux-v2-candidate-host.test.mjs|7cebd60574fa2d40fdf124f8fdc3814daae2067f40f26e3f905d1d5281f6e6fc",
+ "eea2acb9b1c24e6417692b0cac23f32a5298e271|test/v101-linux-v2-candidate-host.test.mjs|fa4687719919ae2be8e863786f86d72e619add8ee647cc85e08c7799fd373586",
+ "eea2acb9b1c24e6417692b0cac23f32a5298e271|vendor/jose/dist/webapi/key/import.js|ab506fa93dea915497ad0dec31c667a6802c4335f56c80bb55dfc3f11e5c5959",
  "f31392c127e682762988b5bee70164752208b176|test/v101-linux-v2-candidate-host.test.mjs|7cebd60574fa2d40fdf124f8fdc3814daae2067f40f26e3f905d1d5281f6e6fc",
  "f31392c127e682762988b5bee70164752208b176|test/v101-linux-v2-candidate-host.test.mjs|fa4687719919ae2be8e863786f86d72e619add8ee647cc85e08c7799fd373586",
  "07ce35da16a63b6d77883671320bccfb5b97c398|test/security-audit.mjs|6ddf937084740cde5222705897656ac2c41fdc84e77f6baec6533668e4a3e029",
@@ -135,6 +141,14 @@ hostileHistoryProbe.write('diff --git a/test/unrelated.mjs b/test/unrelated.mjs\
 hostileHistoryProbe.write('+  privateKeyPem:\''+PEM_HEADER_HISTORICAL+'\nACTUAL-KEY\n');
 if(!hostileHistoryProbe.finish().has('Private key block'))
   throw new Error('HISTORY_NONKEY_SOURCE_PIN_SCOPE_REGRESSION');
+// Even an allowlisted aggregation commit must not mask a newly introduced PEM
+// marker in a different path or changed line. Never suppress by commit alone.
+const aggregationHostileProbe=makeHistoryScanner(patterns,true);
+aggregationHostileProbe.write('commit '+'eea2acb9b1c24e6417692b0cac23f32a5298e271'+'\n');
+aggregationHostileProbe.write('diff --git a/test/forged-review.mjs b/test/forged-review.mjs\n');
+aggregationHostileProbe.write('+  const privateKey = \''+PEM_HEADER_HISTORICAL+'\';\n');
+if(!aggregationHostileProbe.finish().has('Private key block'))
+  throw new Error('HISTORY_SOURCE_AGGREGATION_PIN_SCOPE_REGRESSION');
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
 boundaryProbe.write('0123456789abcdef\nBearer \n');
