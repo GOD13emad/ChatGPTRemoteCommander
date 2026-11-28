@@ -74,6 +74,51 @@ test('privileged candidate blocks anonymous/forged legacy JSON RPC and browser-o
     const unknown=await fetch(`http://127.0.0.1:${port}/mcp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:null}})});
     assert.equal(unknown.status,403);
     assert.deepEqual(await unknown.json(),{error:'trusted_transport_required'});
+    // Linux service SIGTERM must close the actual entrypoint's owned protected
+    // runtime, even though this fixture intentionally has no owner authority.
+    if(process.platform==='linux'){
+      const firstExit=once(child,'exit');
+      child.kill('SIGTERM');
+      await firstExit;
+      child=null;
+      const socketPath=path.join(root,'owner.sock');
+      const marker=path.join(root,'protected-closed');
+      const bootstrap=path.join(root,'fixture-bootstrap.mjs');
+      await fs.writeFile(bootstrap,'export const createOwnerPrivatePairBootstrap=async()=>({security:{}});');
+      await fs.writeFile(path.join(root,'src','v012-private-core-runtime.mjs'),`
+        import net from 'node:net';
+        import {writeFile} from 'node:fs/promises';
+        export function createV012PrivateCoreRuntime(){
+          const socket=net.createServer();
+          return {status:{phase:'LISTENING'},
+            start:()=>new Promise((resolve,reject)=>{
+              socket.once('error',reject);socket.listen(${JSON.stringify(socketPath)},resolve);
+            }),
+            async close(){await new Promise((resolve,reject)=>socket.close(error=>error?reject(error):resolve()));
+              await writeFile(${JSON.stringify(marker)},'closed');}
+          };
+        }
+      `);
+      child=spawn(process.execPath,[path.join(root,'src','server-v0.3.mjs')],{
+        env:{...process.env,REMOTE_COMMANDER_CONFIG:path.join(root,'config.json'),REMOTE_COMMANDER_PRIVATE_BOOTSTRAP_MODULE:bootstrap},
+        stdio:['ignore','ignore','pipe']});
+      child.stderr.on('data',c=>stderr+=c);
+      let wired=false;
+      for(let i=0;i<400;i++){
+        try{const h=await (await fetch(`http://127.0.0.1:${port}/health`,{signal:AbortSignal.timeout(250)})).json();
+          if(h.protectedIngress?.wired===true){assert.equal(h.protectedIngress.ready,false);wired=true;break;}}
+        catch{}await wait(25);
+      }
+      assert.equal(wired,true,stderr);
+      assert.equal((await fs.lstat(socketPath)).isSocket(),true);
+      const exit=once(child,'exit');child.kill('SIGTERM');
+      const [code,signal]=await exit;
+      assert.equal(code,0,'protected runtime shutdown must complete before process exit');
+      assert.equal(signal,null);
+      assert.equal(await fs.readFile(marker,'utf8'),'closed');
+      await assert.rejects(fs.lstat(socketPath),{code:'ENOENT'});
+      child=null;
+    }
   } finally {
     if(child){child.kill();await Promise.race([once(child,'close'),wait(2000)]);}
     await fs.rm(root,{recursive:true,force:true});

@@ -1115,6 +1115,43 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+// The native owner socket is owned by the protected runtime. A default
+// SIGTERM would exit Node without invoking its inode-checked close routine.
+// Use a bounded shutdown for this opt-in runtime; never treat cleanup failure
+// as a successful stop or synthesize a new owner grant.
+if (protectedPrivateRuntime) {
+  let stopping = false;
+  const stopProtectedCore = async () => {
+    if (stopping) return;
+    stopping = true;
+    const watchdog = setTimeout(() => {
+      console.error('V012_PROTECTED_CORE_SHUTDOWN_TIMEOUT');
+      process.exit(1);
+    }, 10000);
+    try {
+      browserCompanionMonitor?.stop();
+      const httpClosed = new Promise((resolve, reject) => {
+        server.close(error => error && error.code !== 'ERR_SERVER_NOT_RUNNING' ? reject(error) : resolve());
+        server.closeAllConnections();
+      });
+      const outcomes = await Promise.allSettled([
+        protectedPrivateRuntime.close(), httpClosed
+      ]);
+      if (outcomes.some(outcome => outcome.status === 'rejected')) {
+        console.error('V012_PROTECTED_CORE_SHUTDOWN_FAILED');
+        process.exit(1);
+      }
+      clearTimeout(watchdog);
+      process.exit(0);
+    } catch {
+      console.error('V012_PROTECTED_CORE_SHUTDOWN_FAILED');
+      process.exit(1);
+    }
+  };
+  process.on('SIGTERM', stopProtectedCore);
+  process.on('SIGINT', stopProtectedCore);
+}
+
 server.listen(config.port, config.host, async () => {
   try {
     await mkdir(path.dirname(runtimeStatePath), { recursive: true });

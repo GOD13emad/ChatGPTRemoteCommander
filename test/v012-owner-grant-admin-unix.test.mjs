@@ -80,6 +80,9 @@ test('existing socket, public runtime directory, alias and absent admin provider
     approveReadOnlyCanary:async()=>({canaryAllowed:true})};
   try{
     fs.mkdirSync(dir,{mode:0o755});
+    // Host umask may turn the requested 0755 into 0700; make the invalid
+    // fixture explicit before testing that the socket refuses it.
+    fs.chmodSync(dir,0o755);
     let broker=createV012OwnerGrantAdminUnix({socketPath:path.join(dir,'admin.sock'),administration:m});
     await assert.rejects(broker.start(),{code:'RC012_OWNER_ADMIN_SOCKET_DIRECTORY_NOT_PRIVATE'});
     fs.chmodSync(dir,0o700);

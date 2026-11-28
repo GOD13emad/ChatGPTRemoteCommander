@@ -1,4 +1,17 @@
-# Release Train 0.12 — `0.12.0-dev.33` source candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.34` source candidate (NoPromote)
+
+## Dev.34 graceful protected Core shutdown (28 November 2026) — NoPromote
+
+The opt-in protected server now traps SIGTERM and SIGINT and closes the
+Core-owned HTTPS/mTLS runtime and exact owner-admin Unix socket before exit,
+with bounded shutdown, fail-closed errors and no synthetic J01/Worker grant.
+The Linux fixture first reproduced premature signal termination (RED), then
+verified the actual entrypoint closes the protected runtime (GREEN). The
+Unix-socket permission regression now sets its intended insecure fixture
+permissions explicitly, independent of the host umask. This source candidate
+is not a production cutover, installed-package upgrade or public release.
+The active 0.11 Tunnel remains unchanged; J01 admission and accepted rollback
+are separate release gates.
 
 ## Dev.13 upgrade qualification candidate
 
