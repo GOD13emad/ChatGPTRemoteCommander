@@ -10,6 +10,25 @@ import {once} from 'node:events';
 import {fileURLToPath} from 'node:url';
 
 const source=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const workflow=fs.readFileSync(path.join(source,'.github/workflows/windows-updater-e2e-r157.yml'),'utf8');
+test('R157 NoPromote keeps allowed project root separate from private candidate delivery',()=>{
+ assert.match(workflow,/\$projectRoot=Join-Path \$root 'PROJECT'/);
+ assert.match(workflow,/\$c\.allowedRoots=@\(\$projectRoot\)/);
+ assert.doesNotMatch(workflow,/\$c\.allowedRoots=@\(\$root\)/);
+ assert.match(workflow,/liveStoreCompatibility -ne 'NOT_TESTED_SHADOW_ONLY'/);
+ assert.match(workflow,/liveStoreCompatibility='NOT_TESTED_SHADOW_ONLY'/);
+});
+test('DeliveryStore rejects the old nested-root fixture before writing owner history',async()=>{
+ const {DeliveryStore}=await import('../src/delivery-store.mjs');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc-updater-nested-root-negative-'));
+ const delivery=path.join(root,'STATE','ChatGPTRemoteCommander','delivery-shadow');
+ try{
+  assert.throws(()=>new DeliveryStore({directory:delivery,scope:'qa-updater',
+    forbiddenRoots:[root]}),/DELIVERY_STORE_INSIDE_PROJECT/);
+  assert.equal(fs.existsSync(delivery),false);
+ }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
 const codeOf=error=>String(error?.code??'UNKNOWN').replace(/[^A-Z0-9_]/g,'').slice(0,72);
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function reserveLoopback(){
