@@ -53,6 +53,8 @@ jobs:
         run: node --test test/semver-release.test.mjs
       - name: Verify V1-01 worker grants and native owner bridge
         run: npm run test:v1-01-worker-grants
+      - name: Verify owned browser cleanup and backend affinity
+        run: node --test test/browser-backend-affinity.test.mjs test/browser-owned-end-confirmation.test.mjs test/browser-firefox-cleanup-retry.test.mjs test/browser-process.test.mjs test/browser-lease-store.test.mjs test/hybrid-capability-discovery.test.mjs
       - name: Verify pinned G1 source digest and negative release admission
         run: node --test test/v101-g1-release-coverage.test.mjs test/v101-v2-protected-dispatcher.test.mjs
       - name: Verify V1-07 signed worker identity and durable registry
