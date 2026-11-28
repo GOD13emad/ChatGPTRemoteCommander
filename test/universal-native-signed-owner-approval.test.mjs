@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {verifiedAttestationSubject,verifySignedNativeRelease,
   verifyPublicSignedNativeRelease,publicNativeAttestationBundles,
   officialNativeVerifierBinary,assertSafeGhAttestationVersion,publicAttestationHttpsAgent}
@@ -68,14 +69,16 @@ test('signed candidate uses official pinned repo/source/signer and refuses bad r
   const candidate=path.join(dir,'Remote-Commander-Unified-0.12.0-dev.10-Linux-amd64.deb');
   const manifest=path.join(dir,'provenance.json');
   try{
-    fs.writeFileSync(candidate,Buffer.alloc(4096,97),{flag:'wx'});
+    const bytes=Buffer.alloc(4096,97);
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    fs.writeFileSync(candidate,bytes,{flag:'wx'});
     fs.writeFileSync(manifest,JSON.stringify({schema:1,sourceHead:head,platform:'linux',
-      candidate:{sha256:candidateSha,bytes:4096},
+      candidate:{sha256:digest,bytes:4096},
       rollback:{sha256:'c'.repeat(64),bytes:4096}}),{flag:'wx'});
     let args;
     const run=(_cmd,a)=>{if(a[0]==='--version')return ghOk;
       args=a;return {status:0,
-      stdout:verifiedJson(path.basename(candidate))};};
+      stdout:verifiedJson(path.basename(candidate),digest)};};
     const approved=verifySignedNativeRelease({
       manifestPath:manifest,candidatePath:candidate,
       expectedCommit:head,platform:'linux'
@@ -93,7 +96,7 @@ test('signed candidate uses official pinned repo/source/signer and refuses bad r
     },{run:(_exe,args)=>args[0]==='--version'?ghOk:{status:1,stdout:''}}),/UNIVERSAL_NATIVE_SIGSTORE_VERIFICATION_FAILED/);
     assert.throws(()=>verifySignedNativeRelease({
       manifestPath:manifest,candidatePath:candidate,expectedCommit:head,platform:'linux'
-    },{run:(_exe,args)=>args[0]==='--version'?ghOk:{status:0,stdout:verifiedJson('other.exe')}}),
+    },{run:(_exe,args)=>args[0]==='--version'?ghOk:{status:0,stdout:verifiedJson('other.exe',digest)}}),
     /UNIVERSAL_NATIVE_SIGSTORE_SUBJECT_MISMATCH/);
     assert.throws(()=>verifiedAttestationSubject('{}',{
       name:path.basename(candidate),sha256:candidateSha
@@ -267,4 +270,64 @@ test('user-local WinGet CLI path is consistent across fresh shell and scheduled 
  }),'gh');
  assert.equal(officialNativeVerifierBinary({platform:'linux',env:{LOCALAPPDATA:home},
    exists:()=>true}),'gh');
+});
+
+
+test('native provenance binds exact local bytes to the signed digest',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-bound-digest-'));
+  const candidate=path.join(dir,'candidate.deb');
+  const manifest=path.join(dir,'provenance.json');
+  try{
+    const bytes=Buffer.alloc(4096,71);
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    fs.writeFileSync(candidate,bytes,{flag:'wx'});
+    fs.writeFileSync(manifest,JSON.stringify({schema:1,sourceHead:head,
+      platform:'linux',candidate:{sha256:digest,bytes:bytes.length}}),{flag:'wx'});
+    const input={manifestPath:manifest,candidatePath:candidate,
+      expectedCommit:head,platform:'linux'};
+    const reply=(_exe,args)=>args[0]==='--version'?ghOk:
+      {status:0,stdout:verifiedJson(path.basename(candidate),digest)};
+    assert.equal(verifySignedNativeRelease(input,{run:reply}).signedCandidateVerified,true);
+    fs.writeFileSync(candidate,Buffer.alloc(bytes.length,72));
+    assert.throws(()=>verifySignedNativeRelease(input,{run:reply}),
+      /UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_HASH_MISMATCH/);
+    fs.writeFileSync(candidate,bytes);
+    const replaceDuringVerify=(exe,args)=>{
+      if(args[0]==='--version')return ghOk;
+      fs.writeFileSync(candidate,Buffer.alloc(bytes.length,73));
+      return reply(exe,args);
+    };
+    assert.throws(()=>verifySignedNativeRelease(input,{run:replaceDuringVerify}),
+      /UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED/);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('native provenance refuses candidate drift while retrieving public bundles',async()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-bound-bundle-'));
+  const candidate=path.join(dir,'candidate.deb');
+  const manifest=path.join(dir,'provenance.json');
+  try{
+    const bytes=Buffer.alloc(4096,71);
+    const digest=createHash('sha256').update(bytes).digest('hex');
+    fs.writeFileSync(candidate,bytes,{flag:'wx'});
+    fs.writeFileSync(manifest,JSON.stringify({schema:1,sourceHead:head,
+      platform:'linux',candidate:{sha256:digest,bytes:bytes.length}}),{flag:'wx'});
+    let called=0;
+    const fetcher=async()=>{
+      fs.writeFileSync(candidate,Buffer.alloc(bytes.length,74));
+      return {status:200,text:async()=>JSON.stringify({attestations:[
+        {bundle:{mediaType:'application/vnd.dev.sigstore.bundle.v0.3+json',
+          verificationMaterial:{},dsseEnvelope:{}}}]})};
+    };
+    const run=(_exe,args)=>{
+      called++;
+      return args[0]==='--version'?ghOk:
+        {status:0,stdout:verifiedJson(path.basename(candidate),digest)};
+    };
+    await assert.rejects(verifyPublicSignedNativeRelease({
+      manifestPath:manifest,candidatePath:candidate,
+      expectedCommit:head,platform:'linux'
+    },{fetcher,run}),/UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED/);
+    assert.equal(called,0);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

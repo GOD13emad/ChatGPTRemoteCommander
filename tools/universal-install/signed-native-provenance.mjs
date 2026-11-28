@@ -19,6 +19,45 @@ const HEAD=/^[a-f0-9]{40}$/;
 const MAX_PUBLIC_ATTESTATION_BYTES=4*1024*1024;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
+const MAX_NATIVE_CANDIDATE_BYTES=1536n*1024n*1024n;
+const sameCandidateSnapshot=(a,b)=>a.dev===b.dev&&a.ino===b.ino
+  &&a.mode===b.mode&&a.nlink===b.nlink&&a.size===b.size
+  &&a.mtimeNs===b.mtimeNs&&a.ctimeNs===b.ctimeNs;
+function candidateSnapshot(file,expected){
+  const st=fs.lstatSync(file,{bigint:true});
+  if(expected&&!sameCandidateSnapshot(st,expected))
+    fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED');
+  if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1n
+    ||st.size<1024n||st.size>MAX_NATIVE_CANDIDATE_BYTES)
+    fail('UNIVERSAL_NATIVE_SIGSTORE_ARTIFACT_UNTRUSTED');
+  return st;
+}
+// Bind a bounded read to the inspected regular file, and recheck its path.
+// This is an artifact integrity precondition, not local OS actor isolation.
+function hashBoundNativeCandidate(file,expected){
+  const st=candidateSnapshot(file,expected);
+  const digest=createHash('sha256');
+  const buf=Buffer.alloc(64*1024);
+  let fd;
+  try{
+    fd=fs.openSync(file,fs.constants.O_RDONLY|(fs.constants.O_NOFOLLOW??0)
+      |(fs.constants.O_NONBLOCK??0));
+    if(!sameCandidateSnapshot(st,fs.fstatSync(fd,{bigint:true})))
+      fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED');
+    let remaining=Number(st.size);
+    while(remaining>0){
+      const n=fs.readSync(fd,buf,0,Math.min(remaining,buf.length),null);
+      if(n===0)fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED');
+      digest.update(buf.subarray(0,n));remaining-=n;
+    }
+    if(!sameCandidateSnapshot(st,fs.fstatSync(fd,{bigint:true})))
+      fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_CHANGED');
+    candidateSnapshot(file,st);
+    return {snapshot:st,sha256:digest.digest('hex')};
+  }finally{buf.fill(0);if(fd!==undefined)fs.closeSync(fd);}
+}
+
+
 export function officialNativeVerifierBinary({
   platform=process.platform,env=process.env,exists=fs.existsSync
 }={}){
@@ -86,21 +125,21 @@ export function verifiedAttestationSubject(stdout,{name,sha256,expectedCommit}={
   return true;
 }
 
-export function verifySignedNativeRelease({
+export function verifySignedNativeRelease(args={}, {run=spawnSync}={}){
+  return verifyNativeRelease(args,{run});
+}
+function verifyNativeRelease({
   manifestPath,candidatePath,expectedCommit,platform
-}={}, {run=spawnSync}={}){
+}={}, {run,previousCandidate}={}){
   if(typeof expectedCommit!=='string'||!HEAD.test(expectedCommit)
     ||!['linux','windows'].includes(platform)
     ||[manifestPath,candidatePath].some(s=>typeof s!=='string'||!path.isAbsolute(s)))
     fail('UNIVERSAL_NATIVE_SIGSTORE_ARGUMENT_INVALID');
   const manifestStat=fs.lstatSync(manifestPath);
-  const candidateStat=fs.lstatSync(candidatePath);
   if(!manifestStat.isFile()||manifestStat.isSymbolicLink()
-    ||manifestStat.nlink!==1||manifestStat.size<90||manifestStat.size>4096
-    ||!candidateStat.isFile()||candidateStat.isSymbolicLink()
-    ||candidateStat.nlink!==1||candidateStat.size<1024
-    ||candidateStat.size>1536*1024*1024)
+    ||manifestStat.nlink!==1||manifestStat.size<90||manifestStat.size>4096)
     fail('UNIVERSAL_NATIVE_SIGSTORE_ARTIFACT_UNTRUSTED');
+  const candidateStat=candidateSnapshot(candidatePath,previousCandidate?.snapshot);
   const buf=fs.readFileSync(manifestPath);
   if(buf.length!==manifestStat.size)
     fail('UNIVERSAL_NATIVE_SIGSTORE_MANIFEST_CHANGED');
@@ -111,8 +150,11 @@ export function verifySignedNativeRelease({
   if(manifest?.sourceHead!==expectedCommit
     ||manifest?.platform!==(platform==='windows'?'win32':'linux')
     ||!SHA.test(digest??'')
-    ||manifest?.candidate?.bytes!==candidateStat.size)
+    ||manifest?.candidate?.bytes!==Number(candidateStat.size))
     fail('UNIVERSAL_NATIVE_SIGSTORE_MANIFEST_MISMATCH');
+  const before=previousCandidate??hashBoundNativeCandidate(candidatePath,candidateStat);
+  if(before.sha256!==digest)
+    fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_HASH_MISMATCH');
   const args=['attestation','verify',candidatePath,'--repo',REPO,
     '--source-digest',expectedCommit,'--signer-workflow',WORKFLOW,
     '--deny-self-hosted-runners','--format','json'];
@@ -127,6 +169,11 @@ export function verifySignedNativeRelease({
     name:path.basename(candidatePath),sha256:digest,
     expectedCommit
   });
+  // The verifier's result is about the candidate, not an arbitrary later
+  // file at the same path. Bind the receipt to unchanged local bytes.
+  const verified=hashBoundNativeCandidate(candidatePath,before.snapshot);
+  if(verified.sha256!==digest)
+    fail('UNIVERSAL_NATIVE_SIGSTORE_CANDIDATE_HASH_MISMATCH');
   // Double-check release manifest did not change during online verification.
   const after=fs.lstatSync(manifestPath);
   if(after.ino!==manifestStat.ino||after.dev!==manifestStat.dev
@@ -225,19 +272,8 @@ export async function verifyPublicSignedNativeRelease(args,{
   if(typeof candidate!=='string'||!path.isAbsolute(candidate)
     ||typeof manifest!=='string'||!path.isAbsolute(manifest))
     fail('UNIVERSAL_NATIVE_SIGSTORE_ARGUMENT_INVALID');
-  const digest=createHash('sha256');
-  const st=fs.lstatSync(candidate);
-  if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1
-    ||st.size<1024||st.size>1536*1024*1024)
-    fail('UNIVERSAL_NATIVE_SIGSTORE_ARTIFACT_UNTRUSTED');
-  const fd=fs.openSync(candidate,'r');
-  const buf=Buffer.allocUnsafe(64*1024);
-  try{
-    for(let n;(n=fs.readSync(fd,buf,0,buf.length,null))>0;){
-      digest.update(buf.subarray(0,n));
-    }
-  }finally{buf.fill(0);fs.closeSync(fd);}
-  const sha=digest.digest('hex');
+  const previousCandidate=hashBoundNativeCandidate(candidate);
+  const sha=previousCandidate.sha256;
   const bundles=await publicNativeAttestationBundles(sha,{fetcher});
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-native-sigstore-'));
   const bundlePath=path.join(dir,'bundle.jsonl');
@@ -247,7 +283,7 @@ export async function verifyPublicSignedNativeRelease(args,{
       {flag:'wx',mode:0o600});
     // The bundle is an option of `gh attestation verify`, not `gh --version`.
     // Preserve the independent minimum-version check exactly as issued.
-    return verifySignedNativeRelease(args,{run:(exe,argv,opts)=>{
+    return verifyNativeRelease(args,{previousCandidate,run:(exe,argv,opts)=>{
       if(argv.length===1&&argv[0]==='--version')
         return run(exe,argv,opts);
       if(argv[0]!=='attestation'||argv[1]!=='verify')
