@@ -25,45 +25,50 @@ async function removeOwnedProfile(profile){
  }
  if(lastError)throw browserError('BROWSER_PROFILE_CLEANUP_FAILED');
 }
+const hasExited=child=>!child||child.exitCode!==null||child.signalCode!==null;
 async function waitForClose(child,ms){
- if(!child||child.exitCode!==null)return;
+ if(hasExited(child))return;
  await Promise.race([new Promise(resolve=>child.once('close',resolve)),sleep(ms)]);
 }
 async function forceTree(child,forceCloseMs){
- if(!child||child.exitCode!==null)return;
+ if(hasExited(child))return;
  if(process.platform==='win32'){
   const attemptMs=Math.max(1000,Number(forceCloseMs)||0);
   let treeStopped=false;
-  for(let attempt=0;attempt<3&&child.exitCode===null;attempt++){
+  for(let attempt=0;attempt<3&&!hasExited(child);attempt++){
    try{
     const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore',windowsHide:true,shell:false});
     await waitForClose(killer,attemptMs);
     await waitForClose(child,attemptMs);
-    if(child.exitCode!==null){treeStopped=true;break;}
+    if(hasExited(child)){treeStopped=true;break;}
    }catch{}
   }
-  if(!treeStopped&&child.exitCode===null){try{child.kill();}catch{}}
+  if(!treeStopped&&!hasExited(child)){try{child.kill();}catch{}}
  }else{
   try{process.kill(-child.pid,'SIGKILL');}catch{try{child.kill('SIGKILL');}catch{}}
  }
  await waitForClose(child,Math.max(forceCloseMs,1000));
 }
 export function createBrowserProcessClient({file,args,timeoutMs=15000,slowActionTimeoutMs=35000,startupTimeoutMs=15000,maxBytes=8*1024*1024,env=process.env,gracefulCloseMs=2500,forceCloseMs=1500}){
- let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,reserved=false,shutdown=null,ownedProfile=null,ownedProfileIsolated=false;
+ let child=null,buffer=Buffer.alloc(0),startup=null,pending=null,stderrBytes=0,reserved=false,shutdown=null,shutdownPending=false,shutdownChild=null,ownedProfile=null,ownedProfileIsolated=false;
  const clear=t=>{if(t)clearTimeout(t);};
  const beginShutdown=()=>{
   if(shutdown)return shutdown;
-  const c=child;child=null;
-  const profile=ownedProfile,removeProfile=ownedProfileIsolated;ownedProfile=null;ownedProfileIsolated=false;
+  // Retain ownership until cleanup succeeds. A failed close must not turn
+  // into permission to start a replacement helper on the next request.
+  if(!shutdownPending){shutdownChild=child;child=null;shutdownPending=true;}
+  const c=shutdownChild,profile=ownedProfile,removeProfile=ownedProfileIsolated;
   buffer=Buffer.alloc(0);
   shutdown=(async()=>{
-   if(c&&c.exitCode===null){
+   if(c&&!hasExited(c)){
     try{c.stdin.end();}catch{}
     await waitForClose(c,gracefulCloseMs);
-    if(c.exitCode===null)await forceTree(c,forceCloseMs);
+    if(!hasExited(c))await forceTree(c,forceCloseMs);
+    if(!hasExited(c))throw browserError('BROWSER_HELPER_EXIT_FAILED');
    }
    if(profile)terminateProcessesUsingBrowserProfile(profile);
    if(removeProfile)await removeOwnedProfile(profile);
+   shutdownChild=null;ownedProfile=null;ownedProfileIsolated=false;shutdownPending=false;
   })().finally(()=>{shutdown=null;});
   return shutdown;
  };
@@ -100,7 +105,7 @@ export function createBrowserProcessClient({file,args,timeoutMs=15000,slowAction
   }
  };
  const start=async()=>{
-  if(shutdown)await shutdown;
+  if(shutdownPending)await beginShutdown();
   if(child&&child.exitCode===null&&!child.killed&&!startup)return;
   if(startup)return startup.promise;
   buffer=Buffer.alloc(0);stderrBytes=0;
@@ -110,10 +115,10 @@ export function createBrowserProcessClient({file,args,timeoutMs=15000,slowAction
   let resolveStart,rejectStart;const promise=new Promise((resolve,reject)=>{resolveStart=resolve;rejectStart=reject;});
   startup={promise,resolve:resolveStart,reject:rejectStart,timer:null};
   startup.timer=setTimeout(()=>fail('BROWSER_HELPER_TIMEOUT'),startupTimeoutMs);
-  spawned.once('error',()=>fail('BROWSER_HELPER_START_FAILED'));
-  spawned.stdin.on('error',()=>fail('BROWSER_HELPER_STDIN_FAILED'));
-  spawned.stdout.on('data',consume);
-  spawned.stderr.on('data',chunk=>{stderrBytes+=chunk.length;if(stderrBytes>32768)fail('BROWSER_HELPER_OUTPUT_LIMIT');});
+  spawned.once('error',()=>{if(child===spawned)fail('BROWSER_HELPER_START_FAILED');});
+  spawned.stdin.on('error',()=>{if(child===spawned)fail('BROWSER_HELPER_STDIN_FAILED');});
+  spawned.stdout.on('data',chunk=>{if(child===spawned)consume(chunk);});
+  spawned.stderr.on('data',chunk=>{if(child!==spawned)return;stderrBytes+=chunk.length;if(stderrBytes>32768)fail('BROWSER_HELPER_OUTPUT_LIMIT');});
   spawned.once('close',()=>{
    if(child!==spawned)return;
    buffer=Buffer.alloc(0);
@@ -139,17 +144,16 @@ export function createBrowserProcessClient({file,args,timeoutMs=15000,slowAction
     const operationTimeout=prolonged?Math.max(timeoutMs,Math.min(35000,slowActionTimeoutMs)):timeoutMs;
     pending={resolve,reject,timer:setTimeout(()=>fail('BROWSER_HELPER_TIMEOUT'),operationTimeout)};
     reserved=false;
-    child.stdin.write(JSON.stringify(request)+'\n','utf8',error=>{if(error)fail('BROWSER_HELPER_STDIN_FAILED');});
+    const activeChild=child;
+    activeChild.stdin.write(JSON.stringify(request)+'\n','utf8',error=>{if(error&&child===activeChild)fail('BROWSER_HELPER_STDIN_FAILED');});
    });
    try{
     const result=await promise;
     if(request?.action==='end'&&result.ok===true&&result.closed===true){ownedProfile=null;ownedProfileIsolated=false;}
     return result;
    }catch(error){
-    if(trackedStartProfile){
-     if(ownedProfile===trackedStartProfile){ownedProfile=null;ownedProfileIsolated=false;}
-     terminateProcessesUsingBrowserProfile(trackedStartProfile);
-     if(trackedStartIsolated)void removeOwnedProfile(trackedStartProfile).catch(()=>{});
+    if(trackedStartProfile&&ownedProfile===trackedStartProfile){
+     void beginShutdown().catch(()=>{});
     }
     throw error;
    }

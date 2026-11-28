@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, writeFile, readFile, stat, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, stat, rm, mkdir, chmod } from 'node:fs/promises';
 import { createBrowserProcessClient } from '../src/browser-process.mjs';
 import { findProcessesUsingBrowserProfile } from '../src/browser-owned-processes.mjs';
 
@@ -29,7 +29,8 @@ async function fixture({readyDelay=0,timeoutMs=1000,gracefulCloseMs=150,forceClo
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, chmod } from 'node:fs/promises';
+import path from 'node:path';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 await sleep(Number(process.env.RC_TEST_READY_DELAY||0));
 process.stdout.write(JSON.stringify({ok:true,ready:true,protocol:1})+'\\n');
@@ -39,6 +40,7 @@ for await(const line of rl){
  if(req.action==='error'){process.stdout.write(JSON.stringify({ok:false,error:'BROWSER_SELECTOR_NOT_FOUND'})+'\\n');continue;}
  if(req.action==='start'){
   if(req.profileDir){await mkdir(req.profileDir,{recursive:true});await writeFile(req.profileDir+'/owned.txt','owned');}
+  if(req.failStart){await chmod(path.dirname(req.profileDir),0o500);process.stdout.write(JSON.stringify({ok:false,error:'BROWSER_LAUNCH_FAILED'})+'\\n');continue;}
   process.stdout.write(JSON.stringify({ok:true,started:true})+'\\n');continue;
  }
  if(req.action==='hang'){await new Promise(()=>{});}
@@ -154,6 +156,44 @@ test('timed-out isolated session shuts down helper and removes tracked owned pro
   for(let i=0;i<60&&await exists(profile);i++)await sleep(50);
   assert.equal(await exists(profile),false);
  }finally{await f.cleanup();}
+});
+
+
+test('failed isolated profile cleanup remains retryable and fences fresh helper startup', {skip:process.platform!=='linux'||process.getuid?.()===0},async()=>{
+ const f=await fixture();
+ const parent=path.join(f.root,'denied-parent');
+ const profile=path.join(parent,'isolated-profile');
+ try{
+  await mkdir(parent);
+  await f.client.invoke({action:'start',isolated:true,profileDir:profile});
+  await chmod(parent,0o500);
+  await assert.rejects(f.client.close(),/BROWSER_PROFILE_CLEANUP_FAILED/);
+  assert.equal(await exists(profile),true);
+  // Do not consume an old cleanup failure as permission to create a new helper.
+  await assert.rejects(f.client.invoke({action:'alive'}),/BROWSER_PROFILE_CLEANUP_FAILED/);
+  assert.equal(await exists(profile),true);
+  await chmod(parent,0o700);
+  await Promise.all([f.client.close(),f.client.close()]);
+  assert.equal(await exists(profile),false);
+  assert.equal((await f.client.invoke({action:'alive'})).alive,true);
+ }finally{await chmod(parent,0o700).catch(()=>{});await f.cleanup();}
+});
+
+
+test('failed partial start retains exact profile until cleanup succeeds', {skip:process.platform!=='linux'||process.getuid?.()===0},async()=>{
+ const f=await fixture();
+ const parent=path.join(f.root,'partial-parent');
+ const profile=path.join(parent,'isolated-profile');
+ try{
+  await mkdir(parent);
+  await assert.rejects(f.client.invoke({action:'start',isolated:true,profileDir:profile,failStart:true}),/BROWSER_LAUNCH_FAILED/);
+  await assert.rejects(f.client.close(),/BROWSER_PROFILE_CLEANUP_FAILED/);
+  assert.equal(await exists(profile),true);
+  await chmod(parent,0o700);
+  await f.client.close();
+  assert.equal(await exists(profile),false);
+  assert.equal((await f.client.invoke({action:'alive'})).alive,true);
+ }finally{await chmod(parent,0o700).catch(()=>{});await f.cleanup();}
 });
 
 test('unconfirmed end retains isolated profile ownership for client cleanup',async()=>{
