@@ -12,6 +12,15 @@ const ACTIONS=new Set(['inspect','approve_worker','approve_system_status_canary'
   'approve_worker_registration','register_signed_worker',
   'revoke_canary_worker']);
 const fail=code=>{throw Object.assign(new Error(code),{code});};
+export function safeOwnerAdminDenialCode(error){
+ try{
+  const c=error?.code;
+  return typeof c==='string'
+   &&/^(?:WORKER_IDENTITY|V012_OWNER_GRANT|V012_NATIVE_WORKER|RC012_OWNER_SIGNER|RC012_NATIVE_SIGNER|RC012_WORKER_SIGNING|RC012_NATIVE_WITNESS|NATIVE_WORKER_KEY)[A-Z0-9_]{0,80}$/.test(c)
+   ?c:'UNCLASSIFIED';
+ }catch{return 'UNCLASSIFIED';}
+}
+
 function checkSocketPath(socketPath){
   const uid=process.getuid?.(),runtime='/run/user/'+uid;
   if(process.platform!=='linux'||!Number.isSafeInteger(uid)||uid<1
@@ -114,7 +123,15 @@ export function createV012OwnerGrantAdminUnix({
             &&action!=='revoke_canary_worker'&&response.approved!==true))
           fail('RC012_OWNER_ADMIN_ACTION_DENIED');
         socket.end(JSON.stringify(response)+'\n');
-      }catch{socket.end('{"ok":false,"code":"OWNER_DENIED"}\n');}
+      }catch(error){
+        // Only a sanitized code enters the same-owner service Journal.
+        // The Unix client still sees the exact opaque deny response.
+        if(action==='register_signed_worker'){
+          try{process.stderr.write('RC012_OWNER_SIGNED_REGISTER_DENIED '+
+            safeOwnerAdminDenialCode(error)+'\n');}catch{}
+        }
+        socket.end('{"ok":false,"code":"OWNER_DENIED"}\n');
+      }
       finally{inflight=false;}
     });
     socket.on('error',()=>{});

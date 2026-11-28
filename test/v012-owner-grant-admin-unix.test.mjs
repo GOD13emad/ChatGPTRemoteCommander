@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
-import {createV012OwnerGrantAdminUnix}
+import {createV012OwnerGrantAdminUnix,safeOwnerAdminDenialCode}
   from '../src/v012-owner-grant-admin-unix.mjs';
 
 function call(socketPath,text){
@@ -125,4 +125,31 @@ test('owner-local shutdown closes pending approval socket without waiting for it
     socket.destroy();
     assert.equal(fs.existsSync(socketPath),false);
   }finally{complete?.({revision:1});await server?.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('owner Journal denial categories are bounded and never disclose exception text',()=>{
+ assert.equal(safeOwnerAdminDenialCode({code:'WORKER_IDENTITY_SIGNED_NATIVE_SCOPE_MISMATCH'}),
+  'WORKER_IDENTITY_SIGNED_NATIVE_SCOPE_MISMATCH');
+ assert.equal(safeOwnerAdminDenialCode({code:'RC012_NATIVE_SIGNER_INTENT_IDENTITY_MISMATCH'}),
+  'RC012_NATIVE_SIGNER_INTENT_IDENTITY_MISMATCH');
+ assert.equal(safeOwnerAdminDenialCode({code:'WORKER_IDENTITY_BOGUS\nSECRET'}),'UNCLASSIFIED');
+ assert.equal(safeOwnerAdminDenialCode({code:'PRIVATE_SECRET'}),'UNCLASSIFIED');
+ assert.equal(safeOwnerAdminDenialCode(new Proxy({},{get(){throw Error('SECRET');}})),'UNCLASSIFIED');
+});
+test('native Worker denial remains opaque on local owner Unix socket',
+ {skip:process.platform!=='linux'},async()=>{
+ const uid=process.getuid();if(!fs.existsSync('/run/user/'+uid))return;
+ const dir=fs.mkdtempSync('/run/user/'+uid+'/rc012-native-denial-');let server;
+ const socketPath=path.join(dir,'admin.sock');
+ try{
+  server=createV012OwnerGrantAdminUnix({socketPath,administration:{
+   inspect:async()=>({}),approveWorker:async()=>({revision:1}),
+   approveReadOnlyCanary:async()=>({canaryAllowed:true}),
+   registerSignedWorker:async()=>{const e=Error('PRIVATE');e.code='WORKER_IDENTITY_SIGNED_NATIVE_SCOPE_MISMATCH';throw e;}
+  }});
+  await server.start();
+  const body=await call(socketPath,JSON.stringify({schema:1,action:'register_signed_worker'})+'\n');
+  assert.deepEqual(JSON.parse(body),{ok:false,code:'OWNER_DENIED'});
+  assert.equal(body.includes('PRIVATE'),false);
+ }finally{await server?.close();fs.rmSync(dir,{recursive:true,force:true});}
 });

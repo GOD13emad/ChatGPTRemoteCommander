@@ -14,6 +14,15 @@ import {resolveLinuxNativeOwnerWitnessPaths}
 
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,62}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
+export function safeOwnerSignerFailureCode(stderr){
+ if(typeof stderr!=='string'||Buffer.byteLength(stderr)>16384)
+  return 'RC012_OWNER_SIGNER_UNIT_FAILED';
+ const lines=stderr.trim().split(/\r?\n/);
+ return lines.length===1
+  &&/^(?:RC012_NATIVE_SIGNER|RC012_WORKER_SIGNING|NATIVE_WORKER_KEY|WORKER_IDENTITY)[A-Z0-9_]{0,80}$/.test(lines[0])
+  ?lines[0]:'RC012_OWNER_SIGNER_UNIT_FAILED';
+}
+
 const signer=fileURLToPath(new URL('../tools/v012-native-worker-registration-signer-linux.mjs',import.meta.url));
 const node='/usr/lib/chatgpt-remote-commander/runtime/node';
 function privateCredential(p,uid){
@@ -36,7 +45,7 @@ function boundedRun(args,input){
     const child=spawn('/usr/bin/systemd-run',args,{
       stdio:['pipe','pipe','pipe'],windowsHide:true
     });
-    let stdout='',stderrBytes=0,settled=false;
+    let stdout='',stderr='',stderrBytes=0,settled=false;
     const finish=(error,result)=>{
       if(settled)return;
       settled=true;clearTimeout(timer);
@@ -60,11 +69,13 @@ function boundedRun(args,input){
     child.stderr.on('data',chunk=>{
       stderrBytes+=chunk.length;
       if(stderrBytes>16384)child.kill('SIGKILL');
+      else stderr+=chunk.toString('utf8');
     });
     child.once('close',code=>{
       if(code!==0||stderrBytes>16384||!stdout.trim())
         finish(Object.assign(new Error('RC012_OWNER_SIGNER_UNIT_FAILED'),
-          {code:'RC012_OWNER_SIGNER_UNIT_FAILED'}));
+          {code:stderrBytes>16384?'RC012_OWNER_SIGNER_UNIT_FAILED'
+           :safeOwnerSignerFailureCode(stderr)}));
       else finish(null,stdout.trim());
     });
     child.stdin.on('error',()=>{});
