@@ -51,6 +51,24 @@ const seed=(home,{adjuncts=false,other=false}={})=>{
  if(other)fs.writeFileSync(path.join(dir,'unexpected.dat'),'must-not-delete',{flag:'wx',mode:0o600});
  return unpack(dir);
 };
+test('imported package API rejects every mutation without an explicit QA root',{skip:process.platform!=='linux'},()=>{
+ const home=qa();
+ try{
+  const parent=path.join(home,'.local','state','chatgpt-remote-commander');
+  fs.mkdirSync(parent,{recursive:true,mode:0o700});
+  const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');
+  const source='import assert from "node:assert/strict";import os from "node:os";'+
+   'import {pathToFileURL} from "node:url";'+
+   'assert.equal(os.homedir(),process.env.HOME);'+
+   'const m=await import(pathToFileURL(process.argv[2]).href);'+
+   'for(const action of ["install","upgrade","rollback"])'+
+   'assert.throws(()=>m.managePortablePackage({action}),/PORTABLE3_MUTATION_QA_ONLY/);';
+  const r=spawnSync(process.execPath,['--input-type=module','-e',source,'qa-api-probe',pkg],
+   {env:{...process.env,HOME:home},encoding:'utf8',timeout:7000});
+  assert.equal(r.status,0,r.stderr);
+  assert.deepEqual(fs.readdirSync(parent),[]);
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
 test('three-file package fresh install is private, exact and idempotent',{skip:process.platform!=='linux'},()=>{
  const home=qa();
  try{

@@ -135,6 +135,7 @@ function context(qaRoot){
  */
 export function managePortablePackage({action='status',qaRoot,hook}={}){
  if(!['status','install','upgrade','rollback'].includes(action))fail('ACTION_INVALID');
+ if(action!=='status'&&qaRoot===undefined)fail('MUTATION_QA_ONLY');
  const {target,parent,backup,recovery}=context(qaRoot);
  const initial=classify(target);
  if(action==='status'){
