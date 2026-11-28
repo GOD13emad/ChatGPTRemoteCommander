@@ -1,4 +1,19 @@
-# Release Train 0.12 — 0.12.0-dev.37 source candidate (NoPromote)
+# Release Train 0.12 — 0.12.0-dev.38 source candidate (NoPromote)
+
+## Dev.38 historical release-train README assertion (28 November 2026) — NoPromote
+
+Hosted dev.37 Linux CI and Linux clean-server bootstrap failed in
+test/release-train-0.11.test.mjs because a historical release safety test
+required the obsolete public README string claiming no accepted Stable
+without distinguishing the new 0.12 integrated Stable target. Dev.38
+preserves the 0.11 release and no-delete/no-promotion checks and additionally
+asserts exact current 0.12 firstStable=0.12.0, publishApproved=false,
+installedPromotionApproved=false, and explicit public README text separating
+unpromoted CI artifacts from admitted installers. No release flags,
+runtime authority or installer behavior are relaxed. The isolated original
+regression and dev.37 onboarding assertions pass locally; full cross-OS
+current-head qualification is required.
+
 
 ## Dev.37 onboarding qualification assertion correction (28 November 2026) — NoPromote
 

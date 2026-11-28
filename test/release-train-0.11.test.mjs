@@ -80,7 +80,13 @@ test('historical releases are not silently deleted or accepted as product stable
  assert.equal(a.distribution.keepAssetsAndTags,true);
  assert.equal(a.distribution.oldReleaseMetadataPending,true);
  assert.equal(a.distribution.noLatestChannelRetargetUntilUpdaterMigration,true);
- assert.match(read('README.md'),/no currently accepted Stable/);
+ const current=JSON.parse(read('docs/release-train-0.12.json'));
+ assert.equal(current.firstStable,'0.12.0');
+ assert.equal(current.publishApproved,false);
+ assert.equal(current.installedPromotionApproved,false);
+ const readme=read('README.md');
+ assert.match(readme,/No integrated Stable is accepted yet/);
+ assert.match(readme,/Historical GitHub releases and CI build artifacts are not interchangeable with an admitted public installer/);
 });
 
 
