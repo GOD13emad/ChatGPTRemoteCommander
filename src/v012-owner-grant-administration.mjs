@@ -10,6 +10,7 @@ import {normalizeV2Route} from './v2-routing-contract.mjs';
 
 const HEX=/^[a-f0-9]{64}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const MAX_OWNER_CANARY_GRANT_MS=5*60_000; // bounded by the exact native J01 epoch
 const OWNER_FIELDS=['source','hostId','profileId','principalId',
   'conversationId','bindingId','ownerSidHash','expiresAtMs'];
 const EVIDENCE_FIELDS=['source','hostId','profileId','ownerSidHash',
@@ -132,7 +133,7 @@ export function createV012OwnerGrantAdministration({
       // It is not the lifetime of the owner-approved grant: a human native
       // confirmation may last longer than the attestation TTL. Every later
       // Worker action must freshly re-attest this exact owner+Tunnel+key.
-      expiresAtMs:Math.min(after.expiresAtMs,updated+60000)});
+      expiresAtMs:Math.min(after.expiresAtMs,updated+MAX_OWNER_CANARY_GRANT_MS)});
   }
   function sameWorkerGrant(grant,c,t){
     return grant?.status==='ACTIVE'&&grant.bindingId===c.bindingId

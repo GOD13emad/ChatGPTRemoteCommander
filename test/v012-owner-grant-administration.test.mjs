@@ -196,6 +196,38 @@ test('human native approval can outlive ephemeral signed Tunnel witness but must
   }finally{f.close();}
 });
 
+test('J01-scoped canary survives 65 seconds of native consent while owner epoch remains valid',async()=>{
+  const f=fixture({withSigner:true});
+  try{
+    await f.controller.approveWorker();
+    await f.controller.approveReadOnlyCanary();
+    f.state.now+=65000;
+    const active=await f.controller.inspect();
+    assert.equal(active.workerActive,true,
+      'the owner-approved read-only Worker must not expire while J01 remains valid');
+    assert.equal(active.readOnlyCanaryAllowed,true);
+    await f.controller.approveSignedRegistration();
+    const registered=await f.controller.registerSignedWorker();
+    assert.equal(registered.registered,true);
+    f.state.now=f.state.ownerExpiresAtMs+1;
+    await assert.rejects(f.controller.inspect(),{code:'V012_OWNER_GRANT_NATIVE_J01_REQUIRED'});
+  }finally{f.close();}
+});
+
+test('read-only native canary cannot outlive its five-minute upper bound',async()=>{
+  const f=fixture();
+  try{
+    f.state.ownerExpiresAtMs=f.state.now+600000;
+    await f.controller.approveWorker();
+    await f.controller.approveReadOnlyCanary();
+    f.state.now+=300001;
+    const status=await f.controller.inspect();
+    assert.equal(status.nativeOwnerBound,true);
+    assert.equal(status.workerActive,false);
+    assert.equal(status.readOnlyCanaryAllowed,false);
+  }finally{f.close();}
+});
+
 test('key rotation during native owner dialog denies positive post-approval acceptance',async()=>{
   const f=fixture();
   try{

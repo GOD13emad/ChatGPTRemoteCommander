@@ -1,6 +1,6 @@
 # START HERE — ChatGPT Remote Commander
 
-> **Single source of truth for assisted installation.** If a user gives you this GitHub repository and asks for setup, follow this file from top to bottom. Do not mix in legacy foreground-tunnel or manual clone/npm flows unless troubleshooting requires them.
+> **Assisted installation — published release path.** The setup ZIP and script instructions below describe the historically published installer, not the unpromoted 0.12 NSIS/DEB engineering pilot. Never install a CI artifact as if it were an admitted public release. For new hosts, use a verified release matching the OS and architecture. Preserve existing profiles and recovery state when upgrading; the 0.12 target is one native installation per host with independent per-account profiles and no development checkout on non-development machines.
 
 Repository: https://github.com/GOD13emad/ChatGPTRemoteCommander
 

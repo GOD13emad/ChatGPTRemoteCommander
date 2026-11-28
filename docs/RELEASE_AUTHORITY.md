@@ -1,3 +1,18 @@
+## Current 0.12 release-train authority — 2026-11-28
+
+The current candidate, version and release-admission flags are governed by the
+[0.12 release train](RELEASE_TRAIN_0.12.md) and
+[machine-readable manifest](release-train-0.12.json). The first integrated
+Stable target is 0.12.0, with 1.0.0 reserved as the later full-product
+maturity target. Dated release authority and rollback observations below are
+historical evidence, not a waiver or automatic permission to promote a new
+commit. A qualified source build, native package install, live Core cutover,
+fleet acceptance and public release are separate events. The legacy setup
+catalog must not be silently relabelled as the NSIS/DEB production catalog
+until verified component integration and supported OS coverage are recorded.
+
+---
+
 ## OWNER DEV-TRAIN POLICY — 2026-10-28 (accepted; supersedes pre-v1 rollback-only release blockers)
 
 Before the first fully accepted Stable `v1.0.0`, owner directs **forward-only numbered development builds** on all five pilot hosts and generic Windows/Linux/Headless packages. Qualification of a development build no longer requires successful promotion back to an earlier broken `0.10.x` product or passing the old **rollback-specific** R170/R173 tests. Retain and explicitly label prior failed R170/R173 evidence; they are still valuable for installer faults, but their rollback subchecks are not pre-v1 gates. No development build is Stable, and all secure source, build, installer, manifest, per-platform startup, profile, data, browser, Control Center and GUI permission gates stay mandatory. The Windows R157 failure is **not** excused merely because it mentions rollback: separately test native Windows installer, integrity, no-promotion guard and healthy start. Preserve exact install and configuration rescue copies, but do not switch the active route back to a known broken release as a routine acceptance step. If a candidate cannot start, leave the last healthy route in place and issue a corrected `dev.N+1`; do not destroy live connectivity. For `v1.0.0`, repeat full rollback, integrity, recovery and cross-platform soak qualifications.

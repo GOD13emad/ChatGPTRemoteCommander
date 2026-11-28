@@ -1,4 +1,24 @@
-# Release Train 0.12 — `0.12.0-dev.35` source candidate (NoPromote)
+# Release Train 0.12 — 0.12.0-dev.36 source candidate (NoPromote)
+
+## Dev.36 bounded J01 Worker grant lifetime (28 November 2026) — NoPromote
+
+A live Emad Laptop dev.26 protected owner pair obtained genuine native J01,
+read-only parent Worker and exact system_status grants; the actual protected
+tool call remained HTTP 503 pending signed Worker registration. The separate
+registration consent could not complete before the 60-second parent expiry,
+and the owner-local readback confirmed workerActive=false without cutover.
+
+Dev.36 changes only the read-only canary parent/tool grant time ceiling from
+60 seconds to min(current J01 expiry, five minutes). Every operation still
+requires verified same-owner/same-Tunnel/key evidence, exact tool scope,
+native consent and existing revocation. This is not a persistent Full Access
+grant or a general privilege escalation. An isolated regression first failed
+on dev.35 at +65 seconds (RED 7 PASS / 1 FAIL), then succeeded with the
+bounded correction (GREEN 9/9). Related Linux qualification of four suites
+was 47 PASS / 0 FAIL. Full current-head CI, signed release assets, native
+installation, real signed Worker execution, protected cutover, and production
+rollback require separate acceptance. Keep Draft / NoPromote.
+
 
 ## Dev.35 asynchronous owner-admin Unix response (28 November 2026) — NoPromote
 
