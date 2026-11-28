@@ -182,3 +182,48 @@ test('0.12 updater does not discover or select a future train or a noncanonical 
  }});
  assert.equal(result.selected,null);
 });
+
+
+test('asset download persists every byte under short writes and rejects zero progress',async t=>{
+ const fs=(await import('node:fs')).default;
+ const os=await import('node:os');
+ const path=await import('node:path');
+ const crypto=await import('node:crypto');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'rc012-short-write-'));
+ const name='Remote-Commander-Unified-0.12.0-Linux-amd64.deb';
+ const dest=path.join(root,name),partial=dest+'.partial-'+process.pid;
+ const bytes=Buffer.alloc(1537,42);
+ const digest=crypto.createHash('sha256').update(bytes).digest('hex');
+ const original=fs.writeSync,open=fs.openSync;
+ let targetFd,zero=false,calls=0;
+ const mockOpen=t.mock.method(fs,'openSync',function(file,...args){
+   const fd=open.call(fs,file,...args);
+   if(file===partial)targetFd=fd;
+   return fd;
+ });
+ const mockWrite=t.mock.method(fs,'writeSync',function(fd,buffer,...args){
+   if(fd!==targetFd||!Buffer.isBuffer(buffer))return original.call(fs,fd,buffer,...args);
+   calls++;
+   if(zero)return 0;
+   const offset=typeof args[0]==='number'?args[0]:0;
+   const length=typeof args[1]==='number'?args[1]:buffer.length-offset;
+   return original.call(fs,fd,buffer,offset,Math.min(length,37),null);
+ });
+ const download=()=>downloadPublicReleaseAsset({tag:'v0.12.0',name,
+   destination:dest,expectedSha256:digest,expectedBytes:bytes.length,
+   fetcher:async()=>({status:200,url:'https://release-assets.githubusercontent.com/fixture',
+     body:(async function*(){yield bytes.subarray(0,800);yield bytes.subarray(800)})()})});
+ try{
+   await download();
+   assert.deepEqual(fs.readFileSync(dest),bytes);
+   assert.ok(calls>2);
+   assert.equal(fs.existsSync(partial),false);
+   fs.unlinkSync(dest);
+   zero=true;
+   await assert.rejects(download(),/ASSET_WRITE_INCOMPLETE/);
+   assert.deepEqual(fs.readdirSync(root),[]);
+ }finally{
+   mockWrite.mock.restore();mockOpen.mock.restore();
+   fs.rmSync(root,{recursive:true,force:true});
+ }
+});

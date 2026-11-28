@@ -191,7 +191,7 @@ export async function downloadPublicReleaseAsset({
   if(response?.status!==200||!response.body)
     fail('RC012_AUTO_UPDATE_ASSET_DOWNLOAD_UNAVAILABLE');
   const temp=destination+'.partial-'+process.pid;
-  const fd=fs.openSync(temp,'wx',0o600);
+  let fd=fs.openSync(temp,'wx',0o600);
   const hash=createHash('sha256');
   let bytes=0,complete=false;
   try{
@@ -200,19 +200,27 @@ export async function downloadPublicReleaseAsset({
       bytes+=chunk.length;
       if(bytes>expectedBytes)
         fail('RC012_AUTO_UPDATE_ASSET_SIZE_MISMATCH');
-      fs.writeSync(fd,chunk);
+      let written=0;
+      while(written<chunk.length){
+        const n=fs.writeSync(fd,chunk,written,chunk.length-written,null);
+        if(!Number.isSafeInteger(n)||n<=0||n>chunk.length-written)
+          fail('RC012_AUTO_UPDATE_ASSET_WRITE_INCOMPLETE');
+        written+=n;
+      }
       hash.update(chunk);
     }
     if(bytes!==expectedBytes||hash.digest('hex')!==expectedSha256)
       fail('RC012_AUTO_UPDATE_ASSET_HASH_MISMATCH');
+    if(fs.fstatSync(fd).size!==expectedBytes)
+      fail('RC012_AUTO_UPDATE_ASSET_SIZE_MISMATCH');
     fs.fsyncSync(fd);
-    fs.closeSync(fd);
+    fs.closeSync(fd);fd=undefined;
     if(fs.existsSync(destination))
       fail('RC012_AUTO_UPDATE_ASSET_DESTINATION_EXISTS');
     fs.renameSync(temp,destination);
     complete=true;
   }finally{
-    try{fs.closeSync(fd);}catch{}
+    if(fd!==undefined)try{fs.closeSync(fd);}catch{}
     if(!complete&&fs.existsSync(temp))fs.rmSync(temp);
   }
   return destination;
