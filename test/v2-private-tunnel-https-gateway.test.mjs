@@ -1162,3 +1162,48 @@ test('real full-catalog 0.12 owner-local protected boot stays fail-closed withou
     f.dispose();
   }
 });
+
+test('PRIVATE TLS bootstrap returns 401 only for pinned initialize without native attestation; no grants or catalog',async t=>{
+  let f;try{f=fixture();}catch{return t.skip('OpenSSL fixture generator unavailable');}
+  let server,ready=false,bindings=0,effects=0;
+  const now=Date.now();
+  try{
+    server=createV2CandidatePrivateTunnelHttpsGateway({
+      certificatePem:f.serverCert,privateKeyPem:f.serverKey,clientCaPem:f.ca,
+      expectedClientLeafDerSha256:f.clientSha,profileId:'emad',now:()=>now,
+      resolveTransportIdentity:async()=>ready?tdata(now):null,
+      privateOwnerPair:{
+        expectedTunnelIdHash:'a'.repeat(64),expectedOwnerSidHash:'b'.repeat(64),
+        resolveCurrentOwnerSidHash:async()=> 'b'.repeat(64),
+        resolveTrustedConversation:async()=>({source:'native-conversation-attested',sessionHandle:'chat-1'}),
+        ownerStack:{requestOwnerBinding:async()=>{bindings++;throw Error('not granted');}},
+        operationGate:{execute:async()=>{effects++;throw Error('not granted');}}
+      }
+    }).createUnboundTlsServer();
+    await new Promise((resolve,reject)=>server.listen(0,'127.0.0.1',resolve).once('error',reject));
+    const port=server.address().port;
+    const rpc=(method,params={})=>({jsonrpc:'2.0',id:1,method,params});
+    const init=rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'fixture',version:'1'}});
+    const send=(msg,headers={})=>privatePairRequest(port,f.clientCert,f.clientKey,msg,headers,f.ca);
+    const denied=await send(init);
+    assert.equal(denied.status,401);
+    assert.deepEqual(denied.body,{error:'trusted_transport_required'});
+    assert.equal((await privatePairRequest(port,f.alienCert,f.alienKey,init,{},f.ca)).status,403);
+    assert.notEqual((await privatePairRequest(port,null,null,init,{},f.ca)).status,200);
+    for(const msg of [rpc('tools/list'),rpc('tools/call',{name:'v2_private_owner_bind',arguments:{}}),
+      rpc('tools/call',{name:'v2_workflow_step',arguments:{}}),rpc('server/discover')]){
+      assert.equal((await send(msg)).status,403);
+    }
+    assert.equal((await send(init,{Authorization:'Bearer synthetic-invalid'})).status,403);
+    assert.equal(bindings,0);assert.equal(effects,0);
+    ready=true;
+    assert.equal((await send(init)).status,200);
+    const list=await send(rpc('tools/list'));
+    assert.equal(list.status,200);
+    assert.deepEqual(list.body.result.tools.map(x=>x.name),['v2_private_owner_bind','v2_workflow_step']);
+    assert.equal(bindings,0);assert.equal(effects,0);
+  }finally{
+    if(server?.listening)await new Promise(resolve=>server.close(resolve));
+    f.dispose();
+  }
+});

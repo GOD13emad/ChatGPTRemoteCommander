@@ -70,6 +70,7 @@ test('shared cellular outage never kills ready owner-private tunnels; isolated s
       block('safe_profile'),
       block('stale_restart_budget'),
       block('fresh_owner_peer_tunnels'),
+      block('route_rejected_tunnel_file'),
       block('start_tunnel'),
       String.raw`
 set -euo pipefail

@@ -143,3 +143,170 @@ test('linux supervisor retains only explicit private backends and its original d
     }
   }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
+
+
+test('tunnel quarantine is scoped to the failed route; original route remains recoverable',
+  {skip:process.platform!=='linux'},()=>{
+  const source=read('autostart-linux.sh');
+  const fn=['safe_profile','candidate_tunnels','rejected_tunnel_file','route_rejected_tunnel_file','marker_allows_tunnel','find_tunnel']
+    .map(name=>{
+      const match=source.match(new RegExp('^'+name+'\\(\\) \\{[\\s\\S]*?^\\}','m'));
+      assert.ok(match,'missing '+name);
+      return match[0];
+    }).join('\n');
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-route-quarantine-'));
+  try{
+    const script=[
+      fn,
+      'set -euo pipefail',
+      'ROOT="$1"',
+      'VAR_DIR="$ROOT/var"',
+      'mkdir -p "$VAR_DIR" "$ROOT/tools/tunnel-client-v0.0.15-linux-amd64"',
+      'binary="$ROOT/tools/tunnel-client-v0.0.15-linux-amd64/tunnel-client"',
+      'printf "#!/bin/sh\\nexit 0\\n" > "$binary"',
+      'chmod 700 "$binary"',
+      'export PATH="$(dirname "$binary"):/usr/bin:/bin"',
+      'profile=qa-owner',
+      'yaml="$ROOT/profile.yaml"',
+      'printf "original-route\\n" > "$yaml"',
+      'test "$(find_tunnel "$profile" "$yaml")" = "$binary"',
+      'printf "protected-route\\n" > "$yaml"',
+      'printf "%s\\n" "$binary" > "$(route_rejected_tunnel_file "$profile" "$yaml")"',
+      'if find_tunnel "$profile" "$yaml"; then exit 31; fi',
+      'test "$(find_tunnel another-owner "$yaml")" = "$binary"',
+      'printf "original-route\\n" > "$yaml"',
+      'test "$(find_tunnel "$profile" "$yaml")" = "$binary"',
+      'printf "%s\\n" "$binary" > "$(rejected_tunnel_file "$profile")"',
+      'if find_tunnel "$profile" "$yaml"; then exit 32; fi',
+      'echo ROUTE_SCOPED_QUARANTINE_PASS'
+    ].join('\n');
+    const result=spawnSync('bash',['-s','--',tmp],{input:script,encoding:'utf8',timeout:5000});
+    assert.equal(result.status,0,result.stderr);
+    assert.equal(result.stdout.trim(),'ROUTE_SCOPED_QUARANTINE_PASS');
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});
+
+
+test('supervisor permits a successful first long poll and still bounds readiness failure',
+  {skip:process.platform!=='linux'},()=>{
+  const source=read('autostart-linux.sh');
+  const fn=source.match(/^wait_tunnel_ready\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(fn);
+  const script=[
+    fn,
+    'set -euo pipefail',
+    'sleep(){ SECONDS=$((SECONDS+1)); }',
+    'kill(){ test "$alive" = 1; }',
+    'tunnel_ready(){ (( SECONDS >= ready_after )); }',
+    'SECONDS=0; alive=1; ready_after=30',
+    'wait_tunnel_ready 47832 1234',
+    'test "$SECONDS" -ge 30',
+    'echo FIRST_LONG_POLL_PASS',
+    'SECONDS=0; alive=1; ready_after=100',
+    'if wait_tunnel_ready 47832 1234; then exit 41; fi',
+    'test "$SECONDS" -ge 45',
+    'test "$SECONDS" -lt 50',
+    'echo DEADLINE_BOUNDED_PASS',
+    'SECONDS=0; alive=0; ready_after=0',
+    'if wait_tunnel_ready 47832 1234; then exit 42; fi',
+    'test "$SECONDS" -lt 2',
+    'echo DEAD_PROCESS_DENIED_PASS'
+  ].join('\n');
+  const result=spawnSync('bash',['-s'],{input:script,encoding:'utf8',timeout:5000});
+  assert.equal(result.status,0,result.stderr);
+  assert.deepEqual(result.stdout.trim().split('\n'),[
+    'FIRST_LONG_POLL_PASS','DEADLINE_BOUNDED_PASS','DEAD_PROCESS_DENIED_PASS'
+  ]);
+});
+
+
+test('supervisor accepts documented auth-required startup readiness but not 503 or timeout fallback',
+  {skip:process.platform!=='linux'},()=>{
+  const source=read('autostart-linux.sh');
+  const fn=source.match(/^tunnel_ready\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(fn);
+  const script=[
+    fn,
+    'set -euo pipefail',
+    'curl(){ printf "%s\\n%s" "$fixture_body" "$fixture_status"; return "$fixture_exit"; }',
+    'fixture_exit=0; fixture_status=200; fixture_body=ready',
+    'tunnel_ready 47832',
+    'fixture_body="ready (mcp initialize requires auth: Unauthorized)"',
+    'tunnel_ready 47832',
+    'fixture_status=503',
+    'if tunnel_ready 47832; then exit 51; fi',
+    'fixture_status=200; fixture_body="ready (mcp startup probe timed out: timeout)"',
+    'if tunnel_ready 47832; then exit 52; fi',
+    'fixture_body="ready forged suffix"',
+    'if tunnel_ready 47832; then exit 53; fi',
+    'fixture_body=ready; fixture_exit=22',
+    'if tunnel_ready 47832; then exit 54; fi',
+    'echo READY_CONTRACT_PASS'
+  ].join('\n');
+  const result=spawnSync('bash',['-s'],{input:script,encoding:'utf8',timeout:5000});
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(result.stdout.trim(),'READY_CONTRACT_PASS');
+});
+
+
+test('primary and fallback share quarantine; route history is atomic, isolated and fail closed',
+  {skip:process.platform!=='linux'},()=>{
+  const source=read('autostart-linux.sh');
+  const fn=['safe_profile','rejected_tunnel_file','route_rejected_tunnel_file',
+    'marker_allows_tunnel','find_tunnel','fallback_tunnel','record_route_rejection']
+    .map(name=>{
+      const match=source.match(new RegExp('^'+name+'\\(\\) \\{[\\s\\S]*?^\\}','m'));
+      assert.ok(match,'missing '+name);
+      return match[0];
+    }).join('\n');
+  assert.match(source,/record_route_rejection "\$reject_file" "\$desired"/);
+  assert.match(source,/fallback="\$\(fallback_tunnel "\$profile" "\$profile_file" "\$desired" "\$previous"/);
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'rc-fallback-quarantine-'));
+  try{
+    const script=[
+      fn,
+      'set -euo pipefail',
+      'umask 077',
+      'VAR_DIR="$1/var"; mkdir "$VAR_DIR" "$1/bin"',
+      'touch "$1/a" "$1/b" "$1/c" "$1/bin/tunnel-client"',
+      'chmod 700 "$1/a" "$1/b" "$1/c" "$1/bin/tunnel-client"',
+      'export PATH="$1/bin:$PATH"',
+      'FIXTURE_ROOT="$1"',
+      'candidate_tunnels(){ printf "%s\\n" "$FIXTURE_ROOT/a" "$FIXTURE_ROOT/b" "$FIXTURE_ROOT/c"; }',
+      'yaml="$1/profile.yaml"; printf "route-one\\n" > "$yaml"',
+      'route="$(route_rejected_tunnel_file qa "$yaml")"; legacy="$(rejected_tunnel_file qa)"',
+      'test "$(fallback_tunnel qa "$yaml" "$1/c" "$1/b")" = "$1/b"',
+      'printf "%s\\n" "$1/b" > "$legacy"',
+      'test "$(fallback_tunnel qa "$yaml" "$1/c" "$1/b")" = "$1/a"',
+      'rm "$legacy"',
+      'record_route_rejection "$route" "$1/b"',
+      'test "$(fallback_tunnel qa "$yaml" "$1/c" "$1/b")" = "$1/a"',
+      'record_route_rejection "$route" "$1/a"; record_route_rejection "$route" "$1/a"',
+      'test "$(grep -Fxc "$1/a" "$route")" = 1; test "$(grep -Fxc "$1/b" "$route")" = 1',
+      'if fallback_tunnel qa "$yaml" "$1/c" "$1/b"; then exit 31; fi',
+      'test "$(find_tunnel qa "$yaml")" = "$1/c"',
+      'record_route_rejection "$route" "$1/c"',
+      'test "$(find_tunnel qa "$yaml")" = "$1/bin/tunnel-client"',
+      'test "$(fallback_tunnel other "$yaml" "$1/c" "$1/b")" = "$1/b"',
+      'printf "route-two\\n" > "$yaml"',
+      'test "$(fallback_tunnel qa "$yaml" "$1/c" "$1/b")" = "$1/b"',
+      'other="$(route_rejected_tunnel_file qa "$yaml")"',
+      'record_route_rejection "$other" "$1/a" & first=$!',
+      'record_route_rejection "$other" "$1/b" & second=$!',
+      'wait "$first"; wait "$second"',
+      'test "$(grep -Fxc "$1/a" "$other")" = 1; test "$(grep -Fxc "$1/b" "$other")" = 1',
+      'chmod 000 "$other"',
+      'if [[ ! -r "$other" ]]; then if find_tunnel qa "$yaml"; then exit 32; fi; if record_route_rejection "$other" "$1/c"; then exit 33; fi; fi',
+      'chmod 600 "$other"',
+      'printf "route-three\\n" > "$yaml"',
+      'bad="$(route_rejected_tunnel_file qa "$yaml")"; ln -s "$other" "$bad"',
+      'if find_tunnel qa "$yaml"; then exit 34; fi',
+      'if record_route_rejection "$bad" "$1/c"; then exit 35; fi',
+      'test "$(grep -Fxc "$1/b" "$other")" = 1',
+      'echo FALLBACK_QUARANTINE_PASS'];
+    const result=spawnSync('bash',['-s','--',tmp],{
+      input:script.join('\n'),encoding:'utf8',timeout:12000});
+    assert.equal(result.status,0,result.stderr);
+    assert.equal(result.stdout.trim(),'FALLBACK_QUARANTINE_PASS');
+  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
+});

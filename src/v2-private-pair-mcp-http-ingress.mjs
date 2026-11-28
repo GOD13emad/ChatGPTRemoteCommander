@@ -203,11 +203,11 @@ const TOOLS=Object.freeze([
 ]);
 
 export function createV2PrivatePairMcpIngress({
-  attestTransport,resolveTrustedConversation,ownerStack,operationGate,
+  attestTransport,isPinnedBootstrapPeer=()=>false,resolveTrustedConversation,ownerStack,operationGate,
   trustedToolCatalog=[],validateToolInput,resolveTrustedToolRoute,
   maxBodyBytes=65536
 }={}){
-  if(typeof attestTransport!=='function'
+  if(typeof attestTransport!=='function'||typeof isPinnedBootstrapPeer!=='function'
     ||typeof ownerStack?.requestOwnerBinding!=='function'
     ||typeof operationGate?.execute!=='function'
     ||!Number.isSafeInteger(maxBodyBytes)||maxBodyBytes<1024
@@ -244,6 +244,21 @@ export function createV2PrivatePairMcpIngress({
       if(attested?.authenticated!==true
         ||attested.peerType!=='owner-pinned-private-tunnel-mtls'
         ||attested.sessionSource!=='native-owner-private-pair'){
+        // A TLS-authenticated exact leaf can receive an authentication DENIAL
+        // for startup initialize while the native witness is not ready.
+        // Tunnel-client v0.0.15 treats 401 as reachable/authentication required,
+        // but 403 as a permanent MCP startup failure. No catalog, identity,
+        // J01 or effect is returned here; all full attestation checks remain.
+        if(isPinnedBootstrapPeer(req)===true){
+          let startup=false;
+          try{
+            const probe=await payload(req,maxBodyBytes);
+            startup=probe.method==='initialize'&&!classifyProtocol(req,probe)
+              &&(Number.isSafeInteger(probe.id)
+                ||(typeof probe.id==='string'&&probe.id.length<=256));
+          }catch{}
+          if(startup){json(res,401,{error:'trusted_transport_required'});return;}
+        }
         json(res,403,{error:'trusted_transport_required'});return;
       }
       const message=await payload(req,maxBodyBytes);

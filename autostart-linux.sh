@@ -42,32 +42,81 @@ rejected_tunnel_file() {
   printf '%s/tunnel-rejected-%s.path\n' "$VAR_DIR" "$(safe_profile "$1")"
 }
 
+# A launch failure can be caused by the route, not by the executable.
+# Keep the original unscoped marker authoritative for older quarantines.
+# New rejections apply only to the exact configuration that failed.
+route_rejected_tunnel_file() {
+  local profile="$1" file="$2" hash
+  hash="$(sha256sum -- "$file")" || return 1
+  hash="${hash%% *}"
+  [[ "$hash" =~ ^[a-f0-9]{64}$ ]] || return 1
+  printf '%s/tunnel-rejected-%s-%s.path\n' "$VAR_DIR" "$(safe_profile "$profile")" "$hash"
+}
+
+# Both primary and fallback selection must honor the same quarantine.
+marker_allows_tunnel() {
+  local marker="$1" candidate="$2" rc
+  [[ -n "$candidate" && "$candidate" != *$'\n'* && "$candidate" != *$'\r'* ]] || return 1
+  [[ -e "$marker" || -L "$marker" ]] || return 0
+  [[ -f "$marker" && ! -L "$marker" && -r "$marker" ]] || return 1
+  if grep -Fxq -- "$candidate" "$marker"; then return 1; else rc=$?; fi
+  [[ "$rc" == 1 ]]
+}
+
 find_tunnel() {
-  local profile="${1:-default}" rejected="" f
-  local reject_file
+  local profile="${1:-default}" profile_file="$2" excluded="${3:-}" preferred="${4:-}" allow_path="${5:-1}" f
+  local reject_file route_file
   reject_file="$(rejected_tunnel_file "$profile")"
-  [[ -f "$reject_file" ]] && rejected="$(cat "$reject_file" 2>/dev/null || true)"
+  route_file="$(route_rejected_tunnel_file "$profile" "$profile_file")" || return 1
+  if [[ -n "$preferred" && -x "$preferred" && "$preferred" != "$excluded" ]] &&
+     marker_allows_tunnel "$reject_file" "$preferred" && marker_allows_tunnel "$route_file" "$preferred"; then
+    printf '%s\n' "$preferred"
+    return 0
+  fi
   mapfile -t candidates < <(candidate_tunnels)
   for ((i=${#candidates[@]}-1; i>=0; i--)); do
     f="${candidates[$i]}"
-    [[ -x "$f" ]] || continue
-    [[ -n "$rejected" && "$f" == "$rejected" ]] && continue
+    [[ -x "$f" && "$f" != "$excluded" ]] || continue
+    marker_allows_tunnel "$reject_file" "$f" && marker_allows_tunnel "$route_file" "$f" || continue
     printf '%s\n' "$f"
     return 0
   done
-  command -v tunnel-client
+  [[ "$allow_path" == 1 ]] || return 1
+  f="$(command -v tunnel-client)" || return 1
+  [[ -x "$f" && "$f" != "$excluded" ]] || return 1
+  marker_allows_tunnel "$reject_file" "$f" && marker_allows_tunnel "$route_file" "$f" || return 1
+  printf '%s\n' "$f"
 }
 
 fallback_tunnel() {
-  local desired="$1" f
-  mapfile -t candidates < <(candidate_tunnels)
-  for ((i=${#candidates[@]}-1; i>=0; i--)); do
-    f="${candidates[$i]}"
-    [[ -x "$f" && "$f" != "$desired" ]] || continue
-    printf '%s\n' "$f"
-    return 0
-  done
-  return 1
+  find_tunnel "$1" "$2" "$3" "${4:-}" 0
+}
+
+# Retain previous rejections; serialize read/modify/rename on the existing
+# state directory without introducing a persistent secondary lock file.
+record_route_rejection() {
+  local marker="$1" candidate="$2"
+  (
+    local tmp="" rc
+    [[ -n "$candidate" && "$candidate" != *$'\n'* && "$candidate" != *$'\r'* ]] || return 1
+    [[ "${marker%/*}" == "$VAR_DIR" && -d "$VAR_DIR" && ! -L "$VAR_DIR" ]] || return 1
+    command -v flock >/dev/null 2>&1 || return 1
+    exec 8<"$VAR_DIR" || return 1
+    flock -x -w 5 8 || return 1
+    if [[ -e "$marker" || -L "$marker" ]]; then
+      [[ -f "$marker" && ! -L "$marker" && -r "$marker" ]] || return 1
+      if grep -Fxq -- "$candidate" "$marker"; then return 0; else rc=$?; fi
+      [[ "$rc" == 1 ]] || return 1
+    fi
+    tmp="$(mktemp -- "${marker}.XXXXXX")" || return 1
+    trap 'rm -f -- "$tmp"' EXIT
+    if [[ -f "$marker" ]]; then
+      cat -- "$marker" > "$tmp" || return 1
+      [[ ! -s "$marker" ]] || printf '\n' >> "$tmp" || return 1
+    fi
+    printf '%s\n' "$candidate" >> "$tmp" || return 1
+    mv -fT -- "$tmp" "$marker"
+  )
 }
 
 start_mcp() {
@@ -116,9 +165,14 @@ profile_health_port() {
 }
 
 tunnel_ready() {
-  local port="$1"
+  local port="$1" reply body
   [[ "$port" =~ ^[0-9]+$ && "$port" -gt 0 ]] || return 1
-  [[ "$(curl -fsS --max-time 2 "http://127.0.0.1:$port/readyz" 2>/dev/null || true)" == "ready" ]]
+  reply="$(curl -fsS --max-time 2 -w '\n%{http_code}' "http://127.0.0.1:$port/readyz" 2>/dev/null)" || return 1
+  [[ "${reply##*$'\n'}" == 200 ]] || return 1
+  body="${reply%$'\n'*}"
+  body="${body%$'\n'}"
+  # Upstream auth-required readiness is a transport startup state, NOT a grant.
+  [[ "$body" == "ready" || "$body" == "ready (mcp initialize requires auth: "*")" ]]
 }
 
 network_route_present() {
@@ -265,11 +319,14 @@ launch_tunnel_with_exe() {
 }
 
 wait_tunnel_ready() {
-  local port="$1" pid="$2"
-  for _ in $(seq 1 50); do
-    sleep 0.2
-    tunnel_ready "$port" && return 0
+  local port="$1" pid="$2" deadline
+  # The pinned client may wait 30s for its first successful control-plane poll.
+  # Use a bounded elapsed-time budget, not 50 fast failures (~10s).
+  deadline=$((SECONDS + 45))
+  while (( SECONDS < deadline )); do
     kill -0 "$pid" 2>/dev/null || return 1
+    tunnel_ready "$port" && return 0
+    sleep 0.25
   done
   return 1
 }
@@ -280,9 +337,9 @@ start_tunnel() {
   [[ -f "$cred" ]] || { log "CREDENTIAL_MISSING profile=$profile"; return 0; }
   health="$(profile_health_port "$profile_file" 2>/dev/null || true)"
   [[ -n "$health" ]] || { log "TUNNEL_HEALTH_PORT_MISSING profile=$profile"; return 1; }
-  desired="$(find_tunnel "$profile" 2>/dev/null || true)"
+  reject_file="$(route_rejected_tunnel_file "$profile" "$profile_file")" || { log "TUNNEL_PROFILE_HASH_FAILED profile=$profile"; return 1; }
+  desired="$(find_tunnel "$profile" "$profile_file" 2>/dev/null || true)"
   [[ -n "$desired" && -x "$desired" ]] || { log "TUNNEL_CLIENT_MISSING profile=$profile"; return 1; }
-  reject_file="$(rejected_tunnel_file "$profile")"
 
   while IFS=$'\t' read -r pid exe; do
     [[ -n "$pid" ]] || continue
@@ -339,11 +396,10 @@ start_tunnel() {
   fi
 
   [[ -n "$STARTED_TUNNEL_PID" ]] && kill "$STARTED_TUNNEL_PID" 2>/dev/null || true
-  printf '%s\n' "$desired" > "$reject_file"
+  record_route_rejection "$reject_file" "$desired" || { log "TUNNEL_REJECTION_WRITE_FAILED profile=$profile"; return 1; }
   log "TUNNEL_CANDIDATE_REJECTED profile=$profile exe=$desired"
 
-  fallback="$previous"
-  [[ -n "$fallback" && -x "$fallback" ]] || fallback="$(fallback_tunnel "$desired" 2>/dev/null || true)"
+  fallback="$(fallback_tunnel "$profile" "$profile_file" "$desired" "$previous" 2>/dev/null || true)"
   if [[ -n "$fallback" && -x "$fallback" ]]; then
     STARTED_TUNNEL_PID=""
     if launch_tunnel_with_exe "$profile" "$cred" "$fallback" && wait_tunnel_ready "$health" "$STARTED_TUNNEL_PID"; then
