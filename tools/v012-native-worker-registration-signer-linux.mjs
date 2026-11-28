@@ -26,14 +26,16 @@ const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 // A denial MUST remain a denial. Classify only the failing stage, never
 // reveal native credential material, device IDs, input contents or exceptions.
-const STAGES=new Set(['TRANSPORT_BOOTSTRAP','DEVICE_EVIDENCE',
+const STAGES=new Set(['PRECHECK','TRANSPORT_BOOTSTRAP','DEVICE_EVIDENCE',
   'TRANSPORT_RECHECK','CREDENTIAL_LOAD','ENVELOPE']);
 const SAFE_CODE=/^(?:RC012_NATIVE_SIGNER|RC012_WORKER_SIGNING|NATIVE_WORKER_KEY|WORKER_IDENTITY)[A-Z0-9_]{0,80}$/;
+const SAFE_PRECHECK_CODE=/^(?:RC012_OWNER_WITNESS|RC012_LINUX_OWNER_TRUST|RC012_WORKER_KEY)[A-Z0-9_]{0,80}$/;
 export function classifyNativeSignerStageFailure(stage,error){
  if(!STAGES.has(stage))return 'RC012_NATIVE_SIGNER_DENIED';
  try{
   const code=error?.code;
-  if(typeof code==='string'&&SAFE_CODE.test(code))return code;
+  if(typeof code==='string'&&(SAFE_CODE.test(code)
+    ||(stage==='PRECHECK'&&SAFE_PRECHECK_CODE.test(code))))return code;
  }catch{}
  return 'RC012_NATIVE_SIGNER_'+stage+'_UNCLASSIFIED';
 }
@@ -48,15 +50,19 @@ export async function oneShotNativeWorkerSigner({profile,readInput}={}){
     ||typeof process.env.CREDENTIALS_DIRECTORY!=='string'
     ||typeof readInput!=='function')
     fail('RC012_NATIVE_SIGNER_CREDENTIAL_SCOPE_REQUIRED');
-  const home=os.homedir(),uid=process.getuid();
-  const witness=resolveLinuxNativeOwnerWitnessPaths({
-    home,profile,uid,
-    socketPath:process.env.RC012_OWNER_WITNESS_SOCKET_PATH,
-    publicKeyPath:process.env.RC012_OWNER_WITNESS_PUBLIC_KEY_PATH
+  // Preserve known bounded owner/pin errors, but never leak raw precheck exceptions.
+  const {home,uid,witness,owner,dir,pin}=await requireSignerStage('PRECHECK',()=>{
+    const home=os.homedir(),uid=process.getuid();
+    const witness=resolveLinuxNativeOwnerWitnessPaths({
+      home,profile,uid,
+      socketPath:process.env.RC012_OWNER_WITNESS_SOCKET_PATH,
+      publicKeyPath:process.env.RC012_OWNER_WITNESS_PUBLIC_KEY_PATH
+    });
+    const owner=createLinuxNativeOwnerSessionProvider({ownerIdentityMode:'host-uid-v2'});
+    const dir=resolvePinnedOwnerTunnelDirectory({home,profile,ownerUid:uid});
+    const pin=readLinuxOwnerTunnelPin({directory:dir,ownerUid:uid});
+    return {home,uid,witness,owner,dir,pin};
   });
-  const owner=createLinuxNativeOwnerSessionProvider({ownerIdentityMode:'host-uid-v2'});
-  const dir=resolvePinnedOwnerTunnelDirectory({home,profile,ownerUid:uid});
-  const pin=readLinuxOwnerTunnelPin({directory:dir,ownerUid:uid});
   const transport=await requireSignerStage('TRANSPORT_BOOTSTRAP',async()=>createLinuxSignedBrokerTransport({
     hostId:pin.hostId,profileId:profile,
     expectedOwnerSidHash:await owner.resolveOwnerSidHash(),
