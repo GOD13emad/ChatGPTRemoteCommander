@@ -31,7 +31,12 @@ function localWindowsPath(value,code){
 function defaultPowerShellPath(){
   return WINDOWS_SYSTEM_POWERSHELL_EXE;
 }
-function assertTrustedPowerShell(file,verifyExecutable){
+function assertTrustedPowerShell(file,verifyExecutable,execFileImpl){
+  // Test callers may inject a synthetic executor; production never selects
+  // an arbitrary on-disk executable even when it happens to be a regular file.
+  if(execFileImpl===execFileDefault
+    &&file.toLowerCase()!==WINDOWS_SYSTEM_POWERSHELL_EXE.toLowerCase())
+    fail('NATIVE_WORKER_KEY_POWERSHELL_UNTRUSTED');
   try{verifyExecutable(file);}
   catch{fail('NATIVE_WORKER_KEY_POWERSHELL_UNTRUSTED');}
 }
@@ -89,7 +94,7 @@ export function createWindowsNativeOwnerSidHashResolver({
     ||!OWNER_HASH_MODES.has(ownerHashMode))
     fail('NATIVE_WORKER_KEY_WINDOWS_BOOTSTRAP_REQUIRED');
   const executable=localWindowsPath(powershellPath,'NATIVE_WORKER_KEY_POWERSHELL_PATH_INVALID');
-  assertTrustedPowerShell(executable,verifyExecutable);
+  assertTrustedPowerShell(executable,verifyExecutable,execFileImpl);
   const sidSource=ownerHashMode==='native-j01-v2'?J01_SID_EXPRESSION:'$sid';
   const script=[
     "$ErrorActionPreference='Stop'",
@@ -133,7 +138,7 @@ export function createWindowsDpapiSeedLoader({
     fail('NATIVE_WORKER_KEY_WINDOWS_BOOTSTRAP_REQUIRED');
   const file=localWindowsPath(credentialPath,'NATIVE_WORKER_KEY_CREDENTIAL_PATH_INVALID');
   const executable=localWindowsPath(powershellPath,'NATIVE_WORKER_KEY_POWERSHELL_PATH_INVALID');
-  assertTrustedPowerShell(executable,verifyExecutable);
+  assertTrustedPowerShell(executable,verifyExecutable,execFileImpl);
   const pathB64=Buffer.from(file,'utf8').toString('base64');
   const profileB64=Buffer.from(profileId,'utf8').toString('base64');
   const sidSource=ownerHashMode==='native-j01-v2'?J01_SID_EXPRESSION:'$sid';
