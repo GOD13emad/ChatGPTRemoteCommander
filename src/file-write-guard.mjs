@@ -38,6 +38,8 @@ async function verifyWindowsShortNames(original, canonical, records) {
 }
 async function inspectFilePath(target, expected, allowWindowsShortNames = false) {
   target = path.resolve(target);
+  // An absent leaf snapshot must still name this exact target.
+  if (expected !== undefined && expected?.target !== target) fail('FILE_WRITE_TARGET_CHANGED');
   const parsed = path.parse(target);
   const parts = target.slice(parsed.root.length).split(path.sep).filter(Boolean);
   const ancestors = [];

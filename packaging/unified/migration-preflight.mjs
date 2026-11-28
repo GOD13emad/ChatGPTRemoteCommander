@@ -122,6 +122,35 @@ export function parseMainTunnelBinding(yaml){
     ||port<1024||port>65535)return null;
   return Object.freeze({port,channel:'main',path:'/mcp',tls:url.protocol==='https:'});
 }
+// Bounded descriptor-bound observation: no path reopen after validation.
+function readObservedProfile(file,directory,initial,parent){
+  const maxBytes=16384;
+  const same=(a,b)=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size
+    &&a.mode===b.mode&&a.uid===b.uid&&a.nlink===b.nlink
+    &&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+  const invalid=()=>new Error('PROFILE_OBSERVATION_CHANGED');
+  let fd;
+  try{
+    const flags=fs.constants.O_RDONLY
+      |(process.platform==='linux'?(fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK):0);
+    fd=fs.openSync(file,flags);
+    const opened=fs.fstatSync(fd);
+    if(!opened.isFile()||opened.nlink!==1||opened.size<1||opened.size>maxBytes
+      ||!same(initial,opened)||!same(parent,fs.lstatSync(directory)))throw invalid();
+    const buffer=Buffer.alloc(opened.size+1);
+    let offset=0;
+    while(offset<buffer.length){
+      const count=fs.readSync(fd,buffer,offset,buffer.length-offset,offset);
+      if(count===0)break;
+      offset+=count;
+    }
+    if(offset!==opened.size||!same(opened,fs.fstatSync(fd))
+      ||!same(opened,fs.lstatSync(file))||!same(parent,fs.lstatSync(directory)))
+      throw invalid();
+    return buffer.subarray(0,offset).toString('utf8');
+  }catch{throw invalid();}
+  finally{if(fd!==undefined)fs.closeSync(fd);}
+}
 export function readWindowsOwnerTunnelBinding({
   appData=process.env.APPDATA,profileName='chatgpt-remote-commander'
 }={}){
@@ -130,12 +159,18 @@ export function readWindowsOwnerTunnelBinding({
     ||profileName==='.'||profileName==='..'
     ||typeof appData!=='string'||!path.isAbsolute(appData))
     return {profilePresent:false,valid:false};
-  const file=path.join(appData,'tunnel-client',profileName+'.yaml');
+  const directory=path.join(appData,'tunnel-client');
+  const file=path.join(directory,profileName+'.yaml');
   try{
-    const stat=fs.lstatSync(file);
-    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16384)
+    // A linked parent can redirect a regular-looking YAML file outside the
+    // owner's tunnel configuration without making the YAML itself a symlink.
+    const parent=fs.lstatSync(directory);
+    if(!parent.isDirectory()||parent.isSymbolicLink())
       return {profilePresent:true,valid:false};
-    const binding=parseMainTunnelBinding(fs.readFileSync(file,'utf8'));
+    const stat=fs.lstatSync(file);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size<1||stat.size>16384)
+      return {profilePresent:true,valid:false};
+    const binding=parseMainTunnelBinding(readObservedProfile(file,directory,stat,parent));
     return {profilePresent:true,valid:!!binding,port:binding?.port??null,tls:binding?.tls??false};
   }catch(error){
     if(error?.code==='ENOENT')return {profilePresent:false,valid:false};
@@ -158,9 +193,9 @@ export function readLinuxOwnerTunnelBinding({
   if(typeof home!=='string'||!path.isAbsolute(home))
     return {profilePresent:false,valid:false};
   const directory=path.join(home,'.config','tunnel-client');
-  let names;
+  let names,dir;
   try{
-    const dir=fs.lstatSync(directory);
+    dir=fs.lstatSync(directory);
     if(!dir.isDirectory()||dir.isSymbolicLink()
       ||(ownerUid!==undefined&&(dir.uid!==ownerUid||(dir.mode&0o077)!==0)))
       return {profilePresent:true,valid:false};
@@ -181,12 +216,7 @@ export function readLinuxOwnerTunnelBinding({
       ||stat.size<1||stat.size>16384
       ||(ownerUid!==undefined&&(stat.uid!==ownerUid||(stat.mode&0o077)!==0)))
       return {profilePresent:true,valid:false};
-    const yaml=fs.readFileSync(file,'utf8');
-    const after=fs.lstatSync(file);
-    if(after.ino!==stat.ino||after.dev!==stat.dev||after.size!==stat.size
-      ||after.mtimeMs!==stat.mtimeMs)
-      return {profilePresent:true,valid:false};
-    const binding=parseMainTunnelBinding(yaml);
+    const binding=parseMainTunnelBinding(readObservedProfile(file,directory,stat,dir));
     return {profilePresent:true,valid:!!binding,
       port:binding?.port??null,tls:binding?.tls??false};
   }catch{return {profilePresent:true,valid:false};}
