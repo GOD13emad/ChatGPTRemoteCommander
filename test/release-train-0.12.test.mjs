@@ -29,8 +29,11 @@ test('0.12 development train has one valid NoPromote identity and a pinned sourc
  if(sourceCheckout){
   assert.ok(existsSync(ignore),'Git source must retain the packaging exclusion policy');
   assert.match(readFileSync(ignore,'utf8'),/^outputs\/$/m);
+  assert.match(readFileSync(ignore,'utf8'),/^\/experimental\/finite-companion-v1\.0\.0\/$/m);
+  assert.ok(existsSync(new URL('../experimental/finite-companion-v1.0.0/PUBLIC_SOURCE_MANIFEST.json',import.meta.url)),'source checkout must retain the historical snapshot');
  }else{
   assert.equal(existsSync(privateOutputs),false,'installed package must not carry private QA outputs');
+  assert.equal(existsSync(new URL('../experimental/finite-companion-v1.0.0/',import.meta.url)),false,'installed package must not carry historical source-review snapshot');
  }
 });
 test('0.12.0-dev.9 advances every 0.11 release and rejects noncanonical leading zero',()=>{

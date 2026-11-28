@@ -12,3 +12,6 @@ test/.tmp-*
 tools/__pycache__/
 **/__pycache__/
 *.pyc
+
+# Historical source-review snapshot is published in Git, not the runtime npm package.
+/experimental/finite-companion-v1.0.0/
