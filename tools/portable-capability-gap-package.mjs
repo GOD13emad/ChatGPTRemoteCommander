@@ -238,6 +238,7 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
  const claim=path.join(parent,'.capgap-portable-recovery.lock');
  if(existsNoFollow(claim))fail('RECOVERY_CONCURRENT');
  let claimFd,claimStat;
+ let mutationStarted=false,completed=false;
  try{
   claimFd=fs.openSync(claim,fs.constants.O_CREAT|fs.constants.O_EXCL|
     fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW,0o600);
@@ -276,6 +277,8 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
    fail('RECOVERY_CONCURRENT_SOURCE_DRIFT');
   // The sole target may not be overwritten by a competing installer; all
   // managed installs are already blocked by the original stale owner lock.
+  syncDir(parent); // Persist the claim before attempting either rename.
+  mutationStarted=true;
   fs.renameSync(backup,target);
   const restored=inspect(target,LEGACY);
   syncDir(parent);
@@ -290,6 +293,7 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
   catch(e){if(e.code!=='ESRCH')throw e;}
   fs.unlinkSync(lock);
   syncDir(parent);
+  completed=true;
   return {state:'legacy-two-file',changed:true,oldBytesRecovered:true,
     stagedNewRetained:true,adjuncts:restored.adjuncts};
  }finally{
@@ -298,7 +302,10 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
   if(!current.isFile()||current.isSymbolicLink()||current.uid!==process.getuid()||
     current.nlink!==1||current.ino!==claimStat.ino)
    fail('RECOVERY_CLAIM_INTEGRITY_CHANGED');
-  fs.unlinkSync(claim);
+  // A failed I/O operation may have changed topology even if it threw.
+  // Keep the claim after any attempted mutation unless all recovery checks
+  // and the original-lock retirement completed successfully.
+  if(!mutationStarted||completed)fs.unlinkSync(claim);
  }
 }
 
