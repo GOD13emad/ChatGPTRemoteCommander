@@ -6,7 +6,7 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {CapabilityGapRegistry,createCapabilityGapTools} from '../src/capability-gap-registry.mjs';
-import {windowsPrivateAcl} from '../src/owner-private-storage.mjs';
+import {windowsPrivateAcl,windowsCreateOwnerPrivateFile} from '../src/owner-private-storage.mjs';
 const make=()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'commander-gap-'));
  if(process.platform==='win32'){
@@ -36,8 +36,12 @@ test('native Windows private directory passes pre/post new SQLite ACL inheritanc
   stage='recheck-directory';
   windowsPrivateAcl(dir,{directory:true});
   stage='exclusive-new-file';
-  const fd=fs.openSync(db,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL,0o600);
-  fs.closeSync(fd);
+  assert.equal(windowsCreateOwnerPrivateFile(db),true);
+  assert.deepEqual(fs.readFileSync(db),Buffer.alloc(0));
+  // Hostile second creation must fail without clobbering original owner data.
+  fs.writeFileSync(db,'SYNTHETIC_KEEP_ONLY');
+  assert.throws(()=>windowsCreateOwnerPrivateFile(db),/OWNER_PRIVATE_FILE_CREATION_DENIED/);
+  assert.equal(fs.readFileSync(db,'utf8'),'SYNTHETIC_KEEP_ONLY');
   stage='check-new-file';
   windowsPrivateAcl(db);
   stage='recheck-parent';

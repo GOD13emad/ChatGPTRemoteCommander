@@ -22,7 +22,8 @@ reviewed security PR #516. On Windows it **requires** a pre-existing, owner-prot
 profile directory with native DACL proof before opening the profile's
 `capability-gaps.sqlite`. It refuses creating new parent directories implicitly,
 refuses broad ACLs or unexpected file aliases, exclusively creates a previously
-missing database in the protected directory, then rechecks native DACL both
+missing database with an explicit owner-only native DACL at file creation
+(`FileStream` `CreateNew` plus `FileSecurity`, not post-create chmod), then rechecks native DACL both
 before and after SQLite open. It does **not** change ACLs on existing user
 history, migrate the V1 JSON ledger, elevate privileges or silently repair a
 pre-existing insecure profile.

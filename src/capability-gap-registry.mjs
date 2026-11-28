@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {windowsPrivateAcl} from './owner-private-storage.mjs';
+import {windowsPrivateAcl,windowsCreateOwnerPrivateFile} from './owner-private-storage.mjs';
 const KEY=/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){1,9}$/;
 const PROJECT=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/;
 const ERROR=/^[A-Z][A-Z0-9_]{1,79}$/;
@@ -79,13 +79,11 @@ export class CapabilityGapRegistry{
      const st=fs.lstatSync(this.path);
      if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1)fail('CAPABILITY_GAP_STORE_ALIAS_DENIED');
    }else if(windows){
-     // Exclusive creation inherits the already proven protected owner directory.
+     // CreateNew sets protected owner DACL *at creation* via trusted native
+     // WindowsPowerShell/.NET. Never expose an inherited public file first.
      // Never truncate, chmod, ACL-repair or overwrite existing owner history.
-     let fd;
-     try{fd=fs.openSync(this.path,fs.constants.O_WRONLY|fs.constants.O_CREAT|
-       fs.constants.O_EXCL,0o600);}
+     try{windowsCreateOwnerPrivateFile(this.path);}
      catch{fail('CAPABILITY_GAP_PRIVATE_FILE_CREATION_DENIED');}
-     finally{if(fd!==undefined)fs.closeSync(fd);}
    }
    if(windows){
      const st=fs.lstatSync(this.path);
