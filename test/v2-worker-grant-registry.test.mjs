@@ -362,7 +362,8 @@ test('transient SQLite journal disappearance does not fail grant admission or re
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-grant-journal-race-'));
   const directory=path.join(root,'secure');
   fs.mkdirSync(directory,{recursive:true,mode:0o700});
-  const journal=path.join(directory,'v2-access.sqlite-journal');
+  const canonicalDirectory=fs.realpathSync.native(directory);
+  const journal=path.join(canonicalDirectory,'v2-access.sqlite-journal');
   const originalExists=fs.existsSync;
   const create=()=>new V2GrantRegistry({directory,authorizeAdministration:()=>true});
   try{
@@ -390,8 +391,9 @@ test('unlinked regular SQLite sidecar is rechecked without weakening alias guard
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'v2-grant-unlinked-sidecar-'));
   const directory=path.join(root,'secure');
   fs.mkdirSync(directory,{recursive:true,mode:0o700});
-  const journal=path.join(directory,'v2-access.sqlite-journal');
-  const db=path.join(directory,'v2-access.sqlite');
+  const canonicalDirectory=fs.realpathSync.native(directory);
+  const journal=path.join(canonicalDirectory,'v2-access.sqlite-journal');
+  const db=path.join(canonicalDirectory,'v2-access.sqlite');
   const original=fs.lstatSync;
   // Model the transient POSIX stat result; Windows also verifies the
   // pathname recheck and fail-closed branches without requiring POSIX unlink.

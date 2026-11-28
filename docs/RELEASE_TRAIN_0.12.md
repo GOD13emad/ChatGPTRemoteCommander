@@ -1,4 +1,4 @@
-# Release Train 0.12 — `0.12.0-dev.30` source candidate (NoPromote)
+# Release Train 0.12 — `0.12.0-dev.31` source candidate (NoPromote)
 
 ## Dev.13 upgrade qualification candidate
 
