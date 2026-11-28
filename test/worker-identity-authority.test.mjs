@@ -80,7 +80,11 @@ function fixture(options={}){
   };
   const authority=createWorkerIdentityAuthority({
     hostId:'aliemad-labtop',profileId:'emad',issuer:'commander.local',audience:'remote-commander',
-    resolveDeviceIdentity:async()=>{const {attestedAtMsOverride,...device}=state.device;return{...device,attestedAtMs:attestedAtMsOverride??state.now-1000,expiresAtMs:state.now+state.deviceTtlMs};},
+    resolveDeviceIdentity:async()=>{const {attestedAtMsOverride,...device}=state.device;
+      if(options.advanceClockDuringDeviceAttestation&&!state.deviceClockAdvanced){state.now+=1;state.deviceClockAdvanced=true;}
+      return{...device,attestedAtMs:attestedAtMsOverride??
+        (options.advanceClockDuringDeviceAttestation?state.now:state.now-1000),
+        expiresAtMs:state.now+state.deviceTtlMs};},
     resolveTransportIdentity:async()=>{const {lastPollAtMsOverride,...transport}=state.transport;return{...transport,lastPollAtMs:lastPollAtMsOverride??state.now-1000,expiresAtMs:state.now+state.transportTtlMs};},
     resolveOwnerContext:async()=>({...state.context}),
     resolveOwnerGrant:async request=>ownerGrant(request),
@@ -669,4 +673,18 @@ test('WorkerIdentityAuthority rejects uncertain final revocation status',async()
     workerId,invocation:{tool:'read_text',arguments:{path:'README.md'}}
   }),'WORKER_IDENTITY_REVOKED');
   assert.equal(calls,3);
+});
+
+
+test('native device sampled asynchronously is not falsely future-stamped',async()=>{
+ const f=fixture({advanceClockDuringDeviceAttestation:true});
+ const signed=await f.authority.registerWorker({privateKey:pair().privateKey});
+ assert.equal(f.registry.inspect().records.size,1);
+ assert.equal(signed.claims.deviceProvider,'native-key-store');
+});
+test('genuinely future-stamped native device is still rejected',async()=>{
+ const f=fixture();
+ f.state.device.attestedAtMsOverride=f.state.now+5000;
+ await rejectsCode(f.authority.registerWorker({privateKey:pair().privateKey}),
+   'WORKER_IDENTITY_DEVICE_UNVERIFIED');
 });

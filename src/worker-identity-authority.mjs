@@ -293,10 +293,12 @@ export function createWorkerIdentityAuthority({
 
   const getTime=()=>clock(now);
   async function readTrust(){
-    const t=getTime();
     const [contextRaw,deviceRaw,transportRaw,policyRaw]=await Promise.all([
       resolveOwnerContext(),resolveDeviceIdentity(),resolveTransportIdentity(),resolveCapabilityPolicyDigest()
     ]);
+    // Validate against the clock AFTER native async evidence collection.
+    // Otherwise genuine fresh device/Tunnel samples appear future-stamped.
+    const t=getTime();
     const context=validateContext(contextRaw,hostId,profileId,t);
     const device=validateDevice(deviceRaw,t,maxDeviceAgeMs);
     const transport=validateTransport(transportRaw,profileId,device.ownerSidHash,t,maxTransportAgeMs);
