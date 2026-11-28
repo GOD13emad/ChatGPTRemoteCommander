@@ -25,6 +25,28 @@ const issue=(o={})=>({
   acceptanceTest:'Native window snapshot returns a valid image under authorized owner lease.',
   ...o
 });
+test('native Windows private directory passes pre/post new SQLite ACL inheritance',
+ {skip:process.platform!=='win32'?'Windows native owner ACL inheritance only':false},()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'capgap-owner-dacl-'));
+ const db=path.join(dir,'capability-gaps.sqlite');
+ let stage='initialize-directory';
+ try{
+  // Each assertion names only a stage; never print user path, SID, ACL or data.
+  windowsPrivateAcl(dir,{directory:true,initializeNew:true});
+  stage='recheck-directory';
+  windowsPrivateAcl(dir,{directory:true});
+  stage='exclusive-new-file';
+  const fd=fs.openSync(db,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL,0o600);
+  fs.closeSync(fd);
+  stage='check-new-file';
+  windowsPrivateAcl(db);
+  stage='recheck-parent';
+  windowsPrivateAcl(dir,{directory:true});
+ }catch{
+  assert.fail('NATIVE_OWNER_ACL_STAGE_FAILED_'+stage);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
 test('same owner profile upserts one gap across chats/projects without duplicating evidence',()=>{
  const dir=make();let a,b;
  try{
