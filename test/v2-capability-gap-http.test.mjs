@@ -6,6 +6,7 @@ import net from 'node:net';
 import fs from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
+import {windowsPrivateAcl} from '../src/owner-private-storage.mjs';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function freePort(){const s=net.createServer();s.listen(0,'127.0.0.1');await once(s,'listening');const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 test('isolated MCP server reports and deduplicates capability/privilege gaps across project chats',async()=>{
@@ -14,8 +15,16 @@ test('isolated MCP server reports and deduplicates capability/privilege gaps acr
  try{
   await fs.mkdir(serverRoot,{recursive:true});await fs.mkdir(data,{recursive:true});
   await fs.cp(new URL('../src/',import.meta.url),path.join(serverRoot,'src'),{recursive:true});
+  const delivery=path.join(root,'delivery');
+  if(process.platform==='win32'){
+   // Native owner-only ACL must be established before launching the server;
+   // never weaken the production registry's fail-closed admission.
+   await fs.mkdir(delivery);
+   windowsPrivateAcl(delivery,{directory:true,initializeNew:true});
+   windowsPrivateAcl(delivery,{directory:true});
+  }
   const config={host:'127.0.0.1',port,allowedRoots:[data],allowedPrograms:['node'],
-   auditLog:'var/audit.jsonl',durableDelivery:{directory:path.join(root,'delivery')},
+   auditLog:'var/audit.jsonl',durableDelivery:{directory:delivery},
    powerMode:{enabled:false,fullFilesystem:false,guiControl:{enabled:false}}};
   const file=path.join(serverRoot,'config.json');
   await fs.writeFile(file,JSON.stringify(config),{mode:0o600});
