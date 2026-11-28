@@ -233,14 +233,25 @@ test('workspace planner refuses generic ready provider when exact existing app i
  assert.deepEqual(r.fallbackProviders,[]);assert.equal(r.autoElevate,false);
 });
 test('workspace planner selects exact owner target only from bound internal observation',async()=>{
- const owner='uid:'+process.getuid();
+ // Linux positive binding must use an actual local UID. On a host without
+ // that OS primitive, even an otherwise plausible Linux receipt must deny.
+ const hasUid=typeof process.getuid==='function';
+ const owner=hasUid?'uid:'+process.getuid():'uid:1000';
  const ctl=createWorkspaceController({platform:'linux',ownerSession:async()=>true,
   hybridProbe:async()=>({capabilities:{commanderWorkflow:true,linuxATSPI:true},
    evidence:{'linux-atspi-native':{status:'VERIFIED_READY'}},
    targetReceipt:boundReceipt({ownerPrincipal:owner,observedAtMs:Date.now()-1000,expiresAtMs:Date.now()+7000})})});
  const r=await ctl.execute('workspace_agentos_plan',{target:'existing-app',pid:2345,windowId:4567});
- assert.equal(r.status,'READY');assert.equal(r.provider,'linux-atspi-native');
- assert.equal(r.targetBound,true);assert.equal(r.autoElevate,false);
+ if(hasUid){
+  assert.equal(r.status,'READY');assert.equal(r.provider,'linux-atspi-native');
+  assert.equal(r.targetBound,true);
+ }else{
+  assert.equal(r.status,'BLOCKED');assert.equal(r.provider,null);
+  assert.equal(r.code,'EXACT_OWNER_TARGET_ATTESTATION_REQUIRED');
+  assert.equal(r.attestationReason,'BOUND_TARGET_INPUT_INVALID');
+  assert.deepEqual(r.fallbackProviders,[]);
+ }
+ assert.equal(r.autoElevate,false);
 });
 
 test('real native owner observer memory issues a short-lived exact Windows UIA target plan',async()=>{
