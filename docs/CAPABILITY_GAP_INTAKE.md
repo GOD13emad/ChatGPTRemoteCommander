@@ -26,6 +26,10 @@ missing database in the protected directory, then rechecks native DACL both
 before and after SQLite open. It does **not** change ACLs on existing user
 history, migrate the V1 JSON ledger, elevate privileges or silently repair a
 pre-existing insecure profile.
+The Commander server deliberately leaves other MCP tools available if this
+optional registry fails the native Windows private-storage admission: it advertises
+no `capability_gap_*` tools and reports `capabilityGaps.enabled=false` with a
+fixed refusal reason. It does **not** silently use unprotected storage.
 
 For a new Windows profile, the **owner-approved** existing
 `tools/v2-universal-owner-acl.ps1 MakePrivate/CheckPrivate` helper is a
