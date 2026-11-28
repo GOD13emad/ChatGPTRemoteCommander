@@ -28,12 +28,14 @@ const fail=code=>{throw Object.assign(new Error(code),{code});};
 // reveal native credential material, device IDs, input contents or exceptions.
 const STAGES=new Set(['PRECHECK','TRANSPORT_BOOTSTRAP','DEVICE_EVIDENCE',
   'TRANSPORT_RECHECK','CREDENTIAL_LOAD','ENVELOPE']);
-const SAFE_CODE=/^(?:RC012_NATIVE_SIGNER|RC012_WORKER_SIGNING|RC012_OWNER_WITNESS|RC012_LINUX_OWNER_TRUST|RC012_WORKER_KEY|NATIVE_WORKER_KEY|WORKER_IDENTITY)[A-Z0-9_]{0,80}$/;
+const SAFE_CODE=/^(?:RC012_NATIVE_SIGNER|RC012_WORKER_SIGNING|NATIVE_WORKER_KEY|WORKER_IDENTITY)[A-Z0-9_]{0,80}$/;
+const SAFE_PRECHECK_CODE=/^(?:RC012_OWNER_WITNESS|RC012_LINUX_OWNER_TRUST|RC012_WORKER_KEY)[A-Z0-9_]{0,80}$/;
 export function classifyNativeSignerStageFailure(stage,error){
  if(!STAGES.has(stage))return 'RC012_NATIVE_SIGNER_DENIED';
  try{
   const code=error?.code;
-  if(typeof code==='string'&&SAFE_CODE.test(code))return code;
+  if(typeof code==='string'&&(SAFE_CODE.test(code)
+    ||(stage==='PRECHECK'&&SAFE_PRECHECK_CODE.test(code))))return code;
  }catch{}
  return 'RC012_NATIVE_SIGNER_'+stage+'_UNCLASSIFIED';
 }

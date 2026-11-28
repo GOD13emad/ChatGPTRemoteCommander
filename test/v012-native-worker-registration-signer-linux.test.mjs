@@ -46,6 +46,8 @@ test('signer fail-closed diagnostic labels preserve trusted codes and hide untru
    'RC012_LINUX_OWNER_TRUST_FILE_UNSAFE');
  assert.equal(classify('PRECHECK',{code:'ENOENT',message:'secret path'}),
    'RC012_NATIVE_SIGNER_PRECHECK_UNCLASSIFIED');
+ assert.equal(classify('ENVELOPE',{code:'RC012_OWNER_WITNESS_SOCKET_NOT_PINNED'}),
+   'RC012_NATIVE_SIGNER_ENVELOPE_UNCLASSIFIED');
 });
 
 test('native signer precheck keeps bounded witness denial and does not emit an envelope',()=>{
