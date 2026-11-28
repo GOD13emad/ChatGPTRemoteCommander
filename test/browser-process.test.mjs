@@ -155,3 +155,15 @@ test('timed-out isolated session shuts down helper and removes tracked owned pro
   assert.equal(await exists(profile),false);
  }finally{await f.cleanup();}
 });
+
+test('unconfirmed end retains isolated profile ownership for client cleanup',async()=>{
+ const f=await fixture();
+ const profile=path.join(f.root,'unconfirmed-profile');
+ try{
+  await f.client.invoke({action:'start',isolated:true,profileDir:profile});
+  const result=await f.client.invoke({action:'end'});
+  assert.equal(result.ok,true);assert.notEqual(result.closed,true);
+  await f.client.close();
+  assert.equal(await exists(profile),false);
+ }finally{await f.cleanup();}
+});

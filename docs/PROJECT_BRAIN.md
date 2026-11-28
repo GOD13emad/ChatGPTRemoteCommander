@@ -1,5 +1,13 @@
 # Project Brain — ChatGPT Remote Commander
 
+### TVL_BROWSER_AFFINITY_FORWARD_20261128 -- source-only review candidate
+
+PR #345 originally targeted main 66dfe5e; historical head 0baea51f6247db3f97f8ebc810094aa16459d904 retains the original October evidence and Brain delta. On current main e01fdba4de51c8fabfd817aa2b80ad3d421d4784, transferred only the exact Router block and original regression test (blob c7a7823bdab0536c9bfe5a096286727657648781), preserving newer imports and owner/transfer controls. Baseline missing-export RED; three focused suites 28/28 PASS on Linux Node22.23.2. Router preserves helper affinity after thrown/unconfirmed end; controller lease retention and native cleanup remain separate gates. No installed browser, owner profile or release changes; independent review and new hosted CI required. NoPromote.
+
+### TVL_FIREFOX_CLEANUP_FORWARD_20261128 -- source-only review candidate
+
+Historical PR352 head 43777a251e622013cf25ff1c834e9c5bbaed7518 retains its three commits and original native receipts. Current main e01fdba4de51c8fabfd817aa2b80ad3d421d4784 reproduced false close confirmation with disposable permission-denial/mock-driver fixture: second end closed=true while profile remained. Forward repair retains exact owned profile until lstat ENOENT, fences non-status/end operations while cleanup pending, clears stale session/port after driver stop, preserves current Snap profile-root and executable discovery, restores historical distinct Marionette port and explicit binary contract. New 39/39 scoped Linux tests PASS, no skips; mock driver only, no real Firefox or user profile access. Native process-exit proof, real Windows/Snap lifecycle, separate controller lease retention and current hosted CI/human acceptance remain OPEN. NoPromote.
+
 ## HISTORICAL AUDIT — 2026-10-27: cross-product evidence and architecture
 
 ### RC011-WINDOWS-PARSER-20261027 — dev.8 fail-closed repair
