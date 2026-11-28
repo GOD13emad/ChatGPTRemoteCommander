@@ -6,7 +6,9 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {validateAgentExtensionManifest} from '../src/agent-extensions.mjs';
-const CURRENT={agent:'d94c646466037e29ddf3eafc2ecb683c882e529ec55d8012b21b092fe80cd1e4',
+const CURRENT={agent:'80f1a197408280390449e5a72291edcbc20b61b46aed9b593944ca1b332dd463',
+ skill:'247bac3be54f1835682e213ea82dd1f80da4669f901150e229bdc7ae1d4ab51f'};
+const PREVIOUS={agent:'d94c646466037e29ddf3eafc2ecb683c882e529ec55d8012b21b092fe80cd1e4',
  skill:'247bac3be54f1835682e213ea82dd1f80da4669f901150e229bdc7ae1d4ab51f'};
 const OLD={agent:'3b0b3f522dd6ce04f505bad1e1f971d9b1420e45e57196c1c55edc24b4fe7593',
  skill:'74918cd9768e39d3c451351cbd7a76bfb0e53d91abc13172a29ca0afdc8b2a10'};
@@ -39,6 +41,7 @@ function checkInstalled(dir){
   return sha(fs.readFileSync(p));
  });
  if(files[0]===CURRENT.agent&&files[1]===CURRENT.skill)return 'current';
+ if(files[0]===PREVIOUS.agent&&files[1]===PREVIOUS.skill)return 'previous';
  if(files[0]===OLD.agent&&files[1]===OLD.skill)return 'old';
  fail('EXISTING_EXTENSION_CONFLICT');
 }
@@ -68,10 +71,10 @@ export function installCapabilityGapExtension({action='status'}={}){
  const existing=fs.existsSync(dest)?checkInstalled(dest):null;
  if(existing==='current')return {status:'EXACT_EXTENSION_ALREADY_INSTALLED',changed:false,extensionId:NAME,
   manifestSHA256:CURRENT.agent,skillSHA256:CURRENT.skill,mcpMethodsInstalled:false};
- if(existing==='old'&&action==='status')return {status:'UPGRADE_AVAILABLE',changed:false,
-  from:'0.1.0',to:'0.2.0',mcpMethodsInstalled:false};
+ if((existing==='old'||existing==='previous')&&action==='status')return {status:'UPGRADE_AVAILABLE',changed:false,
+  from:existing==='old'?'0.1.0':'0.2.0',to:'0.2.1-rc.1',mcpMethodsInstalled:false};
  if(!existing&&action==='status')return {status:'NOT_INSTALLED',changed:false,mcpMethodsInstalled:false};
- if(existing==='old'&&action!=='upgrade')fail('EXPLICIT_UPGRADE_REQUIRED');
+ if(existing&&action!=='upgrade')fail('EXPLICIT_UPGRADE_REQUIRED');
  if(!existing&&action!=='install')fail('EXISTING_EXTENSION_REQUIRED');
  const stage=writeStage(parent,manifest,skill);
  let consumed=false;
@@ -84,9 +87,10 @@ export function installCapabilityGapExtension({action='status'}={}){
    noLinkAncestors(backupRoot);
    if(!fs.existsSync(backupRoot))fs.mkdirSync(backupRoot,{mode:0o700});
    checkDir(backupRoot);
-   const backup=path.join(backupRoot,NAME+'-v0.1.0');
+   const backupVersion=existing==='old'?'0.1.0':'0.2.0';
+   const backup=path.join(backupRoot,NAME+'-v'+backupVersion);
    if(fs.existsSync(backup))fail('ROLLBACK_SLOT_OCCUPIED');
-   if(checkInstalled(dest)!=='old')fail('CONCURRENT_DESTINATION_CHANGE');
+   if(checkInstalled(dest)!==existing)fail('CONCURRENT_DESTINATION_CHANGE');
    fs.renameSync(dest,backup);
    try{fs.renameSync(stage,dest);consumed=true;}
    catch(error){
