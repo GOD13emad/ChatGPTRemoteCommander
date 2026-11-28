@@ -40,7 +40,7 @@ async function reserveLoopback(){
  return port;
 }
 test('NoPromote shadow candidate generated config starts exact-health V2 without touching owner state',
- {skip:process.platform!=='win32'?'Native Windows isolated updater candidate check':false,timeout:30000},
+ {skip:process.platform!=='win32'?'Native Windows isolated updater candidate check':false,timeout:45000},
  async()=>{
  const root=fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(),'rc-sha-shadow-health-')));
  const dir=n=>path.join(root,n);
@@ -80,7 +80,9 @@ test('NoPromote shadow candidate generated config starts exact-health V2 without
    windowsHide:true,stdio:['ignore','ignore','pipe']});
   child.stderr.on('data',b=>{stderr=(stderr+b.toString('utf8')).slice(-10000);});
   let response=null,status='NO_RESPONSE';
-  for(let n=0;n<100;n++){
+  // Match the production updater 30s candidate health budget; 10s is
+  // insufficient on cold native WindowsPowerShell / Defender runners.
+  for(let n=0;n<270;n++){
    if(child.exitCode!==null){status='EXITED_'+String(child.exitCode);break;}
    try{
     const reply=await fetch('http://127.0.0.1:'+port+'/health',
@@ -99,10 +101,11 @@ test('NoPromote shadow candidate generated config starts exact-health V2 without
   };
   // Fixed labels only: never disclose owner paths, raw child stderr or config.
   if(Object.values(flags).some(v=>v!==true)){
+   const markerExists=fs.existsSync(path.join(runtime,'mcp-runtime.json'));
    const codes=[...new Set(stderr.match(/\b(?:CAPABILITY_GAP|DELIVERY|WORKFLOW|ASYNC|MUTATION|ERR)_[A-Z0-9_]+\b/g)||[])].slice(0,8);
    assert.fail('SHADOW_HEALTH_'+status+'_'+phase+'_'+
       Object.entries(flags).filter(([,v])=>!v).map(([k])=>k).join('_')+
-      '_CODES_'+codes.join(','));
+      '_RUNTIME_MARKER_'+String(markerExists)+'_CODES_'+codes.join(','));
   }
  }finally{
   if(child&&child.exitCode===null){
