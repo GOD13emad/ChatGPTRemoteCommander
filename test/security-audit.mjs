@@ -56,6 +56,22 @@ const HISTORY_NONKEY_SOURCE_LINE_PINS=new Set([
  "6e83e5b1c807b1b7dcbb6a56aa56f2966e984d8b|test/v2-mcp-http-ingress.test.mjs|c49aa9b0b75874639e877d5e93309645d7a707cfa424e7bc21625f44b666dcd1",
  "6e83e5b1c807b1b7dcbb6a56aa56f2966e984d8b|test/v2-mcp-http-ingress.test.mjs|9f84d8855fd0961d29ec6543bcae795c8fb36816ac68102dd029424068a450a1",
 ]);
+
+// Only exact reviewed, whole-diff-line history instances. Never suppress a
+// different source line, commit, file, actual standalone key or live tunnel.
+const HISTORY_NONKEY_TASK_FRAGMENT_PINS=new Set([
+ 'facd1048a264ebac9ee81f92d5de0115d6638218|integrations/saeid-r80-local-owner-enrollment/source-k-e/staged-finalization-j/PARENT_CONTRACT_B.json|dea43762dfb3563f5e5587d972fada41a0f15381bff676533363a422a71a5fdf',
+ 'cfaaf8add1ad98198c256dbcb21787bd876b6da8|integrations/saeid-r80-local-owner-enrollment/source-i/bootstrap/G_HANDOFF.md|28820993672e583e8f9cedd295f6333e61e7e17a2d7230cadad9d71b2640c1e1',
+ 'cfaaf8add1ad98198c256dbcb21787bd876b6da8|integrations/saeid-r80-local-owner-enrollment/source-i/bootstrap/HANDOFF.md|6911b7dfd9204267bd4680baafdf10532a06fef33b6929f0f20ac3b9c2f72846',
+ 'cfaaf8add1ad98198c256dbcb21787bd876b6da8|integrations/saeid-r80-local-owner-enrollment/source-i/bootstrap/H_HANDOFF.md|6911b7dfd9204267bd4680baafdf10532a06fef33b6929f0f20ac3b9c2f72846',
+ 'cfaaf8add1ad98198c256dbcb21787bd876b6da8|integrations/saeid-r80-local-owner-enrollment/source-i/evidence/TASK_XML_IN_MEMORY_COM_RECEIPT.json|2475a900da7578546909117d756404bb1f1ba1c00ef4db7d914c8d0fa3f094dd',
+ 'cfaaf8add1ad98198c256dbcb21787bd876b6da8|integrations/saeid-r80-local-owner-enrollment/source-i/reviews/independent/PRIMARY_CONTRACTS.md|31ef82a5a72cf36762ff45540ec49c458af7d5eaadbd1a2b58c254c5d66bdd9a',
+]);
+const HISTORY_NONKEY_TUNNEL_LITERAL_PINS=new Set([
+ 'e178bf9b4b4daa6bc2916c106d02b2ac8cf2fa91|tools/probe-owner-pair-mtls.mjs|325978daa233c1300ade15a78ef4b8e7b6507235c9f6669655a0e07e35260652',
+ '633acfa7d5251538bea86e9e2464820c37de50f8|tools/probe-owner-pair-mtls.mjs|95c52ff96644caf6a63d1c8204fa8be953138f5d2d274fc4c7b006f07d57c93c',
+]);
+
 const PEM_HEADER_HISTORICAL='-----BEGIN '+'PRIVATE KEY-----';
 
 function secretPatternMatches(type,pattern,text) {
@@ -110,6 +126,32 @@ function makeHistoryScanner(rules,historyContext=false) {
         if(HISTORY_NONKEY_SOURCE_LINE_PINS.has(commit+'|'+file+'|'+digest))
           line=line.replaceAll(PEM_HEADER_HISTORICAL,'[KNOWN_NONKEY_SOURCE_LITERAL]');
       }
+      // A scanner expression can find 'sk-' inside a longer *task-* identifier.
+      // Only the six exact reviewed history lines may suppress this fragment.
+      if(line.includes('sk-')){
+        const digest=createHash('sha256').update(line).digest('hex');
+        if(HISTORY_NONKEY_TASK_FRAGMENT_PINS.has(commit+'|'+file+'|'+digest)){
+          const fragments=[...line.matchAll(new RegExp('s'+'k-'+'[A-Za-z0-9_-]{20,}','gi'))];
+          if(fragments.length!==1 ||
+            line.slice(fragments[0].index-2,fragments[0].index)!=='ta')
+            throw new Error('SECURITY_AUDIT_TASK_PIN_SHAPE_DRIFT');
+          const frag=fragments[0];
+          line=line.slice(0,frag.index)+'[KNOWN_TASK_IDENTIFIER_FRAGMENT]'+
+            line.slice(frag.index+frag[0].length);
+        }
+      }
+      // The two exact source lines each carry only a fixed synthetic hex ID.
+      // No other tunnel marker is excluded, even in the same commit/file.
+      if(line.includes('tunnel_')){
+        const digest=createHash('sha256').update(line).digest('hex');
+        if(HISTORY_NONKEY_TUNNEL_LITERAL_PINS.has(commit+'|'+file+'|'+digest)){
+          const marker='tunnel_'+'0123456789abcdef'.repeat(2);
+          const fragments=[...line.matchAll(/tunnel_[0-9a-f]{32}/g)];
+          if(fragments.length!==1 || fragments[0][0]!==marker)
+            throw new Error('SECURITY_AUDIT_TUNNEL_PIN_SHAPE_DRIFT');
+          line=line.replace(marker,'[KNOWN_SYNTHETIC_TUNNEL_LITERAL]');
+        }
+      }
     }
     const sample = preceding + line;
     for (const [name, pattern] of rules) {
@@ -149,6 +191,27 @@ aggregationHostileProbe.write('diff --git a/test/forged-review.mjs b/test/forged
 aggregationHostileProbe.write('+  const privateKey = \''+PEM_HEADER_HISTORICAL+'\';\n');
 if(!aggregationHostileProbe.finish().has('Private key block'))
   throw new Error('HISTORY_SOURCE_AGGREGATION_PIN_SCOPE_REGRESSION');
+// Adversarial regression: identical pinned commit and path, *changed line*
+// with a standalone key or different tunnel ID must still fail.
+const taskIdChangedProbe=makeHistoryScanner(patterns,true);
+taskIdChangedProbe.write('commit '+'facd1048a264ebac9ee81f92d5de0115d6638218'+'\n');
+taskIdChangedProbe.write('diff --git a/integrations/saeid-r80-local-owner-enrollment/source-k-e/staged-finalization-j/PARENT_CONTRACT_B.json b/integrations/saeid-r80-local-owner-enrollment/source-k-e/staged-finalization-j/PARENT_CONTRACT_B.json\n');
+taskIdChangedProbe.write('+'+'task-'+ 'A'.repeat(27)+' '+'sk-'+'B'.repeat(28)+'\n');
+if(!taskIdChangedProbe.finish().has('OpenAI-style secret key'))
+  throw new Error('SECURITY_AUDIT_TASK_PIN_CHANGED_LINE_BYPASS');
+const tunnelIdChangedProbe=makeHistoryScanner(patterns,true);
+tunnelIdChangedProbe.write('commit '+'633acfa7d5251538bea86e9e2464820c37de50f8'+'\n');
+tunnelIdChangedProbe.write('diff --git a/tools/probe-owner-pair-mtls.mjs b/tools/probe-owner-pair-mtls.mjs\n');
+tunnelIdChangedProbe.write('+'+'tunnel_'+'f'.repeat(32)+'\n');
+if(!tunnelIdChangedProbe.finish().has('Tunnel identifier'))
+  throw new Error('SECURITY_AUDIT_TUNNEL_PIN_CHANGED_LINE_BYPASS');
+const sameCommitWrongFileProbe=makeHistoryScanner(patterns,true);
+sameCommitWrongFileProbe.write('commit '+'633acfa7d5251538bea86e9e2464820c37de50f8'+'\n');
+sameCommitWrongFileProbe.write('diff --git a/test/other.mjs b/test/other.mjs\n');
+sameCommitWrongFileProbe.write('+'+'tunnel_'+'0123456789abcdef'.repeat(2)+'\n');
+if(!sameCommitWrongFileProbe.finish().has('Tunnel identifier'))
+  throw new Error('SECURITY_AUDIT_TUNNEL_PIN_WRONG_FILE_BYPASS');
+
 const boundaryProbe = makeHistoryScanner(patterns);
 boundaryProbe.write('tunnel' + '_0123456789abcdef');
 boundaryProbe.write('0123456789abcdef\nBearer \n');
