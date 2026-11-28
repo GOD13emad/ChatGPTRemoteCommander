@@ -218,3 +218,32 @@ test('supervisor permits a successful first long poll and still bounds readiness
     'FIRST_LONG_POLL_PASS','DEADLINE_BOUNDED_PASS','DEAD_PROCESS_DENIED_PASS'
   ]);
 });
+
+
+test('supervisor accepts documented auth-required startup readiness but not 503 or timeout fallback',
+  {skip:process.platform!=='linux'},()=>{
+  const source=read('autostart-linux.sh');
+  const fn=source.match(/^tunnel_ready\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(fn);
+  const script=[
+    fn,
+    'set -euo pipefail',
+    'curl(){ printf "%s\\n%s" "$fixture_body" "$fixture_status"; return "$fixture_exit"; }',
+    'fixture_exit=0; fixture_status=200; fixture_body=ready',
+    'tunnel_ready 47832',
+    'fixture_body="ready (mcp initialize requires auth: Unauthorized)"',
+    'tunnel_ready 47832',
+    'fixture_status=503',
+    'if tunnel_ready 47832; then exit 51; fi',
+    'fixture_status=200; fixture_body="ready (mcp startup probe timed out: timeout)"',
+    'if tunnel_ready 47832; then exit 52; fi',
+    'fixture_body="ready forged suffix"',
+    'if tunnel_ready 47832; then exit 53; fi',
+    'fixture_body=ready; fixture_exit=22',
+    'if tunnel_ready 47832; then exit 54; fi',
+    'echo READY_CONTRACT_PASS'
+  ].join('\n');
+  const result=spawnSync('bash',['-s'],{input:script,encoding:'utf8',timeout:5000});
+  assert.equal(result.status,0,result.stderr);
+  assert.equal(result.stdout.trim(),'READY_CONTRACT_PASS');
+});

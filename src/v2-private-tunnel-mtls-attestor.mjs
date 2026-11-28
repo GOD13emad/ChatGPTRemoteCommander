@@ -11,6 +11,26 @@ const CLIENT_AUTH_OID='1.3.6.1.5.5.7.3.2';
 const DENIED=Object.freeze({authenticated:false});
 const fail=code=>{throw Object.assign(new Error(code),{code});};
 
+// Certificate identity alone never authorizes discovery, binding, or effects.
+export function isV2PinnedTunnelClientCertificate(request,expectedClientLeafDerSha256,timestamp){
+  const socket=request?.socket;
+  if(!socket||socket.encrypted!==true||socket.authorized!==true
+    ||typeof socket.getPeerCertificate!=='function')return false;
+  let cert;
+  try{cert=socket.getPeerCertificate(true);}catch{return false;}
+  if(!cert||!Buffer.isBuffer(cert.raw)
+    ||cert.ca!==false
+    ||!Array.isArray(cert.ext_key_usage)
+    ||!cert.ext_key_usage.includes(CLIENT_AUTH_OID)
+    ||createHash('sha256').update(cert.raw).digest('hex')!==expectedClientLeafDerSha256)
+    return false;
+  const notBefore=Date.parse(cert.valid_from),notAfter=Date.parse(cert.valid_to);
+  if(!Number.isSafeInteger(timestamp)||!Number.isFinite(notBefore)
+    ||!Number.isFinite(notAfter)
+    ||notBefore>timestamp||notAfter<=timestamp)return false;
+  return true;
+}
+
 export function createV2PrivateTunnelMtlsAttestor({
   expectedClientLeafDerSha256,profileId,resolveTransportIdentity,now=Date.now
 }={}){
@@ -20,22 +40,8 @@ export function createV2PrivateTunnelMtlsAttestor({
     ||typeof now!=='function')
     fail('V2_TUNNEL_MTLS_TRUSTED_BOOTSTRAP_REQUIRED');
   return async request=>{
-    const socket=request?.socket;
-    if(!socket||socket.encrypted!==true||socket.authorized!==true
-      ||typeof socket.getPeerCertificate!=='function')return DENIED;
-    let cert;
-    try{cert=socket.getPeerCertificate(true);}catch{return DENIED;}
-    if(!cert||!Buffer.isBuffer(cert.raw)
-      ||cert.ca!==false
-      ||!Array.isArray(cert.ext_key_usage)
-      ||!cert.ext_key_usage.includes(CLIENT_AUTH_OID)
-      ||createHash('sha256').update(cert.raw).digest('hex')!==expectedClientLeafDerSha256)
-      return DENIED;
     const timestamp=now();
-    const notBefore=Date.parse(cert.valid_from),notAfter=Date.parse(cert.valid_to);
-    if(!Number.isSafeInteger(timestamp)||!Number.isFinite(notBefore)
-      ||!Number.isFinite(notAfter)
-      ||notBefore>timestamp||notAfter<=timestamp)return DENIED;
+    if(!isV2PinnedTunnelClientCertificate(request,expectedClientLeafDerSha256,timestamp))return DENIED;
     let t;
     try{t=await resolveTransportIdentity();}catch{return DENIED;}
     const after=now();

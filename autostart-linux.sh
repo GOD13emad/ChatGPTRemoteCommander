@@ -131,9 +131,14 @@ profile_health_port() {
 }
 
 tunnel_ready() {
-  local port="$1"
+  local port="$1" reply body
   [[ "$port" =~ ^[0-9]+$ && "$port" -gt 0 ]] || return 1
-  [[ "$(curl -fsS --max-time 2 "http://127.0.0.1:$port/readyz" 2>/dev/null || true)" == "ready" ]]
+  reply="$(curl -fsS --max-time 2 -w '\n%{http_code}' "http://127.0.0.1:$port/readyz" 2>/dev/null)" || return 1
+  [[ "${reply##*$'\n'}" == 200 ]] || return 1
+  body="${reply%$'\n'*}"
+  body="${body%$'\n'}"
+  # Upstream auth-required readiness is a transport startup state, NOT a grant.
+  [[ "$body" == "ready" || "$body" == "ready (mcp initialize requires auth: "*")" ]]
 }
 
 network_route_present() {
