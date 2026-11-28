@@ -40,6 +40,16 @@ function parse(argv) {
     fail('--max-files must be an integer between 1 and 10');
   }
   if (out.child.length < 2) fail('child executable and arguments are required after --');
+  const executable = out.child[0];
+  // The supervisor selects the executable. Never fall back to a PATH lookup
+  // or to the current drive for a root-relative Windows path.
+  const invalidExecutable = () => fail('child executable must be an absolute executable file');
+  if (!path.isAbsolute(executable) ||
+      (process.platform === 'win32' && path.parse(executable).root.length < 2)) invalidExecutable();
+  try {
+    if (!fs.statSync(executable).isFile()) invalidExecutable();
+    if (process.platform !== 'win32') fs.accessSync(executable, fs.constants.X_OK);
+  } catch { invalidExecutable(); }
   return out;
 }
 

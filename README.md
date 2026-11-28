@@ -16,7 +16,7 @@ Cross-platform Windows + Linux MCP server for controlled remote project and mach
 
 [Unified product architecture (accepted design; runtime gates open)](docs/COMMANDER_ARCHITECTURE.md) · [Documentation index](docs/README.md) · [Server install](docs/SERVER_INSTALL.md) · [Current release: v0.10.20](docs/RELEASE_0.10.20.md) · [Project status](docs/PROJECT_CONTROL_STATE.md) · [Development roadmap](docs/PROJECT_ENGINE_ROADMAP.md)
 
-[Finite companion 1.0.0 source-review snapshot](experimental/finite-companion-v1.0.0/README.md) · [گزارش فارسی همراه](docs/COMPANION_1.0.0_20261003_FA.md). This separate, owner-scoped companion was privately accepted on core 0.10.6; it is not a public installer, core upgrade, or general autonomous agent. Compatibility with the current core and same-chat retry recovery remain unproven.
+[Finite companion 1.0.0 source-review snapshot](https://github.com/GOD13emad/ChatGPTRemoteCommander/blob/d7b613178a5bc4d3fa808178adb714fa67fde566/experimental/finite-companion-v1.0.0/README.md) · [گزارش فارسی همراه](docs/COMPANION_1.0.0_20261003_FA.md). This separate, owner-scoped companion was privately accepted on core 0.10.6; it is not a public installer, core upgrade, or general autonomous agent. Compatibility with the current core and same-chat retry recovery remain unproven.
 
 ## Persistent startup
 
