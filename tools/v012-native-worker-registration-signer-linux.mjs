@@ -24,6 +24,23 @@ import {resolveLinuxNativeOwnerWitnessPaths}
 
 const PROFILE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 const fail=code=>{throw Object.assign(new Error(code),{code});};
+// A denial MUST remain a denial. Classify only the failing stage, never
+// reveal native credential material, device IDs, input contents or exceptions.
+const STAGES=new Set(['TRANSPORT_BOOTSTRAP','DEVICE_EVIDENCE',
+  'TRANSPORT_RECHECK','CREDENTIAL_LOAD','ENVELOPE']);
+const SAFE_CODE=/^(?:RC012_NATIVE_SIGNER|RC012_WORKER_SIGNING|NATIVE_WORKER_KEY|WORKER_IDENTITY)[A-Z0-9_]{0,80}$/;
+export function classifyNativeSignerStageFailure(stage,error){
+ if(!STAGES.has(stage))return 'RC012_NATIVE_SIGNER_DENIED';
+ try{
+  const code=error?.code;
+  if(typeof code==='string'&&SAFE_CODE.test(code))return code;
+ }catch{}
+ return 'RC012_NATIVE_SIGNER_'+stage+'_UNCLASSIFIED';
+}
+async function requireSignerStage(stage,step){
+ try{return await step();}
+ catch(error){fail(classifyNativeSignerStageFailure(stage,error));}
+}
 export async function oneShotNativeWorkerSigner({profile,readInput}={}){
   if(process.platform!=='linux'||process.getuid?.()<1
     ||typeof profile!=='string'||!PROFILE.test(profile)
@@ -40,7 +57,7 @@ export async function oneShotNativeWorkerSigner({profile,readInput}={}){
   const owner=createLinuxNativeOwnerSessionProvider({ownerIdentityMode:'host-uid-v2'});
   const dir=resolvePinnedOwnerTunnelDirectory({home,profile,ownerUid:uid});
   const pin=readLinuxOwnerTunnelPin({directory:dir,ownerUid:uid});
-  const transport=await createLinuxSignedBrokerTransport({
+  const transport=await requireSignerStage('TRANSPORT_BOOTSTRAP',async()=>createLinuxSignedBrokerTransport({
     hostId:pin.hostId,profileId:profile,
     expectedOwnerSidHash:await owner.resolveOwnerSidHash(),
     expectedClientLeafDerSha256:pin.expectedClientLeafDerSha256,
@@ -49,32 +66,32 @@ export async function oneShotNativeWorkerSigner({profile,readInput}={}){
     socketPath:witness.socketPath,
     publicKeyPath:witness.publicKeyPath,
     resolveOwnerSidHash:owner.resolveOwnerSidHash
-  });
+  }));
   const keyEvidence=createLinuxOwnerWorkerKeyEvidence({
     home,profile,hostId:pin.hostId,
     resolveOwnerSidHash:owner.resolveOwnerSidHash,
     resolveTransportIdentity:transport.resolveTransportIdentity
   });
-  const evidence=await keyEvidence.resolveVerifiedWorkerKey();
+  const evidence=await requireSignerStage('DEVICE_EVIDENCE',()=>keyEvidence.resolveVerifiedWorkerKey());
   const raw=await readInput();
   if(typeof raw!=='string'||Buffer.byteLength(raw)<2||Buffer.byteLength(raw)>4096)
     fail('RC012_NATIVE_SIGNER_INPUT_INVALID');
   let intent;
   try{intent=JSON.parse(raw);}
   catch{fail('RC012_NATIVE_SIGNER_INPUT_INVALID');}
-  const current=await transport.resolveTransportIdentity();
+  const current=await requireSignerStage('TRANSPORT_RECHECK',()=>transport.resolveTransportIdentity());
   if(intent.hostId!==evidence.hostId||intent.profileId!==profile
     ||intent.ownerSidHash!==evidence.ownerSidHash
     ||intent.deviceIdHash!==evidence.deviceIdHash
     ||intent.capabilityPolicyDigest!==evidence.capabilityPolicyDigest
     ||intent.tunnelIdHash!==current.tunnelIdHash)
     fail('RC012_NATIVE_SIGNER_INTENT_IDENTITY_MISMATCH');
-  const privateKey=await createSystemdWorkerKeyProvider({
+  const privateKey=await requireSignerStage('CREDENTIAL_LOAD',()=>createSystemdWorkerKeyProvider({
     profileId:profile,expectedKeyId:evidence.keyId
-  }).loadPrivateKey();
-  const envelope=signV012NativeWorkerEnrollment({
+  }).loadPrivateKey());
+  const envelope=await requireSignerStage('ENVELOPE',()=>signV012NativeWorkerEnrollment({
     intent,privateKey,now:Date.now()
-  });
+  }));
   // The issuer writes no key or envelope to disk and cannot mutate grants.
   return envelope;
 }
