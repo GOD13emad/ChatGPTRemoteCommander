@@ -121,11 +121,21 @@ test('linux supervisor retains only explicit private backends and its original d
       ['saeid-mmz',47922,'saeid-mmz:any',false],
       ['emad-mmz',47831,'emad-mmz:47921',true],
       ['mmz-linux',47831,'emad-mmz:47921',true],
-      ['mmz-linux',47921,'emad-mmz:47921',false]
+      ['mmz-linux',47921,'emad-mmz:47921',false],
+      // Exact HTTPS/mTLS native 0.12 profile, default deny unless explicitly pinned.
+      ['chatgpt-remote-commander',52933,'',false,'https',true],
+      ['chatgpt-remote-commander',52933,'chatgpt-remote-commander:52933',true,'https',true],
+      ['chatgpt-remote-commander',52933,'chatgpt-remote-commander:52932',false,'https',true],
+      ['other-account',52933,'chatgpt-remote-commander:52933',false,'https',true],
+      ['chatgpt-remote-commander',52933,'chatgpt-remote-commander:52933',false,'https',false]
     ];
-    for(const [name,port,extra,accepted] of cases){
+    for(const [name,port,extra,accepted,scheme='http',tlsFields=true] of cases){
       const target=path.join(tmp,name+'.yaml');
-      fs.writeFileSync(target,'mcp:\n  server_urls:\n    - url: "http://127.0.0.1:'+port+'/mcp"\n');
+      const body=scheme==='https'
+        ? 'mcp:\n  server_urls:\n    - channel: main\n      url: https://127.0.0.1:'+port+'/mcp\n'
+          +(tlsFields?'  client_cert: "/owner/private/client.crt"\n  client_key: "/owner/private/client.key"\nca_bundle: "/owner/private/ca.crt"\n':'')
+        : 'mcp:\n  server_urls:\n    - url: "http://127.0.0.1:'+port+'/mcp"\n';
+      fs.writeFileSync(target,body);
       const p=spawnSync(bash,['-s','--',target],{input:fn+'\nprofile_matches "$1"',
         encoding:'utf8',env:{...process.env,REMOTE_COMMANDER_TUNNEL_PRIVATE_TARGETS:extra}
       });
