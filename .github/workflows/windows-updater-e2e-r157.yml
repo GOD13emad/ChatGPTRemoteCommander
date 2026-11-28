@@ -44,12 +44,13 @@ jobs:
           $root=Join-Path $env:RUNNER_TEMP 'remote-commander-updater-r157'
           if(Test-Path $root){throw 'R157_NO_BLIND_RERUN'}
           if(Test-Path (Join-Path $env:LOCALAPPDATA 'ChatGPTRemoteCommander')){throw 'R157_EXISTING_USER_INSTALL'}
-          foreach($area in @('INSTALL','STATE','ROAMING')){
+          foreach($area in @('INSTALL','STATE','ROAMING','PROJECT_ONLY')){
             New-Item -ItemType Directory -Path (Join-Path $root $area) -ErrorAction Stop | Out-Null
           }
           $c=Get-Content 'config.json' -Raw -Encoding UTF8|ConvertFrom-Json
           if($null -eq $c.autoUpdate -or $null -eq $c.powerMode){throw 'R157_CONFIG_SCHEMA'}
-          $c.allowedRoots=@($root)
+          $project=Join-Path $root 'PROJECT_ONLY'
+          $c.allowedRoots=@($project)
           $c.autoUpdate.enabled=$true
           $c.powerMode.enabled=$false
           $c.powerMode.guiControl.enabled=$false
@@ -62,7 +63,7 @@ jobs:
           $path=Join-Path $root 'INSTALL\config.json'
           [IO.File]::WriteAllText($path,(ConvertTo-Json -InputObject $c -Depth 30)+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))
           $r=Get-Content $path -Raw|ConvertFrom-Json
-          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne $root -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
+          if(@($r.allowedRoots).Count -ne 1 -or $r.allowedRoots[0] -ne $project -or $r.powerMode.enabled -ne $false){throw 'R157_CONFIG_ISOLATION'}
           $tokens=$null;$errors=$null
           [Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE 'auto-update-windows.ps1'),[ref]$tokens,[ref]$errors)|Out-Null
           if(@($errors).Count -ne 0){throw 'R157_UPDATER_PARSER'}
