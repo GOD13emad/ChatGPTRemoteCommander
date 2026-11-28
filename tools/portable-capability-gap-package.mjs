@@ -139,8 +139,11 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
  const initial=classify(target);
  if(action==='status'){
    if(existsNoFollow(backup))inspect(backup,LEGACY);
-   return {state:initial.version,adjuncts:initial.adjuncts,
-     rollbackReady:existsNoFollow(backup),changed:false};
+   const interrupted=initial.version==='absent'&&existsNoFollow(backup)&&
+     existsNoFollow(path.join(parent,'.capgap-portable-package.lock'));
+   return {state:interrupted?'interrupted-upgrade':initial.version,
+     adjuncts:initial.adjuncts,rollbackReady:existsNoFollow(backup),
+     manualRecoveryRequired:interrupted,changed:false};
  }
  return mutationLock(parent,()=>{
  if(action==='rollback'){
@@ -203,6 +206,88 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
  }
  });
 }
+
+/**
+ * Synthetic recovery proof ONLY. Deliberately requires a fresh, recognized
+ * owner-private QA root: cannot recover or unlock a live user's installation.
+ * Recovery is never exposed by the production status-only CLI.
+ *
+ * Exact accepted interrupted upgrade: old target absent, one exact trusted old
+ * backup, one exact trusted staged new package and a private lock left by a
+ * confirmed non-running PID. Preserve the new stage as a separate recovery
+ * directory. Never delete/rewrite arbitrary unknown files or active locks.
+ */
+export function recoverInterruptedUpgradeQA({qaRoot}={}){
+ if(qaRoot===undefined)fail('RECOVERY_QA_ONLY');
+ const {target,parent,backup,recovery}=context(qaRoot);
+ const lock=path.join(parent,'.capgap-portable-package.lock');
+ const claim=path.join(parent,'.capgap-portable-recovery.lock');
+ if(existsNoFollow(claim))fail('RECOVERY_CONCURRENT');
+ let claimFd,claimStat;
+ try{
+  claimFd=fs.openSync(claim,fs.constants.O_CREAT|fs.constants.O_EXCL|
+    fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW,0o600);
+  claimStat=fs.fstatSync(claimFd);
+  fs.writeFileSync(claimFd,String(process.pid)+'\n');
+  fs.fsyncSync(claimFd);
+ }catch{
+  fail('RECOVERY_CLAIM_DENIED');
+ }finally{if(claimFd!==undefined)fs.closeSync(claimFd);}
+ try{
+  if(existsNoFollow(target)||!existsNoFollow(backup)||!existsNoFollow(lock)||
+     existsNoFollow(recovery))fail('RECOVERY_TOPOLOGY_INVALID');
+  const stages=fs.readdirSync(parent).filter(n=>n.startsWith('.capgap-portable-stage-'));
+  if(stages.length!==1||!/^[.]capgap-portable-stage-[A-Za-z0-9]{6}$/.test(stages[0]))
+   fail('RECOVERY_STAGE_AMBIGUOUS');
+  const stage=path.join(parent,stages[0]);
+  const prior=inspect(backup,LEGACY),next=inspect(stage,CURRENT);
+  if(!prior||!next||prior.adjuncts.join(',')!==next.adjuncts.join(','))
+   fail('RECOVERY_SOURCE_INVALID');
+  noAlias(lock);
+  const fd=fs.openSync(lock,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
+  let stat,pidBytes;
+  try{
+   stat=fs.fstatSync(fd);
+   if(!stat.isFile()||stat.nlink!==1||stat.uid!==process.getuid()||
+      (stat.mode&0o077)!==0||stat.size>24||stat.size<2)fail('RECOVERY_LOCK_UNSAFE');
+   pidBytes=fs.readFileSync(fd,'utf8');
+  }finally{fs.closeSync(fd);}
+  if(!/^[1-9][0-9]{0,9}\n$/.test(pidBytes))fail('RECOVERY_LOCK_UNREADABLE');
+  const pid=Number(pidBytes.trim());
+  if(!Number.isSafeInteger(pid)||pid<=1)fail('RECOVERY_LOCK_UNREADABLE');
+  if(pid===process.pid)fail('RECOVERY_ORIGINAL_PROCESS_ACTIVE');
+  try{process.kill(pid,0);fail('RECOVERY_ORIGINAL_PROCESS_ACTIVE');}
+  catch(e){if(e.code!=='ESRCH')throw e;}
+  if(existsNoFollow(target)||fs.lstatSync(lock).ino!==stat.ino)
+   fail('RECOVERY_CONCURRENT_SOURCE_DRIFT');
+  // The sole target may not be overwritten by a competing installer; all
+  // managed installs are already blocked by the original stale owner lock.
+  fs.renameSync(backup,target);
+  const restored=inspect(target,LEGACY);
+  syncDir(parent);
+  // Do not delete a verified staged package; retain for forensic rollback.
+  fs.renameSync(stage,recovery);
+  const retained=inspect(recovery,CURRENT);
+  syncDir(parent);
+  if(restored.adjuncts.join(',')!==retained.adjuncts.join(',')||
+     !existsNoFollow(lock)||fs.lstatSync(lock).ino!==stat.ino)
+   fail('RECOVERY_FINAL_SOURCE_DRIFT');
+  try{process.kill(pid,0);fail('RECOVERY_ORIGINAL_PROCESS_ACTIVE');}
+  catch(e){if(e.code!=='ESRCH')throw e;}
+  fs.unlinkSync(lock);
+  syncDir(parent);
+  return {state:'legacy-two-file',changed:true,oldBytesRecovered:true,
+    stagedNewRetained:true,adjuncts:restored.adjuncts};
+ }finally{
+  if(!existsNoFollow(claim))fail('RECOVERY_CLAIM_DISAPPEARED');
+  const current=fs.lstatSync(claim);
+  if(!current.isFile()||current.isSymbolicLink()||current.uid!==process.getuid()||
+    current.nlink!==1||current.ino!==claimStat.ino)
+   fail('RECOVERY_CLAIM_INTEGRITY_CHANGED');
+  fs.unlinkSync(claim);
+ }
+}
+
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
   if(process.argv.length!==3||process.argv[2]!=='--status')fail('REVIEW_ONLY_CLI');

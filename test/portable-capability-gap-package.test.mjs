@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {managePortablePackage} from '../tools/portable-capability-gap-package.mjs';
+import {managePortablePackage,recoverInterruptedUpgradeQA} from '../tools/portable-capability-gap-package.mjs';
 
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -158,6 +158,87 @@ test('stale mutation lock and broken backup symlink block upgrade without data l
   assert.deepEqual(unpack(target(home)),old);
   assert.equal(fs.lstatSync(backup(home)).isSymbolicLink(),true);
   assert.equal(fs.existsSync(lock),false);
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+
+function hardCrashAfterOldRename(home){
+ const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');
+ const source='import {pathToFileURL} from "node:url";'+
+   'const m=await import(pathToFileURL(process.argv[1]).href);'+
+   'm.managePortablePackage({qaRoot:process.argv[2],action:"upgrade",'+
+   'hook:()=>process.exit(73)});';
+ const child=spawnSync(process.execPath,['--input-type=module','-e',source,pkg,home],
+   {encoding:'utf8',timeout:7000,stdio:['ignore','pipe','pipe']});
+ assert.equal(child.status,73,'SYNTHETIC_CRASH_FAILED');
+ assert.equal(fs.existsSync(target(home)),false);
+ assert.equal(fs.existsSync(backup(home)),true);
+ return path.join(home,'state','.capgap-portable-package.lock');
+}
+test('explicit QA-only crash recovery restores original two files and retains staged three files',{skip:process.platform!=='linux'},()=>{
+ const home=qa();
+ try{
+  const old=seed(home);
+  const stale=hardCrashAfterOldRename(home);
+  const before=managePortablePackage({qaRoot:home,action:'status'});
+  assert.equal(before.state,'interrupted-upgrade');
+  assert.equal(before.manualRecoveryRequired,true);
+  assert.equal(fs.existsSync(stale),true);
+  const res=recoverInterruptedUpgradeQA({qaRoot:home});
+  assert.equal(res.oldBytesRecovered,true);
+  assert.equal(res.stagedNewRetained,true);
+  assert.deepEqual(unpack(target(home)),old);
+  assert.deepEqual(unpack(recovery(home)),expected);
+  assert.equal(fs.existsSync(stale),false);
+  assert.equal(fs.existsSync(path.join(home,'state','.capgap-portable-recovery.lock')),false);
+  assert.equal(managePortablePackage({qaRoot:home,action:'status'}).manualRecoveryRequired,false);
+  assert.throws(()=>recoverInterruptedUpgradeQA({qaRoot:home}),/PORTABLE3_RECOVERY_TOPOLOGY_INVALID/);
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+test('crash recovery refuses active/wrong owner lock and does not erase old or staged history',{skip:process.platform!=='linux'},()=>{
+ const home=qa();
+ try{
+  const old=seed(home,{adjuncts:true});
+  const lock=hardCrashAfterOldRename(home),stalePid=fs.readFileSync(lock,'utf8');
+  const stage=fs.readdirSync(path.join(home,'state')).filter(n=>n.startsWith('.capgap-portable-stage-'));
+  assert.equal(stage.length,1);
+  fs.writeFileSync(lock,String(process.pid)+'\n',{mode:0o600});
+  assert.throws(()=>recoverInterruptedUpgradeQA({qaRoot:home}),/PORTABLE3_RECOVERY_ORIGINAL_PROCESS_ACTIVE/);
+  assert.deepEqual(unpack(backup(home)),old);
+  assert.equal(fs.existsSync(target(home)),false);
+  assert.equal(fs.existsSync(path.join(home,'state','.capgap-portable-recovery.lock')),false);
+  fs.writeFileSync(lock,stalePid,{mode:0o600});
+  const badStage=path.join(home,'state',stage[0],'owner-private-storage.mjs');
+  fs.appendFileSync(badStage,'UNAUTHORIZED_MUTATION');
+  assert.throws(()=>recoverInterruptedUpgradeQA({qaRoot:home}),/PORTABLE3_FILE_HASH_CONFLICT/);
+  assert.deepEqual(unpack(backup(home)),old);
+  assert.equal(fs.existsSync(target(home)),false);
+  fs.copyFileSync(path.join(root,'src','owner-private-storage.mjs'),badStage);
+  const r=recoverInterruptedUpgradeQA({qaRoot:home});
+  assert.equal(r.oldBytesRecovered,true);
+  assert.deepEqual(unpack(target(home)),old);
+  assert.equal(fs.existsSync(lock),false);
+  assert.deepEqual(Object.keys(unpack(recovery(home))).sort(),
+    Object.keys({...expected,...Object.fromEntries(Object.entries(extras).map(([k,v])=>[k,v.sha]))}).sort());
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+test('recovery refuses ambiguous stage and forged stale PID before changing any file',{skip:process.platform!=='linux'},()=>{
+ const home=qa(),state=path.join(home,'state');
+ try{
+  const prior=seed(home),lock=hardCrashAfterOldRename(home);
+  assert.throws(()=>recoverInterruptedUpgradeQA({}),/PORTABLE3_RECOVERY_QA_ONLY/);
+  const fake=fs.mkdtempSync(path.join(state,'.capgap-portable-stage-'));
+  assert.throws(()=>recoverInterruptedUpgradeQA({qaRoot:home}),/PORTABLE3_RECOVERY_STAGE_AMBIGUOUS/);
+  assert.deepEqual(unpack(backup(home)),prior);
+  assert.equal(fs.existsSync(target(home)),false);
+  fs.rmdirSync(fake);
+  const bytes=fs.readFileSync(lock);
+  fs.writeFileSync(lock,'0\n');
+  assert.throws(()=>recoverInterruptedUpgradeQA({qaRoot:home}),/PORTABLE3_RECOVERY_LOCK_UNREADABLE/);
+  assert.deepEqual(unpack(backup(home)),prior);
+  fs.writeFileSync(lock,bytes);
+  const result=recoverInterruptedUpgradeQA({qaRoot:home});
+  assert.equal(result.oldBytesRecovered,true);
+  assert.deepEqual(unpack(target(home)),prior);
  }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
 test('unreviewed production CLI refuses mutation and exposes only status',{skip:process.platform!=='linux'},()=>{
