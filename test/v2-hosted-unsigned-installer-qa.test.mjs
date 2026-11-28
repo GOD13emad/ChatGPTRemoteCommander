@@ -118,7 +118,7 @@ test('candidate DEB pre-remove hook is opt-in, package-scoped, idempotent and te
 });
 
 
-test('DEB pre-remove hook refuses a foreign alternative and only removes its own',()=>{
+test('DEB pre-remove hook refuses a foreign alternative and only removes its own',{skip:process.platform!=='linux'?'Debian pre-remove integration requires Linux /bin/sh and update-alternatives':false},()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'cmdv2-prerm-mock-'));
  const hook=fileURLToPath(new URL('../tools/v2-deb-alternatives-prerm.sh',import.meta.url));
  try{

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {CapabilityGapRegistry,createCapabilityGapTools} from '../src/capability-gap-registry.mjs';
 const make=()=>fs.mkdtempSync(path.join(os.tmpdir(),'commander-gap-'));
 const issue=(o={})=>({
@@ -73,7 +74,7 @@ test('validate immutable key/category, sensitive evidence, path aliases and inpu
    assert.throws(()=>c.report(issue({consentGate:'ADMIN_UNRESTRICTED'})),/CONSENT_INVALID/);
    assert.equal(c.get('gui.portal.owner-consent').observationCount,1);
    assert.throws(()=>c.list({limit:99999}),/LIMIT_INVALID/);
-   const link=dir+'-alias';fs.symlinkSync(dir,link,'dir');
+   const link=dir+'-alias';fs.symlinkSync(dir,link,process.platform==='win32'?'junction':'dir');
    try{
      assert.throws(()=>new CapabilityGapRegistry({directory:link,scope:'s',device:'MMZ'}),/ALIAS_DENIED/);
      assert.throws(()=>new CapabilityGapRegistry({directory:path.join(link,'should-not-be-created'),scope:'s',device:'MMZ'}),/ALIAS_DENIED/);
@@ -120,7 +121,7 @@ test('CLI is a fallback adapter using the same canonical private profile scope, 
   fs.writeFileSync(c,JSON.stringify({deviceName:'QA',allowedRoots:[path.join(root,'project')],durableDelivery:{directory:delivery,scope:'same-owner'}}),{mode:0o600});
   fs.mkdirSync(path.join(root,'project'),{mode:0o700});
   fs.writeFileSync(input,JSON.stringify(issue()),{mode:0o600});
-  const cli=new URL('../tools/capability-gap-cli.mjs',import.meta.url).pathname;
+  const cli=fileURLToPath(new URL('../tools/capability-gap-cli.mjs',import.meta.url));
   const run=(verb,withInput=false)=>spawnSync(process.execPath,[cli,verb,'--config',c,...(withInput?['--input',input]:[])],{encoding:'utf8'});
   let out=run('report',true);assert.equal(out.status,0,out.stderr);
   assert.equal(JSON.parse(out.stdout).created,true);
@@ -133,7 +134,11 @@ test('CLI is a fallback adapter using the same canonical private profile scope, 
   assert.equal(JSON.parse(out.stdout).observations.length,1);
   out=run('list');assert.equal(out.status,0,out.stderr);
   assert.equal(JSON.parse(out.stdout).total,1);
-  assert.equal(fs.statSync(path.join(delivery,'capability-gaps.sqlite')).mode&0o777,0o600);
+  const dbFile=path.join(delivery,'capability-gaps.sqlite');
+  const dbStat=fs.lstatSync(dbFile);
+  assert.ok(dbStat.isFile()&&!dbStat.isSymbolicLink(),'profile SQLite must be a regular, non-symlink file');
+  // POSIX owner-only mode is not meaningful Windows ACL evidence; native ACL remains a separate release gate.
+  if(process.platform!=='win32')assert.equal(dbStat.mode&0o777,0o600);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 

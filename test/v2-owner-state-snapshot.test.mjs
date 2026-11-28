@@ -17,7 +17,7 @@ function fixture(fn){
     return fn({root,home,source,outputParent});
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 }
-test('private Commander-state byte copy and isolated restore, never final cutover',()=>{
+test('private Commander-state byte copy and isolated restore, never final cutover',{skip:process.platform!=='linux'?'Linux owner-only byte-copy contract; Windows requires native ACL proof':false},()=>{
   fixture(({home,source,outputParent})=>{
     const original=Buffer.from('SECRET_FIXTURE_ONLY\0with-data');
     fs.mkdirSync(path.join(source,'profiles'),{mode:0o700});
@@ -46,8 +46,7 @@ test('private Commander-state byte copy and isolated restore, never final cutove
     assert.deepEqual(reread,r);
   });
 });
-test('reject symlinks inside owner state and leave original bytes untouched',()=>{
-  if(process.platform!=='linux')return;
+test('reject symlinks inside owner state and leave original bytes untouched',{skip:process.platform!=='linux'?'Linux owner-only byte-copy contract; Windows requires native ACL proof':false},()=>{
   fixture(({home,source,outputParent,root})=>{
     const external=path.join(root,'external');
     fs.writeFileSync(external,'KEEP_ORIGINAL');
@@ -57,8 +56,7 @@ test('reject symlinks inside owner state and leave original bytes untouched',()=
     assert.deepEqual(fs.readdirSync(outputParent),[]);
   });
 });
-test('reject source alias, output alias and source-output overlap',()=>{
-  if(process.platform!=='linux')return;
+test('reject source alias, output alias and source-output overlap',{skip:process.platform!=='linux'?'Linux owner-only byte-copy contract; Windows requires native ACL proof':false},()=>{
   fixture(({home,source,outputParent,root})=>{
     assert.throws(()=>snapshotV012OwnerState({home,outputParent:source}),/V012_STATE_SOURCE_OUTPUT_OVERLAP/);
     const foreign=path.join(root,'foreign');fs.mkdirSync(foreign,{mode:0o700});
@@ -71,14 +69,14 @@ test('reject source alias, output alias and source-output overlap',()=>{
     assert.throws(()=>snapshotV012OwnerState({home,outputParent}),/V012_STATE_ALIAS_OR_NONDIRECTORY/);
   });
 });
-test('size budget fails without leaving partial snapshot',()=>{
+test('size budget fails without leaving partial snapshot',{skip:process.platform!=='linux'?'Linux owner-only byte-copy contract; Windows requires native ACL proof':false},()=>{
   fixture(({home,source,outputParent})=>{
     fs.writeFileSync(path.join(source,'too-big.bin'),Buffer.alloc(2048,1));
     assert.throws(()=>snapshotV012OwnerState({home,outputParent,maxBytes:1024}),/V012_STATE_SIZE_LIMIT/);
     assert.deepEqual(fs.readdirSync(outputParent),[]);
   });
 });
-test('source roots absent or unsupported are not silently treated as a backup',()=>{
+test('source roots absent or unsupported are not silently treated as a backup',{skip:process.platform!=='linux'?'Linux owner-only byte-copy contract; Windows requires native ACL proof':false},()=>{
   fixture(({home,outputParent})=>{
     assert.throws(()=>snapshotV012OwnerState({home,outputParent,kind:'commander-config'}),/V012_STATE_PATH_MISSING_OR_UNREADABLE/);
     assert.throws(()=>snapshotV012OwnerState({home,outputParent,kind:'browser-userdata'}),/V012_STATE_UNSUPPORTED_KIND/);
@@ -97,5 +95,19 @@ test('Windows snapshot refuses until native owner-only ACL proof exists',()=>{
   fixture(({home,outputParent})=>{
     assert.throws(()=>snapshotV012OwnerState({platform:'win32',home,outputParent,localAppData:home}),
       /V012_STATE_WINDOWS_ACL_PROOF_REQUIRED/);
+  });
+});
+
+test('native Windows request denies ACL-less snapshot without touching existing user files',{
+  skip:process.platform!=='win32'?'Windows native ACL negative control':false
+},()=>{
+  fixture(({home,source,outputParent})=>{
+    const f=path.join(source,'preserve.bin');
+    const before=Buffer.from('SYNTHETIC_ACL_GUARD_FIXTURE_ONLY');
+    fs.writeFileSync(f,before);
+    assert.throws(()=>snapshotV012OwnerState({home,outputParent,maxBytes:4096}),
+      /V012_STATE_WINDOWS_ACL_PROOF_REQUIRED/);
+    assert.deepEqual(fs.readFileSync(f),before);
+    assert.equal(fs.existsSync(outputParent),false);
   });
 });
