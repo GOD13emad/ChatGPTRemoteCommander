@@ -293,6 +293,69 @@ export function inspectInterruptedRecoveryQA({qaRoot}={}){
  return {phase,manualRecoveryRequired:true,changed:false};
 }
 
+// Explicit QA-only resumption; never reclaim an unknown resumer's lock.
+export function resumeInterruptedRecoveryQA({qaRoot}={}){
+ if(qaRoot===undefined)fail('RECOVERY_QA_ONLY');
+ const {target,parent,backup,recovery}=context(qaRoot);
+ const claim=path.join(parent,'.capgap-portable-recovery.lock');
+ const original=path.join(parent,'.capgap-portable-package.lock');
+ const guard=path.join(parent,'.capgap-portable-resume.lock');
+ if(existsNoFollow(guard))fail('RECOVERY_RESUME_CONCURRENT');
+ const initial=inspectInterruptedRecoveryQA({qaRoot});
+ const bytes=readPrivateRecord(claim,4096).bytes;
+ const journal=JSON.parse(bytes.split('\n')[1]);
+ const requireExited=pid=>{
+  if(pid===process.pid)fail('RECOVERY_RESUME_OWNER_ACTIVE');
+  try{process.kill(pid,0);fail('RECOVERY_RESUME_OWNER_ACTIVE');}
+  catch(e){if(e.code!=='ESRCH')throw e;}
+ };
+ requireExited(journal.claimPid);requireExited(journal.originalPid);
+ let fd,owned,attempted=false,finished=false;
+ try{
+  fd=fs.openSync(guard,fs.constants.O_CREAT|fs.constants.O_EXCL|
+    fs.constants.O_WRONLY|fs.constants.O_NOFOLLOW,0o600);
+  owned=fs.fstatSync(fd);
+  fs.writeFileSync(fd,String(process.pid)+'\n');fs.fsyncSync(fd);
+ }catch{fail('RECOVERY_RESUME_LOCK_DENIED');}
+ finally{if(fd!==undefined)fs.closeSync(fd);}
+ try{
+  syncDir(parent);
+  const verify=expected=>{
+   if(inspectInterruptedRecoveryQA({qaRoot}).phase!==expected)
+    fail('RECOVERY_RESUME_TOPOLOGY_DRIFT');
+   requireExited(journal.claimPid);requireExited(journal.originalPid);
+   if(readPrivateRecord(claim,4096).bytes!==bytes)
+    fail('RECOVERY_JOURNAL_DRIFT');
+  };
+  let phase=initial.phase;verify(phase);
+  if(phase==='intent-recorded'){
+   attempted=true;fs.renameSync(backup,target);syncDir(parent);
+   phase='old-restored';verify(phase);
+  }
+  if(phase==='old-restored'){
+   attempted=true;fs.renameSync(path.join(parent,journal.stage),recovery);
+   syncDir(parent);phase='new-retained';verify(phase);
+  }
+  if(phase==='new-retained'){
+   attempted=true;verify(phase);fs.unlinkSync(original);
+   syncDir(parent);phase='original-lock-retired';verify(phase);
+  }
+  if(phase!=='original-lock-retired')fail('RECOVERY_RESUME_TOPOLOGY_DRIFT');
+  verify(phase);
+  attempted=true;fs.unlinkSync(claim);syncDir(parent);
+  finished=true;
+  return {state:'legacy-two-file',changed:true,oldBytesRecovered:true,
+    stagedNewRetained:true,manualRecoveryRequired:false};
+ }finally{
+  if(!existsNoFollow(guard))fail('RECOVERY_RESUME_LOCK_DISAPPEARED');
+  const st=fs.lstatSync(guard);
+  if(!st.isFile()||st.isSymbolicLink()||st.uid!==process.getuid()||
+   st.nlink!==1||st.ino!==owned.ino||st.dev!==owned.dev)
+   fail('RECOVERY_RESUME_LOCK_CHANGED');
+  if(!attempted||finished){fs.unlinkSync(guard);syncDir(parent);}
+ }
+}
+
 /**
  * Synthetic recovery proof ONLY. Deliberately requires a fresh, recognized
  * owner-private QA root: cannot recover or unlock a live user's installation.

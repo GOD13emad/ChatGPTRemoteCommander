@@ -6,7 +6,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {managePortablePackage,recoverInterruptedUpgradeQA,inspectInterruptedRecoveryQA} from '../tools/portable-capability-gap-package.mjs';
+import {managePortablePackage,recoverInterruptedUpgradeQA,inspectInterruptedRecoveryQA,resumeInterruptedRecoveryQA} from '../tools/portable-capability-gap-package.mjs';
 
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -364,6 +364,69 @@ for(const phase of ['restored-old','retained-new']){
   }finally{fs.rmSync(home,{recursive:true,force:true});}
  });
 }
+for(const phase of ['intent-recorded','restored-old','retained-new','removed-original-lock']){
+ test('QA resume '+phase+' preserves exact old/new bytes',{skip:process.platform!=='linux'},()=>{
+  const home=qa(),state=path.join(home,'state');
+  try{
+   const old=seed(home,{adjuncts:true});
+   hardCrashAfterOldRename(home);hardCrashDuringRecovery(home,phase);
+   const expectedNew={...expected,...Object.fromEntries(Object.entries(extras).map(([k,v])=>[k,v.sha]))};
+   const result=resumeInterruptedRecoveryQA({qaRoot:home});
+   assert.equal(result.changed,true);
+   assert.deepEqual(unpack(target(home)),old);
+   assert.deepEqual(unpack(recovery(home)),expectedNew);
+   for(const name of ['.capgap-portable-package.lock','.capgap-portable-recovery.lock','.capgap-portable-resume.lock'])
+    assert.equal(fs.existsSync(path.join(state,name)),false);
+   assert.equal(managePortablePackage({qaRoot:home}).manualRecoveryRequired,false);
+  }finally{fs.rmSync(home,{recursive:true,force:true});}
+ });
+}
+test('QA resume denies live journal owner and never reclaims unknown guard',
+ {skip:process.platform!=='linux'},()=>{
+ const home=qa(),state=path.join(home,'state');
+ try{
+  const old=seed(home);hardCrashAfterOldRename(home);
+  hardCrashDuringRecovery(home,'intent-recorded');
+  const claim=path.join(state,'.capgap-portable-recovery.lock');
+  const orig=fs.readFileSync(claim,'utf8'),lines=orig.split('\n');
+  const journal=JSON.parse(lines[1]);journal.claimPid=process.pid;
+  fs.writeFileSync(claim,String(process.pid)+'\n'+JSON.stringify(journal)+'\n');
+  assert.throws(()=>resumeInterruptedRecoveryQA({qaRoot:home}),/PORTABLE3_RECOVERY_RESUME_OWNER_ACTIVE/);
+  assert.deepEqual(unpack(backup(home)),old);
+  assert.equal(fs.existsSync(path.join(state,'.capgap-portable-resume.lock')),false);
+  fs.writeFileSync(claim,orig);
+  const guard=path.join(state,'.capgap-portable-resume.lock');
+  fs.writeFileSync(guard,'UNKNOWN OWNER\n',{flag:'wx',mode:0o600});
+  assert.throws(()=>resumeInterruptedRecoveryQA({qaRoot:home}),/PORTABLE3_RECOVERY_RESUME_CONCURRENT/);
+  assert.equal(fs.readFileSync(guard,'utf8'),'UNKNOWN OWNER\n');
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
+test('QA resume process exit leaves guard and both packages intact',
+ {skip:process.platform!=='linux'},()=>{
+ const home=qa(),state=path.join(home,'state');
+ try{
+  const old=seed(home,{adjuncts:true});
+  hardCrashAfterOldRename(home);hardCrashDuringRecovery(home,'intent-recorded');
+  const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');
+  const source='import fs from "node:fs";import path from "node:path";'+
+   'import {pathToFileURL} from "node:url";'+
+   'const rename=fs.renameSync;fs.renameSync=(a,b)=>{rename(a,b);'+
+   'if(path.basename(a)===".capgap-portable-rollback-v1")process.exit(78);};'+
+   'const m=await import(pathToFileURL(process.argv[2]).href);'+
+   'm.resumeInterruptedRecoveryQA({qaRoot:process.argv[3]});';
+  const child=spawnSync(process.execPath,['--input-type=module','-e',source,'qa-resume-crash',pkg,home],
+   {encoding:'utf8',timeout:7000,stdio:['ignore','pipe','pipe']});
+  assert.equal(child.status,78,child.stderr);
+  assert.deepEqual(unpack(target(home)),old);
+  assert.equal(fs.existsSync(path.join(state,'.capgap-portable-resume.lock')),true);
+  assert.equal(fs.existsSync(path.join(state,'.capgap-portable-recovery.lock')),true);
+  assert.throws(()=>resumeInterruptedRecoveryQA({qaRoot:home}),/PORTABLE3_RECOVERY_RESUME_CONCURRENT/);
+  const stages=fs.readdirSync(state).filter(n=>n.startsWith('.capgap-portable-stage-'));
+  assert.equal(stages.length,1);
+  assert.deepEqual(unpack(path.join(state,stages[0])),
+   {...expected,...Object.fromEntries(Object.entries(extras).map(([k,v])=>[k,v.sha]))});
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
 // Synthetic process exits at ordinary install/rollback rename boundaries.
 function hardCrashDuringMutation(home,action,destination){
  const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');
