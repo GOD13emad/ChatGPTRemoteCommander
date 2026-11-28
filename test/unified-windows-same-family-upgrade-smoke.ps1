@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Disposable GitHub-hosted Windows ONLY: real NSIS dev.8 -> dev.9 -> dev.8.
+# Disposable GitHub-hosted Windows ONLY: real same-family dev.45 -> candidate -> dev.45.
 param(
  [Parameter(Mandatory)][string]$OldInstaller,
  [Parameter(Mandatory)][string]$CandidateInstaller
@@ -15,7 +15,7 @@ if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
 if((git -C $env:GITHUB_WORKSPACE rev-parse HEAD).Trim() -cne $env:GITHUB_SHA){
  throw 'RC012_NSIS_EXACT_SOURCE_CHANGED'
 }
-$oldVersion='0.12.0-dev.8'
+$oldVersion='0.12.0-dev.45'
 $newVersion=(node -p 'require(process.argv[1]).version' (Join-Path $env:GITHUB_WORKSPACE 'package.json')).Trim()
 $expectedVersion=(node -p 'require(process.argv[1]).sourceVersion' (Join-Path $env:GITHUB_WORKSPACE 'docs/release-train-0.12.json')).Trim()
 if($newVersion -cne $expectedVersion -or $newVersion -notmatch '^0\.12\.0-dev\.[1-9][0-9]*$'){throw 'RC012_NSIS_EXPECTED_CANDIDATE_CHANGED'}
@@ -24,12 +24,12 @@ $new=Get-Item -LiteralPath $CandidateInstaller -ErrorAction Stop
 if($old.FullName -ceq $new.FullName -or
  $old.Name -cne "Remote-Commander-Unified-$oldVersion-Windows-x64.exe" -or
  $new.Name -cne "Remote-Commander-Unified-$newVersion-Windows-x64.exe" -or
- $old.Length -ne 122081565 -or $new.Length -lt 80000000){
+ $old.Length -ne 122281401 -or $new.Length -lt 80000000){
  throw 'RC012_NSIS_NATIVE_ASSET_SET_INVALID'
 }
 $oldHash=(Get-FileHash $old.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 $newHash=(Get-FileHash $new.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-if($oldHash -cne '57c0d5f895b0b051857af03a8196ba968866a64637adb024cd4b261fbc5e5272' -or
+if($oldHash -cne 'd7f1bd0fe25b64912927f55df0b283bce2eff21bcd3d9f02a515275ac25bf319' -or
  $newHash -eq $oldHash){throw 'RC012_NSIS_SOURCE_BYTES_UNVERIFIED'}
 $install=Join-Path $env:LOCALAPPDATA 'Programs\remote-commander-unified'
 $exe=Join-Path $install 'Remote Commander.exe'
