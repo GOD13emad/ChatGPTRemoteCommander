@@ -143,7 +143,7 @@ export function createBrowserProcessClient({file,args,timeoutMs=15000,slowAction
    });
    try{
     const result=await promise;
-    if(request?.action==='end'){ownedProfile=null;ownedProfileIsolated=false;}
+    if(request?.action==='end'&&result.ok===true&&result.closed===true){ownedProfile=null;ownedProfileIsolated=false;}
     return result;
    }catch(error){
     if(trackedStartProfile){

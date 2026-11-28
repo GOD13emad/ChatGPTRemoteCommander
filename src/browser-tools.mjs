@@ -61,10 +61,15 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
  const clearTimer=()=>{if(timer)cancelTimeout(timer);timer=null;};
  const cleanupExpired=async()=>{
   if(!expiryRequested||busy)return;
-  expiryRequested=false;
-  const profile=expiredProfile;expiredProfile=null;
-  try{await invoke({action:'end'});if(profile)removeBrowserLeaseMarker(profile);}
-  catch{closeInvoke();}
+  const profile=expiredProfile;
+  busy=true;
+  try{
+   const result=await invoke({action:'end'});
+   if(result?.ok!==true||result.closed!==true)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
+   if(profile&&!removeBrowserLeaseMarker(profile))throw browserError('BROWSER_LEASE_STATE_FAILED');
+   expiryRequested=false;expiredProfile=null;uncertain=false;chatMutationUncertain=false;
+  }catch{uncertain=true;chatMutationUncertain=true;}
+  finally{busy=false;}
  };
  const expireSession=()=>{
   if(!session)return;
@@ -141,6 +146,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    if(name==='browser_session_begin'){
     if(cfg.requireExplicitOwnedMode===true&&input.mode===undefined)throw browserError('BROWSER_EXPLICIT_OWNED_MODE_REQUIRED');
     if(current())throw browserError('BROWSER_LEASE_BUSY');
+    if(expiryRequested)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
     const ttl=input.ttlSeconds??300,mode=input.mode??'persistent',profile=input.profile??'default';
     const root=resolveProfileRoot(cfg),instance=instanceSegment(ctx.config?.instance?.profile??'default');
     const dir=mode==='isolated'
@@ -161,6 +167,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
       userDesktopTouched:false,savedPasswordStoreAccess:false,browserProduct:native.browserProduct??null,backend:native.backend??'browser-headless'};
    }
    owns(input.lease);
+   if(session.cleanupPending&&name!=='browser_session_end')throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
    if(name==='browser_chat_tabs'){
      const native=await invoke({action:'chat_tabs'});
      return {...native,sessionResetRequired:chatMutationUncertain,background:true,userDesktopTouched:false};
@@ -172,8 +179,12 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    }
    if(name==='browser_session_end'){
     const profileDir=session.profileDir;
+    session.cleanupPending=true;uncertain=true;chatMutationUncertain=true;
+    const r=await invoke({action:'end'});
+    if(r?.ok!==true||r.closed!==true)throw browserError('BROWSER_SESSION_END_UNCONFIRMED');
+    if(!removeBrowserLeaseMarker(profileDir))throw browserError('BROWSER_LEASE_STATE_FAILED');
     clearTimer();session=null;uncertain=false;chatMutationUncertain=false;expiryRequested=false;expiredProfile=null;
-    const r=await invoke({action:'end'});removeBrowserLeaseMarker(profileDir);return {ok:true,closed:r.closed===true};
+    return {ok:true,closed:true};
    }
    if(chatMutationUncertain&&name==='browser_foreground_begin')throw browserError('BROWSER_CHAT_OUTCOME_UNCERTAIN_SESSION_RESET_REQUIRED');
    if(name==='browser_foreground_requirement'){
@@ -272,7 +283,7 @@ export function createBrowserController({invoke=defaultInvoke,closeInvoke=defaul
    const enabled=ctx?.config?.powerMode?.enabled===true&&cfg.enabled===true;
    const leased=!!session&&session.expires>now()&&!expiryRequested;
    return Object.freeze({ok:true,source:'CONTROLLER_MEMORY',enabled,
-     available:enabled&&leased,active:leased,leased,
+     available:enabled&&leased&&!session.cleanupPending,active:leased,leased,
      backgroundOnly:!leased||session.foreground!==true,
      userDesktopTouched:leased&&session.foreground===true,
      uncertain,sessionResetRequired:chatMutationUncertain});
