@@ -11,6 +11,9 @@ import {normalizeV2Route} from './v2-routing-contract.mjs';
 const HEX=/^[a-f0-9]{64}$/;
 const ID=/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const MAX_OWNER_CANARY_GRANT_MS=5*60_000; // bounded by the exact native J01 epoch
+// A signed registration cannot outlive the narrower, 120s signer policy.
+// This does not extend or silently alter the parent native-owner grant.
+const MAX_SIGNED_WORKER_REGISTRATION_MS=120_000;
 const OWNER_FIELDS=['source','hostId','profileId','principalId',
   'conversationId','bindingId','ownerSidHash','expiresAtMs'];
 const EVIDENCE_FIELDS=['source','hostId','profileId','ownerSidHash',
@@ -270,7 +273,8 @@ export function createV012OwnerGrantAdministration({
         fail('V012_OWNER_GRANT_WORKER_REGISTER_APPROVAL_REQUIRED');
       const envelope=await resolveSignedWorkerEnvelope(Object.freeze({
         workerContext:e.workerContext,grantRevision:parent.revision,
-        expiresAtMs:Math.min(e.expiresAtMs,parent.expiresAtMs)
+        expiresAtMs:Math.min(e.expiresAtMs,parent.expiresAtMs,
+          clock()+MAX_SIGNED_WORKER_REGISTRATION_MS)
       }));
       const after=await evidence();
       if(!sameCanary(e,after)
