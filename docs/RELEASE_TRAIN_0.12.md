@@ -1,4 +1,4 @@
-# Release Train 0.12 — 0.12.0-dev.43 source candidate (NoPromote)
+# Release Train 0.12 — 0.12.0-dev.44 source candidate (NoPromote)
 
 ## Dev.38 historical release-train README assertion (28 November 2026) — NoPromote
 
