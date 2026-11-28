@@ -58,3 +58,46 @@ test('both Linux updater phases enforce runner continuity before candidate launc
   const finalStart=code.indexOf('CANDIDATE_PID="$(start_backend',final);
   assert.ok(diag>=0&&first>diag&&diagStart>first&&final>diagStart&&finalStart>final);
 });
+
+
+test('hardlinked candidate config is rejected even when the runner is unchanged',t=>{
+  const f=fixture(t);f.write(f.current,runner);
+  // The candidate cannot be an alias of another file at approval time.
+  try { fs.linkSync(f.current,f.candidate); }
+  catch (error) {
+    if (['EPERM','EACCES','ENOTSUP','ENOSYS','EXDEV'].includes(error.code)) return t.skip('Hardlinks unavailable on this host');
+    throw error;
+  }
+  const outcome=f.run();
+  assert.equal(outcome.status,3);
+  assert.match(outcome.stderr,/RUNNER_CONTINUITY_BLOCK INVALID_FILE/);
+});
+
+test('team-budget increase cannot bypass the unchanged runner contract',t=>{
+  const f=fixture(t);
+  const active={...runner,maxPlannerCalls:2,team:{workers:[
+    {id:'builder',role:'Build'},{id:'reviewer',role:'Review'}],maxParallel:2}};
+  f.write(f.current,active);
+  f.write(f.candidate,{...active,maxPlannerCalls:3});
+  let outcome=f.run();
+  assert.equal(outcome.status,3);
+  assert.match(outcome.stderr,/RUNNER_POLICY_CHANGED/);
+  // Combining a model adapter change with a budget change must not evade the guard.
+  f.write(f.candidate,{...active,maxPlannerCalls:3,
+    provider:{...active.provider,executable:'/tmp/second-owner-provider'}});
+  outcome=f.run();
+  assert.equal(outcome.status,3);
+  assert.match(outcome.stderr,/RUNNER_POLICY_CHANGED/);
+  assert.ok(!outcome.stderr.includes('/tmp/second-owner-provider'));
+});
+
+test('an unrecognized owner-approval argument cannot disable the continuity guard',t=>{
+  const f=fixture(t);
+  f.write(f.current,{...runner,maxPlannerCalls:2});
+  f.write(f.candidate,{...runner,maxPlannerCalls:3});
+  const outcome=spawnSync(process.execPath,[guard,f.current,f.candidate,
+    '--owner-approval','/tmp/not-issued-owner-approval.json'],
+    {encoding:'utf8',timeout:3000});
+  assert.equal(outcome.status,3);
+  assert.match(outcome.stderr,/INVALID_ARGS/);
+});

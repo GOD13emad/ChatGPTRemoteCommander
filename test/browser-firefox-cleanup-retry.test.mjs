@@ -17,7 +17,7 @@ test('Firefox helper retries owned isolated profile cleanup after permission den
  '#!/usr/bin/env node',
  "const http=require('node:http');",
  "const argv=process.argv;const port=Number(argv[argv.indexOf('--port')+1]);",
- "if(!argv.includes('--marionette-port')||Number(argv[argv.indexOf('--marionette-port')+1])<=0)process.exit(65);",
+ "const marionette=Number(argv[argv.indexOf('--marionette-port')+1]);if(!argv.includes('--marionette-port')||!Number.isInteger(marionette)||marionette<=0||marionette>65535||marionette===port)process.exit(65);",
  "http.createServer((req,res)=>{",
  "res.setHeader('content-type','application/json');",
  "if(req.url==='/status')res.end(JSON.stringify({value:{ready:true}}));",
@@ -47,11 +47,16 @@ test('Firefox helper retries owned isolated profile cleanup after permission den
   assert.equal(first.ok,false);
   assert.equal(first.error,'BROWSER_PROFILE_CLEANUP_FAILED');
   assert.ok(fs.existsSync(profile));
+  for(const request of [{action:'start',isolated:true,profileDir:profile,executable:firefox},{action:'relaunch',headless:true},{action:'navigate',url:'https://example.invalid/'}]){
+   const denied=await send(request);assert.equal(denied.ok,false);assert.equal(denied.error,'BROWSER_PROFILE_CLEANUP_FAILED');
+  }
+  assert.equal((await send({action:'status'})).active,true);
   fs.chmodSync(parent,0o700);
   const second=await send({action:'end'});
   assert.equal(second.ok,true,JSON.stringify(second));
   assert.equal(second.closed,true);
   assert.equal(fs.existsSync(profile),false);
+  assert.equal((await send({action:'status'})).active,false);
  }finally{
   try{fs.chmodSync(parent,0o700)}catch{}
   try{helper.stdin.end()}catch{}
