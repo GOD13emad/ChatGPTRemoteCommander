@@ -427,6 +427,43 @@ test('QA resume process exit leaves guard and both packages intact',
    {...expected,...Object.fromEntries(Object.entries(extras).map(([k,v])=>[k,v.sha]))});
  }finally{fs.rmSync(home,{recursive:true,force:true});}
 });
+test('QA resume exit after claim retirement keeps every mutation entry fail-closed',
+ {skip:process.platform!=='linux'},()=>{
+ const home=qa(),state=path.join(home,'state');
+ try{
+  const old=seed(home,{adjuncts:true});
+  hardCrashAfterOldRename(home);hardCrashDuringRecovery(home,'removed-original-lock');
+  const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');
+  const source='import fs from "node:fs";import path from "node:path";'+
+   'import {pathToFileURL} from "node:url";'+
+   'const m=await import(pathToFileURL(process.argv[2]).href);'+
+   'const unlink=fs.unlinkSync;fs.unlinkSync=p=>{unlink(p);'+
+   'if(path.basename(p)===".capgap-portable-recovery.lock")process.exit(79);};'+
+   'm.resumeInterruptedRecoveryQA({qaRoot:process.argv[3]});';
+  const child=spawnSync(process.execPath,['--input-type=module','-e',source,'qa-resume-final-crash',pkg,home],
+   {encoding:'utf8',timeout:7000,stdio:['ignore','pipe','pipe']});
+  assert.equal(child.status,79,child.stderr);
+  const guard=path.join(state,'.capgap-portable-resume.lock');
+  assert.equal(fs.existsSync(guard),true);
+  assert.equal(fs.existsSync(path.join(state,'.capgap-portable-recovery.lock')),false);
+  assert.equal(fs.existsSync(path.join(state,'.capgap-portable-package.lock')),false);
+  assert.deepEqual(unpack(target(home)),old);
+  assert.deepEqual(unpack(recovery(home)),
+   {...expected,...Object.fromEntries(Object.entries(extras).map(([k,v])=>[k,v.sha]))});
+  const snapshot=()=>Object.fromEntries(fs.readdirSync(state).sort().map(n=>{
+   const p=path.join(state,n);return [n,fs.lstatSync(p).isDirectory()?unpack(p):hash(fs.readFileSync(p))];
+  }));
+  const before=snapshot();
+  const status=managePortablePackage({qaRoot:home});
+  assert.equal(status.state,'resume-guard-present');
+  assert.equal(status.manualRecoveryRequired,true);
+  for(const action of ['install','upgrade','rollback'])
+   assert.throws(()=>managePortablePackage({qaRoot:home,action}),/PORTABLE3_RECOVERY_RESUME_CONCURRENT/);
+  assert.throws(()=>recoverInterruptedUpgradeQA({qaRoot:home}),/PORTABLE3_RECOVERY_RESUME_CONCURRENT/);
+  assert.throws(()=>resumeInterruptedRecoveryQA({qaRoot:home}),/PORTABLE3_RECOVERY_RESUME_CONCURRENT/);
+  assert.deepEqual(snapshot(),before);
+ }finally{fs.rmSync(home,{recursive:true,force:true});}
+});
 // Synthetic process exits at ordinary install/rollback rename boundaries.
 function hardCrashDuringMutation(home,action,destination){
  const pkg=path.join(root,'tools','portable-capability-gap-package.mjs');

@@ -167,6 +167,8 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
  if(action!=='status'&&qaRoot===undefined)fail('MUTATION_QA_ONLY');
  const {target,parent,backup,recovery}=context(qaRoot);
  const recoveryClaim=path.join(parent,'.capgap-portable-recovery.lock');
+ const resumeGuard=path.join(parent,'.capgap-portable-resume.lock');
+ if(action!=='status'&&existsNoFollow(resumeGuard))fail('RECOVERY_RESUME_CONCURRENT');
  // A claim can outlive its recovery process. Do not infer a completed
  // recovery from the restored legacy target or the absent original lock.
  // Claim ownership/retirement requires separate explicit adjudication.
@@ -175,19 +177,21 @@ export function managePortablePackage({action='status',qaRoot,hook}={}){
  if(action==='status'){
    if(existsNoFollow(backup))inspect(backup,LEGACY);
    const claimed=existsNoFollow(recoveryClaim);
+   const resuming=existsNoFollow(resumeGuard);
    const locked=existsNoFollow(path.join(parent,'.capgap-portable-package.lock'));
    const interrupted=locked&&initial.version==='absent'&&existsNoFollow(backup);
    // Presence of a lock is not evidence that its owner is dead. Expose
    // unresolved mutation state without deleting, retiring or trusting a lock.
-   const state=claimed?'recovery-claim-present':
+   const state=claimed?'recovery-claim-present':resuming?'resume-guard-present':
      interrupted?(existsNoFollow(recovery)?'interrupted-rollback':'interrupted-upgrade'):
      locked?'mutation-lock-present':initial.version;
    return {state,adjuncts:initial.adjuncts,rollbackReady:existsNoFollow(backup),
-     manualRecoveryRequired:claimed||locked,changed:false};
+     manualRecoveryRequired:claimed||resuming||locked,changed:false};
  }
  return mutationLock(parent,()=>{
  // Recheck under the original exclusive mutation lock. Recovery itself
  // checks that this lock's owner is not alive before moving any package.
+ if(existsNoFollow(resumeGuard))fail('RECOVERY_RESUME_CONCURRENT');
  if(existsNoFollow(recoveryClaim))fail('RECOVERY_CONCURRENT');
  if(action==='rollback'){
   if(initial.version!=='three-file'||!existsNoFollow(backup)||existsNoFollow(recovery))
@@ -371,6 +375,8 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
  const {target,parent,backup,recovery}=context(qaRoot);
  const lock=path.join(parent,'.capgap-portable-package.lock');
  const claim=path.join(parent,'.capgap-portable-recovery.lock');
+ const resumeGuard=path.join(parent,'.capgap-portable-resume.lock');
+ if(existsNoFollow(resumeGuard))fail('RECOVERY_RESUME_CONCURRENT');
  if(existsNoFollow(claim))fail('RECOVERY_CONCURRENT');
  let claimFd,claimStat;
  let mutationStarted=false,completed=false;
@@ -384,6 +390,7 @@ export function recoverInterruptedUpgradeQA({qaRoot}={}){
   fail('RECOVERY_CLAIM_DENIED');
  }finally{if(claimFd!==undefined)fs.closeSync(claimFd);}
  try{
+  if(existsNoFollow(resumeGuard))fail('RECOVERY_RESUME_CONCURRENT');
   if(existsNoFollow(target)||!existsNoFollow(backup)||!existsNoFollow(lock)||
      existsNoFollow(recovery))fail('RECOVERY_TOPOLOGY_INVALID');
   const stages=fs.readdirSync(parent).filter(n=>n.startsWith('.capgap-portable-stage-'));
