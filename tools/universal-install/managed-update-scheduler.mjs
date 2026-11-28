@@ -33,17 +33,26 @@ function targetRoot(){
     :path.join(os.homedir(),'.local','lib',
       'ChatGPTRemoteCommander','native-auto-updater');
 }
+// Linux units have their own parser, not shell syntax or host-OS paths.
+// Keep a single literal argument per path and escape systemd specifiers.
+// Reject ambiguous PATH separators, variable expansion and control syntax.
+function validLinuxUnitPath(s){
+  return typeof s==='string'&&path.posix.isAbsolute(s)
+    &&!/[\u0000-\u001f\u007f"\\$:]/.test(s)
+    &&s.split('/').slice(1).every(p=>p&&p!=='.'&&p!=='..'&&p.trim()===p);
+}
+const unitLiteral=s=>s.replaceAll('%','%%');
+const execWord=s=>/[\s']/.test(s)?'"'+unitLiteral(s)+'"':unitLiteral(s);
 export function linuxUnitFiles({nodeBinary,ghBinary,runner}){
-  if([nodeBinary,ghBinary,runner].some(s=>typeof s!=='string'
-    ||!path.isAbsolute(s)||/[\r\n"\\]/.test(s)))
+  if(![nodeBinary,ghBinary,runner].every(validLinuxUnitPath))
     fail('RC012_AUTO_UPDATE_TIMER_UNSAFE_PATH');
-  const root=path.dirname(runner);
+  const root=path.posix.dirname(runner);
   const service=[
     '[Unit]','Description=ChatGPT Commander approved signed-release staging (no installation)',
     '[Service]','Type=oneshot',
-    'Environment=PATH='+path.dirname(ghBinary)+':'+path.dirname(nodeBinary)+':/usr/bin:/bin',
-    'WorkingDirectory='+root,
-    'ExecStart='+nodeBinary+' '+runner+' --stage',
+    'Environment="PATH='+unitLiteral(path.posix.dirname(ghBinary))+':'+unitLiteral(path.posix.dirname(nodeBinary))+':/usr/bin:/bin"',
+    'WorkingDirectory='+unitLiteral(root),
+    'ExecStart='+execWord(nodeBinary)+' '+execWord(runner)+' --stage',
     'NoNewPrivileges=true','PrivateTmp=true','ProtectSystem=full',
     '',
   ].join('\n');

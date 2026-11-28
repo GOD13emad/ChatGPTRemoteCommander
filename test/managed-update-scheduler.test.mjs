@@ -44,3 +44,29 @@ test('one cross-platform source refresh is atomic, rerunnable and retains one pr
      sourceDir:source,destinationDir:path.join(tmp,'non-directory')}),/ALIAS_DENIED/);
  }finally{fs.rmSync(tmp,{recursive:true,force:true});}
 });
+
+
+test('Linux staging unit preserves spaces and literal specifiers without shell expansion',()=>{
+ const s=linuxUnitFiles({nodeBinary:'/opt/Node Runtime/node',
+   ghBinary:'/opt/GitHub CLI/gh',
+   runner:'/home/owner/RC %h/managed-updates.mjs'});
+ assert.ok(s.service.split('\n').includes(
+   'Environment="PATH=/opt/GitHub CLI:/opt/Node Runtime:/usr/bin:/bin"'));
+ assert.ok(s.service.split('\n').includes('WorkingDirectory=/home/owner/RC %%h'));
+ assert.ok(s.service.split('\n').includes(
+   'ExecStart="/opt/Node Runtime/node" "/home/owner/RC %%h/managed-updates.mjs" --stage'));
+ assert.match(s.service,/NoNewPrivileges=true/);
+ assert.doesNotMatch(s.service,/--apply|--attested-gui-approval|pkexec|sudo/);
+});
+
+test('Linux staging unit rejects ambiguous path syntax before rendering',()=>{
+ const safe={nodeBinary:'/usr/bin/node',ghBinary:'/usr/bin/gh',
+   runner:'/home/owner/managed-updates.mjs'};
+ for(const value of ['/tmp/$HOME/run.mjs','/tmp/a:b/run.mjs','/tmp/a\tb/run.mjs',
+   '/tmp/a"/run.mjs','/tmp/a\\/run.mjs','/tmp/a\u0000b/run.mjs',
+   '/tmp/../run.mjs','/tmp/./run.mjs','/tmp/a /run.mjs',
+   '//tmp/run.mjs','C:\\temp\\run.mjs']){
+   assert.throws(()=>linuxUnitFiles({...safe,runner:value}),/UNSAFE_PATH/);
+ }
+ assert.throws(()=>linuxUnitFiles({...safe,ghBinary:'/opt/a:b/gh'}),/UNSAFE_PATH/);
+});
