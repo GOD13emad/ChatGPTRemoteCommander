@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {CapabilityGapRegistry,createCapabilityGapTools} from '../src/capability-gap-registry.mjs';
 const make=()=>fs.mkdtempSync(path.join(os.tmpdir(),'commander-gap-'));
 const issue=(o={})=>({
@@ -73,7 +74,7 @@ test('validate immutable key/category, sensitive evidence, path aliases and inpu
    assert.throws(()=>c.report(issue({consentGate:'ADMIN_UNRESTRICTED'})),/CONSENT_INVALID/);
    assert.equal(c.get('gui.portal.owner-consent').observationCount,1);
    assert.throws(()=>c.list({limit:99999}),/LIMIT_INVALID/);
-   const link=dir+'-alias';fs.symlinkSync(dir,link,'dir');
+   const link=dir+'-alias';fs.symlinkSync(dir,link,process.platform==='win32'?'junction':'dir');
    try{
      assert.throws(()=>new CapabilityGapRegistry({directory:link,scope:'s',device:'MMZ'}),/ALIAS_DENIED/);
      assert.throws(()=>new CapabilityGapRegistry({directory:path.join(link,'should-not-be-created'),scope:'s',device:'MMZ'}),/ALIAS_DENIED/);
@@ -120,7 +121,7 @@ test('CLI is a fallback adapter using the same canonical private profile scope, 
   fs.writeFileSync(c,JSON.stringify({deviceName:'QA',allowedRoots:[path.join(root,'project')],durableDelivery:{directory:delivery,scope:'same-owner'}}),{mode:0o600});
   fs.mkdirSync(path.join(root,'project'),{mode:0o700});
   fs.writeFileSync(input,JSON.stringify(issue()),{mode:0o600});
-  const cli=new URL('../tools/capability-gap-cli.mjs',import.meta.url).pathname;
+  const cli=fileURLToPath(new URL('../tools/capability-gap-cli.mjs',import.meta.url));
   const run=(verb,withInput=false)=>spawnSync(process.execPath,[cli,verb,'--config',c,...(withInput?['--input',input]:[])],{encoding:'utf8'});
   let out=run('report',true);assert.equal(out.status,0,out.stderr);
   assert.equal(JSON.parse(out.stdout).created,true);
@@ -137,6 +138,36 @@ test('CLI is a fallback adapter using the same canonical private profile scope, 
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
+
+test('native Windows owner-local ACL preprovisioning preserves private SQLite after a synthetic gap write',
+ {skip:process.platform!=='win32'?'Windows owner ACL fixture only':false},()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'capgap-private-windows-'));
+ const db=path.join(dir,'capability-gaps.sqlite');
+ const script=fileURLToPath(new URL('../tools/v2-universal-owner-acl.ps1',import.meta.url));
+ const run=action=>spawnSync('pwsh',['-NoProfile','-NonInteractive','-File',script,
+  '-Action',action],{input:JSON.stringify([dir,db]),encoding:'utf8',timeout:7000,windowsHide:true});
+ let registry;
+ try{
+  // No sensitive/real ledger data; the test is not a runtime production ACL guard.
+  fs.writeFileSync(db,Buffer.alloc(0),{flag:'wx'});
+  const initial=run('CheckPrivate');
+  assert.ok(initial.status!==null,'native ACL check must finish synchronously');
+  const baseline=spawnSync('pwsh',['-NoProfile','-NonInteractive','-CommandWithArgs',
+   String.raw`$ErrorActionPreference='Stop';$a=Get-Acl -LiteralPath $args[0];[string]$a.AreAccessRulesProtected`,db],
+   {encoding:'utf8',timeout:7000,windowsHide:true});
+  assert.equal(baseline.status,0,'native ACL baseline readback required');
+  if(baseline.stdout.trim()==='False')
+   assert.notEqual(initial.status,0,'inherited DACL cannot be accepted as owner-only');
+  const provision=run('MakePrivate');
+  assert.equal(provision.status,0,'owner-local fixture ACL provisioning required');
+  assert.equal(run('CheckPrivate').status,0,'fixture ACL must be owner-private before opening SQLite');
+  registry=new CapabilityGapRegistry({directory:dir,scope:'owner.qa',device:'QA'});
+  assert.equal(registry.report(issue({capabilityKey:'gui.portal.owner-qa'})).created,true);
+  assert.equal(registry.list().total,1);
+  registry.close();registry=undefined;
+  assert.equal(run('CheckPrivate').status,0,'SQLite write must not relax protected owner ACL');
+ }finally{registry?.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
 
 test('passive native error classification captures allowlisted gaps without storing tool arguments or grants',()=>{
  const root=make(),tools=createCapabilityGapTools({directory:root,scope:'owner',device:'MMZ'});
