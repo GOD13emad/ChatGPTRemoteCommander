@@ -13,9 +13,9 @@
     <Product>Remote Commander by TandemVector Labs</Product>
     <Description>Unsigned Windows preview distributed by the Remote Commander project. Publisher identity not Authenticode verified.</Description>
     <RootNamespace>RemoteCommander</RootNamespace>
-    <Version>0.12.0-dev.47</Version>
-    <FileVersion>0.12.0.47</FileVersion>
-    <AssemblyVersion>0.12.0.47</AssemblyVersion>
+    <Version>0.12.0-dev.48</Version>
+    <FileVersion>0.12.0.48</FileVersion>
+    <AssemblyVersion>0.12.0.48</AssemblyVersion>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../installer/products.json" LogicalName="RemoteCommander.OptionalProducts" />
